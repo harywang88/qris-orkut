@@ -1,0 +1,1470 @@
+<%
+  const totalRecordsText = total.toLocaleString('id-ID');
+  const totalPaidText = totalPaid.toLocaleString('id-ID');
+  const totalFeeText = totalFee.toLocaleString('id-ID');
+  const currentPeriod = query.period || 'all';
+%>
+
+<style>
+  /* ── Toolbar ───────────────────────────────────── */
+  .tx-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(135deg, rgba(59,130,246,0.04), rgba(16,185,129,0.03));
+  }
+  .tx-toolbar-sep {
+    width: 1px; height: 28px; background: var(--line); flex-shrink: 0;
+  }
+  .tx-record-info {
+    margin-left: auto;
+    font-size: 12px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .tx-record-info b { color: var(--ink); }
+
+  /* ── Filter bar (horizontal) ───────────────────── */
+  .tx-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tx-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .tx-filter-group.grow { flex: 1; min-width: 140px; }
+  .tx-filter-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .tx-filter-input {
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 12px;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .tx-filter-input:focus { border-color: rgba(99,130,255,0.5); }
+  .tx-filter-input::placeholder { color: var(--muted); }
+  select.tx-filter-input { cursor: pointer; }
+  .tx-filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+  }
+
+  /* ── Period pills ──────────────────────────────── */
+  .tx-period-pills {
+    display: flex;
+    gap: 4px;
+  }
+  .tx-period-pill {
+    padding: 6px 12px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .18s;
+    white-space: nowrap;
+  }
+  .tx-period-pill:hover { border-color: rgba(99,130,255,0.35); color: var(--ink); }
+  .tx-period-pill.active {
+    background: rgba(99,130,255,0.12);
+    border-color: rgba(99,130,255,0.40);
+    color: #93b4ff;
+  }
+
+  /* ── Mini stats row ────────────────────────────── */
+  .tx-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .tx-stat {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    min-width: 0;
+    flex: 1;
+    transition: border-color .2s;
+  }
+  .tx-stat:hover { border-color: rgba(99,130,255,0.25); }
+  .tx-stat-icon {
+    width: 32px; height: 32px;
+    display: grid; place-items: center;
+    border-radius: 8px;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .tx-stat-icon.blue   { background: rgba(59,130,246,0.12); color: #60a5fa; }
+  .tx-stat-icon.violet { background: rgba(139,92,246,0.12); color: #a78bfa; }
+  .tx-stat-icon.green  { background: rgba(34,197,94,0.12);  color: #4ade80; }
+  .tx-stat-icon.amber  { background: rgba(249,115,22,0.12); color: #fb923c; }
+  .tx-stat-icon.red    { background: rgba(239,68,68,0.12);  color: #f87171; }
+  .tx-stat-body { min-width: 0; }
+  .tx-stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tx-stat-value {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--ink);
+    line-height: 1.2;
+    margin-top: 1px;
+  }
+  .tx-stat-sub {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── Table overrides (dark theme) ────────────────── */
+  #transactions-table {
+    font-size: 12px;
+    border: none !important;
+    background: var(--shell) !important;
+    color: var(--ink) !important;
+  }
+  #transactions-table .tabulator-header {
+    background:
+      linear-gradient(180deg, rgba(20, 25, 35, 0.98), rgba(16, 20, 29, 0.98)) !important;
+    border-bottom: 1px solid var(--line) !important;
+    border-top: none !important;
+    color: var(--muted) !important;
+  }
+  #transactions-table .tabulator-col {
+    background: transparent !important;
+    border-right: 1px solid var(--line) !important;
+  }
+  #transactions-table .tabulator-col:last-child {
+    border-right: none !important;
+  }
+  #transactions-table .tabulator-col-title {
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+    color: #98a5c4 !important;
+    text-align: left !important;
+    padding: 10px 8px !important;
+  }
+  #transactions-table .tabulator-col .tabulator-col-content {
+    padding: 0 !important;
+  }
+  #transactions-table .tabulator-col-resize-handle {
+    border-color: var(--line) !important;
+  }
+  #transactions-table .tabulator-tableholder {
+    background: var(--shell) !important;
+    color: var(--ink) !important;
+  }
+  #transactions-table .tabulator-row {
+    background: var(--shell) !important;
+    border-bottom: 1px solid var(--line) !important;
+    min-height: 50px !important;
+    color: var(--ink) !important;
+  }
+  #transactions-table .tabulator-row:hover {
+    background: linear-gradient(90deg, rgba(36, 44, 62, 0.92), rgba(20, 26, 40, 0.92)) !important;
+  }
+  #transactions-table .tabulator-row:nth-child(even) {
+    background: rgba(19, 24, 34, 0.96) !important;
+  }
+  #transactions-table .tabulator-row:nth-child(even):hover {
+    background: linear-gradient(90deg, rgba(34, 40, 58, 0.96), rgba(20, 26, 40, 0.96)) !important;
+  }
+  #transactions-table .tabulator-cell {
+    border-right: 1px solid rgba(255,255,255,0.03) !important;
+    padding: 10px 10px !important;
+    vertical-align: middle !important;
+    text-align: left !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow: hidden !important;
+    color: var(--ink) !important;
+    font-weight: 700 !important;
+  }
+  #transactions-table .tabulator-cell:last-child {
+    border-right: none !important;
+  }
+  /* ── Perataan kolom biar enak dibaca: teks KIRI, angka KANAN, status/aksi TENGAH ── */
+  #transactions-table .tabulator-cell[tabulator-field="finalAmount"],
+  #transactions-table .tabulator-col[tabulator-field="finalAmount"] .tabulator-col-title { text-align: right !important; }
+  #transactions-table .tabulator-cell[tabulator-field="finalAmount"] .tx-cell-stack { align-items: flex-end !important; }
+  #transactions-table .tabulator-cell[tabulator-field="statusPay"],
+  #transactions-table .tabulator-cell[tabulator-field="statusBot"],
+  #transactions-table .tabulator-cell[tabulator-field="qrId"],
+  #transactions-table .tabulator-col[tabulator-field="statusPay"] .tabulator-col-title,
+  #transactions-table .tabulator-col[tabulator-field="statusBot"] .tabulator-col-title,
+  #transactions-table .tabulator-col[tabulator-field="qrId"] .tabulator-col-title { text-align: center !important; }
+  #transactions-table .tabulator-cell[tabulator-field="statusPay"] .tx-cell-stack { align-items: center !important; }
+  /* kolom nomor (#) tetap tengah */
+  #transactions-table .tabulator-row .tabulator-cell:first-child,
+  #transactions-table .tabulator-header .tabulator-col:first-child .tabulator-col-title { text-align: center !important; }
+  #transactions-table .tabulator-footer {
+    background: var(--panel-2) !important;
+    border-top: 1px solid var(--line) !important;
+    padding: 8px 12px !important;
+    color: var(--muted) !important;
+  }
+  #transactions-table .tabulator-page {
+    border-radius: 8px !important;
+    font-size: 11px !important;
+    padding: 5px 10px !important;
+    border: 1px solid var(--line) !important;
+    background: var(--panel) !important;
+    color: var(--muted) !important;
+    transition: all .18s !important;
+  }
+  #transactions-table .tabulator-page:hover {
+    background: var(--panel-2) !important;
+    color: var(--ink) !important;
+  }
+  #transactions-table .tabulator-page.active {
+    background: rgba(99,130,255,0.18) !important;
+    border-color: rgba(99,130,255,0.4) !important;
+    color: #93b4ff !important;
+  }
+  #transactions-table .tabulator-pages {
+    gap: 4px !important;
+  }
+  #transactions-table .tabulator-paginator {
+    color: var(--muted) !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    justify-content: flex-end !important;
+  }
+  #transactions-table .tabulator-page-counter {
+    color: var(--muted) !important;
+    font-size: 11px !important;
+  }
+
+  /* ── Filter action buttons ──────────────────────── */
+  .tx-filter-btn {
+    height: 34px;
+    padding: 0 16px;
+    border: none;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .18s;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-decoration: none;
+  }
+  .tx-filter-btn-primary {
+    background: rgba(99,130,255,0.18);
+    color: #93b4ff;
+  }
+  .tx-filter-btn-primary:hover { background: rgba(99,130,255,0.28); }
+  .tx-filter-btn-ghost {
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+  }
+  .tx-filter-btn-ghost:hover { background: rgba(255,255,255,0.08); color: var(--ink); }
+
+  /* ── Action buttons in table ────────────────────── */
+  .tx-act-btn {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    background: rgba(255,255,255,0.04);
+    color: #c8bdb0;
+    cursor: pointer;
+    transition: all .18s;
+    white-space: nowrap;
+  }
+  .tx-act-btn:hover { background: rgba(255,255,255,0.08); color: #fff; }
+  .tx-act-blue { color: #7bb2ff; border-color: rgba(99,130,255,0.2); }
+  .tx-act-blue:hover { background: rgba(99,130,255,0.12); color: #a3c9ff; }
+  .tx-act-accent { color: #fb923c; border-color: rgba(249,115,22,0.2); }
+  .tx-act-accent:hover { background: rgba(249,115,22,0.12); color: #fdba74; }
+  .tx-act-green { color: #4ade80; border-color: rgba(34,197,94,0.2); }
+  .tx-act-green:hover { background: rgba(34,197,94,0.12); color: #86efac; }
+  .tx-act-receipt { color: #4ade80; border-color: rgba(34,197,94,0.34); background: rgba(34,197,94,0.1); font-weight: 800; display: inline-flex; align-items: center; gap: 5px; }
+  .tx-act-receipt:hover { background: rgba(34,197,94,0.2); color: #86efac; }
+
+  .tx-cell-stack {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    line-height: 1.28;
+  }
+  .tx-cell-main {
+    font-size: 11px;
+    font-weight: 800;
+    color: #f6f8fc;
+    letter-spacing: 0.01em;
+  }
+  .tx-cell-sub {
+    font-size: 9px;
+    font-weight: 700;
+    color: #7f8ba8;
+  }
+  .tx-cell-site {
+    font-size: 11px;
+    font-weight: 800;
+    color: #fda4af;
+    letter-spacing: 0.03em;
+  }
+  .tx-cell-user {
+    font-size: 12px;
+    font-weight: 800;
+    color: #7dd3fc;
+  }
+  .tx-cell-account {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 58px;
+    padding: 4px 9px;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, 0.12);
+    border: 1px solid rgba(96, 165, 250, 0.16);
+    color: #93c5fd;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+  }
+  .tx-cell-merchant {
+    font-size: 9px;
+    font-weight: 700;
+    color: #c9d4ea;
+  }
+  .tx-cell-created {
+    font-size: 11px;
+    font-weight: 800;
+    color: #f8fafc;
+  }
+  .tx-cell-expires {
+    font-size: 11px;
+    font-weight: 800;
+    color: #fef3c7;
+  }
+  .tx-cell-amount {
+    font-size: 13px;
+    font-weight: 900;
+    color: #86efac;
+  }
+  .tx-cell-amount-sub {
+    font-size: 9px;
+    font-weight: 700;
+    color: #8fa2bd;
+  }
+  .tx-cell-created2 {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.3;
+  }
+  .tx-cell-created2 .d2-date {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .tx-cell-created2 .d2-time {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .tx-cell-rrn {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 11px;
+    font-weight: 800;
+    color: #7dd3fc;
+    letter-spacing: 0.02em;
+  }
+  .tx-cell-note {
+    font-size: 10px;
+    font-weight: 800;
+    color: #f8fafc;
+  }
+  .tx-cell-issuer {
+    font-size: 9px;
+    font-weight: 700;
+    color: #f59e0b;
+  }
+  .tx-actions-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  @media (max-width: 768px) {
+    .tx-toolbar { padding: 10px 14px; }
+    .tx-filter-bar { padding: 10px 14px; }
+    .tx-stats-row { padding: 10px 14px; }
+    .tx-stat { padding: 8px 12px; flex: none; min-width: calc(50% - 4px); }
+    .tx-stat-value { font-size: 15px; }
+    .tx-cell-main,
+    .tx-cell-created,
+    .tx-cell-expires { font-size: 10px; }
+    .tx-cell-amount { font-size: 12px; }
+  }
+</style>
+
+<section class="space-y-5">
+  <div class="qris-page-header">
+    <h1 class="qris-page-title">Transaksi <span>QR</span></h1>
+    <p class="qris-section-sub mt-1">Setiap QR yang dibuat akan langsung masuk ke sini, dari status menunggu bayar sampai berhasil terproses.</p>
+  </div>
+
+  <section class="qris-card overflow-hidden">
+    <!-- ── Toolbar ──────────────────────────────── -->
+    <div class="tx-toolbar">
+      <a href="<%= url((typeof paidOnly !== 'undefined' && paidOnly) ? '/dashboard/transactions' : '/dashboard/history') %>" class="qris-ghost-btn"><span>Reload</span></a>
+      <button type="button" onclick="exportTransactions()" class="qris-ghost-btn"><span>Export</span></button>
+      <div class="tx-toolbar-sep"></div>
+      <button type="button" onclick="checkStatusAll()" class="qris-accent-btn">Check Status All</button>
+      <button type="button" id="btnSyncAllTx" class="qris-accent-btn" title="Sinkron semua akun QRIS (maks 1x per menit)"><span id="btnSyncAllTxLabel">Sinkron ALL</span></button>
+      <select id="syncOneSelTx" title="Pilih akun untuk disinkron" style="background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.14);color:inherit;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;max-width:180px"><option value="">Pilih Akun…</option></select>
+      <button type="button" id="btnSyncOneTx" class="qris-accent-btn" title="Sinkron akun terpilih (maks 1x per menit per akun)"><span id="btnSyncOneTxLabel">Sinkron</span></button>
+      <div class="tx-record-info">
+        <b><%= totalRecordsText %></b> Records &middot; Page <b><%= page %></b>
+      </div>
+    </div>
+
+    <!-- ── Filter bar ───────────────────────────── -->
+    <form method="GET" action="<%= url((typeof paidOnly !== 'undefined' && paidOnly) ? '/dashboard/transactions' : '/dashboard/history') %>">
+      <div class="tx-filter-bar">
+        <!-- Period pills -->
+        <div class="tx-filter-group">
+          <span class="tx-filter-label">Periode</span>
+          <div class="tx-period-pills">
+            <button type="submit" name="period" value="today" class="tx-period-pill <%= currentPeriod === 'today' ? 'active' : '' %>">Hari Ini</button>
+            <button type="submit" name="period" value="yesterday" class="tx-period-pill <%= currentPeriod === 'yesterday' ? 'active' : '' %>">Kemarin</button>
+            <button type="submit" name="period" value="7d" class="tx-period-pill <%= currentPeriod === '7d' ? 'active' : '' %>">7 Hari</button>
+            <button type="submit" name="period" value="30d" class="tx-period-pill <%= currentPeriod === '30d' ? 'active' : '' %>">30 Hari</button>
+            <button type="submit" name="period" value="all" class="tx-period-pill <%= currentPeriod === 'all' ? 'active' : '' %>">Semua</button>
+          </div>
+        </div>
+
+        <div class="tx-toolbar-sep"></div>
+
+        <!-- Custom range -->
+        <div class="tx-filter-group">
+          <span class="tx-filter-label">Dari</span>
+          <input type="hidden" name="period" value="custom" disabled />
+          <input type="date" name="from" value="<%= query.from || '' %>" class="tx-filter-input" style="width:130px" />
+        </div>
+        <div class="tx-filter-group">
+          <span class="tx-filter-label">Sampai</span>
+          <input type="date" name="to" value="<%= query.to || '' %>" class="tx-filter-input" style="width:130px" />
+        </div>
+      </div>
+
+      <!-- ── Advanced filters row ────────────────── -->
+      <div class="tx-filter-bar">
+        <div class="tx-filter-group grow">
+          <span class="tx-filter-label">User / Order / Ref</span>
+          <input type="text" name="keyword" value="<%= query.keyword || '' %>" class="tx-filter-input" placeholder="Username, ref, note..." />
+        </div>
+        <% if (!(typeof paidOnly !== 'undefined' && paidOnly)) { %>
+        <div class="tx-filter-group">
+          <span class="tx-filter-label">Status Bayar</span>
+          <select name="statusPay" class="tx-filter-input" style="width:120px">
+            <option value="">Semua</option>
+            <option value="open" <%= query.statusPay === 'open' ? 'selected' : '' %>>Open</option>
+            <option value="paid" <%= query.statusPay === 'paid' ? 'selected' : '' %>>Paid</option>
+            <option value="expired" <%= query.statusPay === 'expired' ? 'selected' : '' %>>Expired</option>
+          </select>
+        </div>
+        <% } %>
+        <div class="tx-filter-group">
+          <span class="tx-filter-label">Auto Deposit</span>
+          <select name="statusBot" class="tx-filter-input" style="width:140px">
+            <option value="">Semua</option>
+            <option value="pending" <%= query.statusBot === 'pending' ? 'selected' : '' %>>Pending</option>
+            <option value="deposit_queued" <%= query.statusBot === 'deposit_queued' ? 'selected' : '' %>>Queued</option>
+            <option value="deposit_success" <%= query.statusBot === 'deposit_success' ? 'selected' : '' %>>Success</option>
+            <option value="deposit_failed" <%= query.statusBot === 'deposit_failed' ? 'selected' : '' %>>Failed</option>
+            <option value="manual_review" <%= query.statusBot === 'manual_review' ? 'selected' : '' %>>Review</option>
+          </select>
+        </div>
+        <div class="tx-filter-group">
+          <span class="tx-filter-label">QRIS Account</span>
+          <select name="accountCode" id="txFilterAccount" class="tx-filter-input" style="width:160px">
+            <option value="">Semua</option>
+            <% qrisAccounts.forEach((account) => { %>
+              <option value="<%= account.code %>" data-site="<%= account.siteId || 'none' %>" <%= query.accountCode === account.code ? 'selected' : '' %>><%= account.code %> - <%= account.merchantName %></option>
+            <% }) %>
+          </select>
+        </div>
+        <div class="tx-filter-group">
+          <span class="tx-filter-label">Site</span>
+          <select name="site" id="txFilterSite" class="tx-filter-input" style="width:150px">
+            <option value="">Semua</option>
+            <% sites.forEach((s) => { %>
+              <option value="<%= s.id %>" <%= query.site === s.id ? 'selected' : '' %>><%= s.name %></option>
+            <% }) %>
+            <option value="none" <%= query.site === 'none' ? 'selected' : '' %>>Tanpa site</option>
+          </select>
+        </div>
+        <div class="tx-filter-group">
+          <span class="tx-filter-label">Nominal</span>
+          <input type="text" name="nominal" value="<%= query.nominal || '' %>" inputmode="numeric" class="tx-filter-input" placeholder="mis. 10.001" style="width:120px" oninput="this.value=this.value.replace(/[^0-9.,]/g,'')" />
+        </div>
+        <button type="submit" class="tx-filter-btn tx-filter-btn-primary" style="height:34px">
+          <i class="fa-solid fa-magnifying-glass" style="font-size:11px"></i> Filter
+        </button>
+        <a href="<%= url((typeof paidOnly !== 'undefined' && paidOnly) ? '/dashboard/transactions' : '/dashboard/history') %>" class="tx-filter-btn tx-filter-btn-ghost" style="height:34px">Reset</a>
+      </div>
+    </form>
+    <script>
+    (function () {
+      var siteSel = document.getElementById('txFilterSite');
+      var acctSel = document.getElementById('txFilterAccount');
+      if (!siteSel || !acctSel) return;
+      function applySiteFilter(resetIfHidden) {
+        var sv = siteSel.value; // '' = semua, siteId, atau 'none'
+        var hiddenSelected = false;
+        acctSel.querySelectorAll('option[data-site]').forEach(function (o) {
+          var show = (sv === '' || o.getAttribute('data-site') === sv);
+          o.hidden = !show;
+          o.disabled = !show;
+          if (!show && o.selected) hiddenSelected = true;
+        });
+        if (resetIfHidden && hiddenSelected) acctSel.value = '';
+      }
+      siteSel.addEventListener('change', function () { applySiteFilter(true); });
+      applySiteFilter(false);
+    })();
+    </script>
+
+    <!-- ── Stats row (compact horizontal) ────────── -->
+    <div class="tx-stats-row">
+      <div class="tx-stat">
+        <div class="tx-stat-icon blue"><i class="fa-solid fa-layer-group"></i></div>
+        <div class="tx-stat-body">
+          <div class="tx-stat-label">Total</div>
+          <div class="tx-stat-value"><%= total %></div>
+        </div>
+      </div>
+      <% if (!(typeof paidOnly !== 'undefined' && paidOnly)) { %>
+      <div class="tx-stat">
+        <div class="tx-stat-icon violet"><i class="fa-solid fa-hourglass-half"></i></div>
+        <div class="tx-stat-body">
+          <div class="tx-stat-label">Pending</div>
+          <div class="tx-stat-value" style="color:#a78bfa"><%= stats.openCount %></div>
+        </div>
+      </div>
+      <% } %>
+      <div class="tx-stat">
+        <div class="tx-stat-icon green"><i class="fa-solid fa-circle-check"></i></div>
+        <div class="tx-stat-body">
+          <div class="tx-stat-label">Paid</div>
+          <div class="tx-stat-value" style="color:#4ade80"><%= stats.paidCount %></div>
+        </div>
+      </div>
+      <div class="tx-stat">
+        <div class="tx-stat-icon amber"><i class="fa-solid fa-triangle-exclamation"></i></div>
+        <div class="tx-stat-body">
+          <div class="tx-stat-label">Review</div>
+          <div class="tx-stat-value" style="color:#fb923c"><%= stats.reviewCount %></div>
+        </div>
+      </div>
+      <div class="tx-stat">
+        <div class="tx-stat-icon red"><i class="fa-solid fa-wallet"></i></div>
+        <div class="tx-stat-body">
+          <div class="tx-stat-label">Nominal</div>
+          <div class="tx-stat-value" style="font-size:14px">Rp <%= totalPaidText %></div>
+          <div class="tx-stat-sub">Fee Rp <%= totalFeeText %></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Table ─────────────────────────────────── -->
+    <% if (transactions.length === 0) { %>
+      <div class="qris-empty">
+        <i class="fa-solid fa-receipt qris-empty-icon"></i>
+        <p class="qris-empty-title">Belum ada transaksi di filter ini</p>
+        <p class="qris-empty-sub">Setiap QR yang digenerate akan otomatis tampil di sini selama sesuai filter yang dipilih.</p>
+      </div>
+    <% } else { %>
+      <div id="transactions-table"></div>
+    <% } %>
+  </section>
+</section>
+
+<!-- ── Modals ──────────────────────────────────── -->
+<div id="tx-qr-modal" class="qris-modal hidden">
+  <div class="qris-modal-card max-w-md">
+    <div class="qris-modal-header">
+      <h3 class="qris-modal-title">QR Detail</h3>
+      <button type="button" onclick="closeQrModal()" class="qris-modal-close">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+    <div class="space-y-3 text-center">
+      <img id="tx-qr-img" src="" alt="QR Code" class="mx-auto h-64 w-64 rounded-2xl bg-white p-3 object-contain" />
+      <p id="tx-qr-note" class="break-all text-xs font-mono text-muted"></p>
+      <p id="tx-qr-amount" class="text-2xl font-bold text-ink"></p>
+      <p id="tx-qr-expiry" class="text-sm text-muted"></p>
+    </div>
+  </div>
+</div>
+
+<div id="tx-status-modal" class="qris-modal hidden">
+  <div class="qris-modal-card qris-status-modal-card">
+    <div class="qris-modal-header">
+      <h3 class="qris-modal-title">Status Transaksi</h3>
+      <button type="button" onclick="closeStatusModal()" class="qris-modal-close">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+    <div id="tx-status-content" class="qris-status-modal-body"></div>
+  </div>
+</div>
+
+<% if (transactions.length > 0) { %>
+<script>
+const tableData = <%- JSON.stringify(transactions.map((tx) => {
+  const fallbackMutation = (tx.mutations || []).find((mutation) => mutation.rrn || mutation.issuerName) || tx.mutations?.[0] || null;
+
+  return {
+    id: tx.id,
+    qrId: tx.qrId,
+    qrisAccountId: tx.qrisAccountId,
+    clientName: tx.client?.name || '-',
+    panelCode: tx.client?.panelCode || '-',
+    accountCode: tx.qrisAccount.code,
+    merchantName: tx.qrisAccount.merchantName,
+    requestedAmount: tx.requestedAmount,
+    finalAmount: tx.finalAmount,
+    feeAmount: tx.feeAmount || 0,
+    uniqueCode: tx.uniqueCode,
+    statusPay: tx.statusPay,
+    statusBot: tx.statusBot,
+    expiresAt: tx.expiresAt,
+    paidAt: tx.paidAt || fallbackMutation?.transactionTime || null,
+    createdAt: tx.createdAt,
+    note: tx.note,
+    issuerName: tx.issuerName || fallbackMutation?.issuerName || null,
+    rrn: tx.rrn || fallbackMutation?.rrn || null,
+    receiptUrl: tx.receiptUrl,
+    qrImageBase64: tx.qrImageBase64,
+    userIdExt: tx.userIdExt,
+    externalReference: tx.externalReference,
+    metadataJson: tx.metadataJson,
+    siteName: tx.siteName || null,
+  };
+})) %>;
+
+const isDev = <%= isDev ? 'true' : 'false' %>;
+const basePath = <%- JSON.stringify(basePath) %>;
+const fmt = (value) => 'Rp ' + Number(value || 0).toLocaleString('id-ID');
+const dateFmt = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  const dd = String(date.getDate()).padStart(2, '0');
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const yyyy = String(date.getFullYear());
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${dd}-${mm}-${yyyy} ${hh}:${mi}:${ss}`;
+};
+const timeFmt = (value) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mi = String(date.getMinutes()).padStart(2, '0');
+  const ss = String(date.getSeconds()).padStart(2, '0');
+  return `${hh}:${mi}:${ss}`;
+};
+// Warna amount ikut status (mode semua-status / History): paid=hijau, expired=merah, unpaid=teks tema (putih dark / hitam light).
+const amountColorFor = (row) => {
+  const s = row.statusPay;
+  if (s === 'paid') return '#4ade80';
+  const expired = s === 'expired' || (s === 'open' && row.expiresAt && new Date(row.expiresAt).getTime() < Date.now());
+  if (expired) return '#f87171';
+  return 'var(--ink)';
+};
+// Tanggal 2 baris: tanggal di atas, jam di bawah.
+const dateFmt2 = (value) => {
+  const full = dateFmt(value);
+  if (full === '-') return '<span class="tx-cell-created">-</span>';
+  const parts = full.split(' ');
+  return `<div class="tx-cell-created2"><span class="d2-date">${parts[0] || ''}</span><span class="d2-time">${parts[1] || ''}</span></div>`;
+};
+const apiUrl = (pathname) => `${basePath}${pathname}`;
+const merchantSyncUrl = (accountId) => apiUrl(`/merchant-qr/${encodeURIComponent(accountId)}/sync-now`);
+const transactionSnapshotUrl = apiUrl('/dashboard/api/transactions/snapshot');
+const latestTxUrl = apiUrl('/dashboard/api/transactions/latest');
+// Injeksi baris baru hanya aman saat TANPA filter menyempit (status/akun/klien/keyword/nominal/tanggal).
+const TX_HAS_FILTER = <%= ((typeof paidOnly !== 'undefined' && paidOnly) || query.statusPay || query.statusBot || query.accountCode || query.clientId || query.site || query.keyword || query.nominal || query.from || query.to) ? 'true' : 'false' %>;
+
+const payBadge = {
+  open: 'qris-pill qris-pill-open',
+  paid: 'qris-pill qris-pill-paid',
+  expired: 'qris-pill qris-pill-expired',
+};
+
+const botBadge = {
+  pending: 'qris-pill qris-pill-muted',
+  deposit_queued: 'qris-pill qris-pill-warn',
+  deposit_success: 'qris-pill qris-pill-paid',
+  deposit_failed: 'qris-pill qris-pill-danger',
+  manual_review: 'qris-pill qris-pill-review',
+};
+
+const statusLabelMap = {
+  open: 'UNPAID',
+  paid: 'PAID',
+  expired: 'EXPIRED',
+};
+
+function parseMetadata(metadataJson) {
+  try {
+    return metadataJson ? JSON.parse(metadataJson) : {};
+  } catch {
+    return {};
+  }
+}
+
+function resolveSiteLabel(row) {
+  if (row.siteName) return row.siteName;
+  const metadata = parseMetadata(row.metadataJson);
+  const s = metadata.site;
+  return (s && s !== '-') ? s : '—';
+}
+
+function renderExpiryCountdown(expiresAt, statusPay, qrId) {
+  if (statusPay !== 'open') {
+    return `<div style="font-size:10px;color:var(--muted);margin-top:2px">${statusLabelMap[statusPay] || statusPay}</div>`;
+  }
+  return `<div style="font-size:10px;color:var(--muted);margin-top:2px"><span class="tx-exp-countdown" data-exp="${expiresAt}" data-qrid="${qrId}">12:00</span></div>`;
+}
+
+function refreshExpiryCountdowns() {
+  document.querySelectorAll('.tx-exp-countdown').forEach((node) => {
+    const expiresAt = new Date(node.dataset.exp).getTime();
+    const qrId = node.dataset.qrid;
+    const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+    const minutes = Math.floor(remaining / 60);
+    const seconds = remaining % 60;
+    if (remaining > 0) {
+      node.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      return;
+    }
+    node.textContent = 'EXPIRED';
+    const row = tableData.find((item) => item.qrId === qrId);
+    if (row && row.statusPay === 'open') {
+      row.statusPay = 'expired';
+      txTable.updateData([{ qrId, statusPay: 'expired' }]).catch(() => {});
+    }
+  });
+}
+
+<% var _po = (typeof paidOnly !== 'undefined' && paidOnly); %>
+const txTable = new Tabulator('#transactions-table', {
+  data: tableData,
+  layout: 'fitDataStretch',
+  pagination: true,
+  paginationSize: 50,
+  height: '660px',
+  initialSort: [{ column: 'createdAt', dir: 'desc' }],
+  renderComplete: refreshExpiryCountdowns,
+  columnDefaults: {
+    vertAlign: 'middle',
+    hozAlign: 'center',
+    headerHozAlign: 'center',
+    resizable: true,
+  },
+  columns: [
+    { title: '#', formatter: 'rownum', hozAlign: 'center', width: 46, headerSort: false, resizable: false },
+    {
+      title: 'Site',
+      field: 'panelCode',
+      width: 92,
+      formatter: (cell) => `<span class="tx-cell-site">${resolveSiteLabel(cell.getData())}</span>`,
+    },
+    {
+      title: 'User',
+      field: 'userIdExt',
+      minWidth: 96,
+      width: 118,
+      formatter: (cell) => `<span class="tx-cell-user">${cell.getValue() || '-'}</span>`,
+    },
+    {
+      title: 'Akun QRIS',
+      field: 'accountCode',
+      minWidth: 126,
+      width: 150,
+      formatter: (cell) => {
+        const row = cell.getData();
+        return `<div class="tx-cell-stack"><span class="tx-cell-account">${cell.getValue()}</span><span class="tx-cell-merchant">${row.merchantName}</span></div>`;
+      },
+    },
+    <% if (_po) { %>
+    {
+      title: 'PAID',
+      field: 'paidAt',
+      minWidth: 152,
+      width: 168,
+      formatter: (cell) => `<span class="tx-cell-created" style="color:#86efac;font-weight:800">${cell.getValue() ? dateFmt(cell.getValue()) : '-'}</span>`,
+    },
+    <% } else { %>
+    {
+      title: 'Dibuat',
+      field: 'createdAt',
+      minWidth: 132,
+      width: 140,
+      formatter: (cell) => dateFmt2(cell.getValue()),
+    },
+    {
+      title: 'Expires',
+      field: 'expiresAt',
+      minWidth: 102,
+      width: 112,
+      formatter: (cell) => {
+        const row = cell.getData();
+        return `<div class="tx-cell-stack"><div class="tx-cell-expires">${timeFmt(cell.getValue())}</div>${renderExpiryCountdown(cell.getValue(), row.statusPay, row.qrId)}</div>`;
+      },
+    },
+    <% } %>
+    {
+      title: 'Amount',
+      field: 'finalAmount',
+      minWidth: 110,
+      width: 134,
+      formatter: (cell) => {
+        const row = cell.getData();
+        <% if (!_po) { %>
+        const _amtStyle = ` style="color:${amountColorFor(row)}"`;
+        <% } else { %>
+        const _amtStyle = '';
+        <% } %>
+        const _meta = parseMetadata(row.metadataJson);
+        const _base = Number(_meta.roundedBase);
+        const _reqTxt = (_base && _base !== row.requestedAmount)
+          ? `Req ${fmt(row.requestedAmount)} <span style="color:#fbbf24;font-weight:800">&rarr; ${fmt(_base)}</span>`
+          : `Req ${fmt(row.requestedAmount)}`;
+        return `<div class="tx-cell-stack"><div class="tx-cell-amount"${_amtStyle}>${fmt(cell.getValue())}</div><div class="tx-cell-amount-sub">${_reqTxt}</div></div>`;
+      },
+    },
+    {
+      title: 'Ref / RRN',
+      field: 'rrn',
+      minWidth: 122,
+      width: 134,
+      formatter: (cell) => `<span class="tx-cell-rrn">${cell.getValue() || '-'}</span>`,
+    },
+    {
+      title: 'Note / Issuer',
+      field: 'note',
+      minWidth: 170,
+      width: 190,
+      formatter: (cell) => {
+        const row = cell.getData();
+        return `<div class="tx-cell-stack"><div class="tx-cell-note">${cell.getValue() || '-'}</div><div class="tx-cell-issuer">${row.issuerName || '-'}</div></div>`;
+      },
+    },
+    <% if (!_po) { %>
+    {
+      title: 'Status',
+      field: 'statusPay',
+      width: 88,
+      formatter: (cell) => {
+        const val = cell.getValue();
+        const label = statusLabelMap[val] || String(val || '-').toUpperCase();
+        const pill = `<span class="${payBadge[val] || 'qris-pill qris-pill-muted'}">${label}</span>`;
+        if (val === 'paid') {
+          const row = cell.getData();
+          const t = row.paidAt ? timeFmt(row.paidAt).replace(/:/g, '.') : '';
+          if (t) {
+            return `<div class="tx-cell-stack" style="align-items:center;gap:2px">${pill}<div style="font-size:10px;font-weight:800;color:#86efac;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${t}</div></div>`;
+          }
+        }
+        return pill;
+      },
+    },
+    {
+      title: 'Bot',
+      field: 'statusBot',
+      width: 64,
+      formatter: () => `<span class="qris-pill qris-pill-muted">-</span>`,
+    },
+    <% } %>
+    <% if (_po) { %>
+    {
+      title: 'RECEIPT',
+      field: 'qrId',
+      width: 150,
+      headerSort: false,
+      resizable: false,
+      formatter: (cell) => {
+        const row = cell.getData();
+        return `<div class="tx-actions-wrap"><button type="button" onclick="downloadReceipt('${row.qrId}')" class="tx-act-btn tx-act-receipt"><i class="fa-solid fa-receipt" style="font-size:11px"></i> Receipt</button></div>`;
+      },
+    },
+    <% } else { %>
+    {
+      title: 'Aksi',
+      field: 'qrId',
+      width: isDev ? 180 : 140,
+      headerSort: false,
+      resizable: false,
+      formatter: (cell) => {
+        const row = cell.getData();
+        const buttons = [
+          `<button type="button" onclick="showQr('${row.qrId}')" class="tx-act-btn">QR</button>`,
+          `<button type="button" onclick="showStatus('${row.qrId}')" class="tx-act-btn tx-act-blue">Check</button>`,
+        ];
+        if (row.statusPay === 'paid' && ['deposit_failed', 'manual_review'].includes(row.statusBot)) {
+          buttons.push(`<button type="button" onclick="retryDeposit('${row.qrId}', this)" class="tx-act-btn tx-act-accent">Retry</button>`);
+        }
+        if (isDev && row.statusPay === 'open') {
+          buttons.push(`<button type="button" onclick="simulatePay('${row.qrId}', this)" class="tx-act-btn tx-act-green">Sim</button>`);
+        }
+        return `<div class="tx-actions-wrap">${buttons.join('')}</div>`;
+      },
+    },
+    <% } %>
+  ],
+});
+
+refreshExpiryCountdowns();
+setInterval(refreshExpiryCountdowns, 1000);
+
+// ── RECEIPT (struk) premium — dipakai menu Transaction (paid) ──────────────────
+function _fmtPaidDate(v){ if(!v) return '-'; const d=new Date(v); if(isNaN(d.getTime())) return '-'; const p=n=>String(n).padStart(2,'0'); return `${p(d.getDate())}-${p(d.getMonth()+1)}-${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; }
+window.downloadReceipt = function(qrId){
+  const row = tableData.find(r => r.qrId === qrId);
+  if(!row){ alert('Data transaksi tidak ditemukan.'); return; }
+  if(!confirm('Download receipt (struk pembayaran) untuk transaksi ini?')) return;
+  const details = [
+    ['Tanggal Bayar', _fmtPaidDate(row.paidAt)],
+    ['No. Referensi', row.rrn || '-'],
+    ['ID Transaksi', row.qrId || '-'],
+    ['Akun QRIS', (row.accountCode || '-') + (row.merchantName ? (' · ' + row.merchantName) : '')],
+    ['Site', row.siteName || '-'],
+    ['Pelanggan', row.userIdExt || '-'],
+  ];
+  if(row.issuerName) details.push(['Bank / Issuer', row.issuerName]);
+  const W = 468, pad = 30, rowH = 30, topH = 158, amtH = 104, footH = 74;
+  const H = topH + amtH + (details.length * rowH) + 30 + footH;
+  const scale = 2;
+  const cv = document.createElement('canvas'); cv.width = W*scale; cv.height = H*scale;
+  const ctx = cv.getContext('2d'); ctx.scale(scale, scale);
+  ctx.fillStyle = '#f8fafc'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, topH, W, H - topH);
+  const g = ctx.createLinearGradient(0,0,W,topH); g.addColorStop(0,'#15803d'); g.addColorStop(1,'#22c55e');
+  ctx.fillStyle = g; ctx.fillRect(0,0,W,topH);
+  ctx.beginPath(); ctx.arc(W/2, 54, 30, 0, Math.PI*2); ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fill();
+  ctx.beginPath(); ctx.arc(W/2, 54, 22, 0, Math.PI*2); ctx.fillStyle = '#ffffff'; ctx.fill();
+  ctx.strokeStyle = '#16a34a'; ctx.lineWidth = 4; ctx.lineCap='round'; ctx.lineJoin='round';
+  ctx.beginPath(); ctx.moveTo(W/2-10, 54); ctx.lineTo(W/2-2, 62); ctx.lineTo(W/2+11, 46); ctx.stroke();
+  ctx.textAlign='center';
+  ctx.fillStyle='#ffffff'; ctx.font='800 19px Arial,sans-serif'; ctx.fillText('PEMBAYARAN BERHASIL', W/2, 104);
+  ctx.fillStyle='rgba(255,255,255,0.92)'; ctx.font='600 13px Arial,sans-serif';
+  ctx.fillText(String(row.siteName || row.merchantName || '-'), W/2, 128);
+  let y = topH + 40;
+  ctx.fillStyle='#64748b'; ctx.font='700 11px Arial,sans-serif'; ctx.fillText('TOTAL DIBAYAR', W/2, y - 14);
+  ctx.fillStyle='#0f172a'; ctx.font='800 32px Arial,sans-serif';
+  ctx.fillText('Rp ' + Number(row.finalAmount||0).toLocaleString('id-ID'), W/2, y + 18);
+  y = topH + amtH;
+  ctx.strokeStyle='#e2e8f0'; ctx.lineWidth=1.5; ctx.setLineDash([5,5]);
+  ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W-pad, y); ctx.stroke(); ctx.setLineDash([]);
+  y += 28;
+  details.forEach(function(d){
+    ctx.textAlign='left'; ctx.fillStyle='#64748b'; ctx.font='600 12px Arial,sans-serif';
+    ctx.fillText(d[0], pad, y);
+    ctx.textAlign='right'; ctx.fillStyle='#0f172a'; ctx.font='700 12px "Courier New",monospace';
+    let val = String(d[1]); const maxW = W - pad*2 - 130;
+    while(ctx.measureText(val).width > maxW && val.length > 6){ val = val.slice(0, -2); }
+    if(val !== String(d[1])) val += '…';
+    ctx.fillText(val, W-pad, y);
+    y += rowH;
+  });
+  y += 4;
+  ctx.strokeStyle='#e2e8f0'; ctx.setLineDash([5,5]);
+  ctx.beginPath(); ctx.moveTo(pad, y); ctx.lineTo(W-pad, y); ctx.stroke(); ctx.setLineDash([]);
+  y += 26;
+  ctx.textAlign='center'; ctx.fillStyle='#16a34a'; ctx.font='800 12.5px Arial,sans-serif';
+  ctx.fillText('✓ LUNAS · Struk Pembayaran Sah', W/2, y);
+  y += 18;
+  ctx.fillStyle='#94a3b8'; ctx.font='500 10px Arial,sans-serif';
+  ctx.fillText('qris-orkut · dicetak ' + _fmtPaidDate(new Date().toISOString()), W/2, y);
+  const link = document.createElement('a');
+  const safeSite = String(row.siteName || row.accountCode || 'TX').replace(/[^a-zA-Z0-9]+/g,'_');
+  link.download = 'Receipt_' + safeSite + '_' + String(row.qrId||'').slice(0,8) + '.png';
+  link.href = cv.toDataURL('image/png'); link.click();
+};
+
+const syncStateByAccount = new Map();
+let transactionRealtimeTimer = null;
+let snapshotInFlight = false;
+
+function getOpenRows() {
+  return tableData.filter((row) => row.statusPay === 'open');
+}
+
+function updateRealtimeStats() {
+  const openCount = tableData.filter((row) => row.statusPay === 'open').length;
+  const paidCount = tableData.filter((row) => row.statusPay === 'paid').length;
+  const expiredCount = tableData.filter((row) => row.statusPay === 'expired').length;
+  const reviewCount = tableData.filter((row) => row.statusBot === 'manual_review').length;
+
+  const statValues = document.querySelectorAll('.tx-stat-value');
+  if (statValues[1]) statValues[1].textContent = String(openCount);
+  if (statValues[2]) statValues[2].textContent = String(paidCount);
+  if (statValues[3]) statValues[3].textContent = String(reviewCount);
+  return { openCount, paidCount, expiredCount };
+}
+
+async function syncMerchantForRealtime(accountId) {
+  if (!accountId || document.hidden) return;
+  if (syncStateByAccount.get(accountId)) return;
+
+  syncStateByAccount.set(accountId, true);
+  try {
+    await fetch(merchantSyncUrl(accountId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+  } catch (_) {
+  } finally {
+    syncStateByAccount.set(accountId, false);
+  }
+}
+
+async function refreshTransactionSnapshot() {
+  if (snapshotInFlight || document.hidden) return;
+  const openRows = getOpenRows();
+  if (!openRows.length) return;
+
+  snapshotInFlight = true;
+  try {
+    const response = await fetch(transactionSnapshotUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qrIds: openRows.map((row) => row.qrId) }),
+    });
+    const json = await response.json().catch(() => ({ ok: false }));
+    if (!json?.ok || !Array.isArray(json.transactions) || !json.transactions.length) return;
+
+    const changedRows = [];
+    for (const row of json.transactions) {
+      const target = tableData.find((item) => item.qrId === row.qrId);
+      if (!target) continue;
+
+      const nextStatusPay = row.statusPay || target.statusPay;
+      const nextStatusBot = row.statusBot || target.statusBot;
+      const nextRrn = row.rrn || target.rrn || null;
+      const nextIssuer = row.issuerName || target.issuerName || null;
+      const nextPaidAt = row.paidAt || target.paidAt || null;
+
+      const changed =
+        target.statusPay !== nextStatusPay ||
+        target.statusBot !== nextStatusBot ||
+        (target.rrn || null) !== nextRrn ||
+        (target.issuerName || null) !== nextIssuer ||
+        String(target.paidAt || '') !== String(nextPaidAt || '');
+
+      if (!changed) continue;
+
+      target.statusPay = nextStatusPay;
+      target.statusBot = nextStatusBot;
+      target.rrn = nextRrn;
+      target.issuerName = nextIssuer;
+      target.paidAt = nextPaidAt;
+
+      changedRows.push({
+        qrId: target.qrId,
+        statusPay: target.statusPay,
+        statusBot: target.statusBot,
+        rrn: target.rrn,
+        issuerName: target.issuerName,
+        paidAt: target.paidAt,
+      });
+    }
+
+    if (changedRows.length) {
+      await txTable.updateData(changedRows).catch(() => {});
+      txTable.redraw(true);
+      updateRealtimeStats();
+    }
+  } catch (_) {
+  } finally {
+    snapshotInFlight = false;
+  }
+}
+
+async function runRealtimeSyncTick() {
+  if (document.hidden) return;
+  // Deteksi bayar diandalkan ke WORKER (System B). Halaman cukup BACA DB LOKAL -> tanpa OrderKuota, nol 469.
+  await refreshTransactionSnapshot();   // update status baris open yang sudah ada
+  await injectNewTransactions();        // suntik QR/transaksi BARU secara live
+}
+
+// Live "baris baru": ambil transaksi terbaru dari DB LOKAL, prepend yang belum ada di tabel.
+let injectInFlight = false;
+function canInjectNewRows() {
+  if (TX_HAS_FILTER) return false; // sedang difilter -> jangan suntik (bisa langgar filter)
+  try { if (txTable && typeof txTable.getPage === 'function' && txTable.getPage() !== 1) return false; } catch (_) {}
+  // hanya kalau user memang di tampilan TERKINI (baris teratas < 1 jam); kalau lihat riwayat lama -> jangan suntik
+  if (tableData.length) {
+    let newest = 0;
+    for (const r of tableData) { const t = new Date(r.createdAt).getTime() || 0; if (t > newest) newest = t; }
+    if (newest && Date.now() - newest > 3600000) return false;
+  }
+  return true;
+}
+async function injectNewTransactions() {
+  if (injectInFlight || document.hidden || !canInjectNewRows()) return;
+  injectInFlight = true;
+  try {
+    const res = await fetch(latestTxUrl, { headers: { 'Accept': 'application/json' } });
+    const json = await res.json().catch(() => ({ ok: false }));
+    if (!json || !json.ok || !Array.isArray(json.transactions) || !json.transactions.length) return;
+    const known = new Set(tableData.map((r) => r.qrId));
+    const fresh = json.transactions.filter((r) => r.qrId && !known.has(r.qrId));
+    if (!fresh.length) return;
+    fresh.sort((a, b) => (new Date(a.createdAt).getTime() || 0) - (new Date(b.createdAt).getTime() || 0));
+    for (const r of fresh) tableData.unshift(r);
+    await txTable.addData(fresh, true).catch(() => {}); // true = tambah di ATAS
+    txTable.redraw(true);
+    refreshExpiryCountdowns();
+    updateRealtimeStats();
+    flashNewRows(fresh.map((r) => r.qrId));
+  } catch (_) {
+  } finally {
+    injectInFlight = false;
+  }
+}
+function flashNewRows(qrIds) {
+  try {
+    for (const qrId of qrIds) {
+      const row = txTable.getRow(qrId);
+      if (row && row.getElement) { const el = row.getElement(); el.style.transition = 'background .8s'; el.style.background = 'rgba(52,211,153,0.28)'; setTimeout(function(){ el.style.background = ''; }, 1600); }
+    }
+  } catch (_) {}
+}
+
+transactionRealtimeTimer = setInterval(() => {
+  void runRealtimeSyncTick();
+}, 2500);
+
+void runRealtimeSyncTick();
+
+document.addEventListener('visibilitychange', function () {
+  if (!document.hidden) {
+    void runRealtimeSyncTick();
+  }
+});
+
+window.addEventListener('beforeunload', function () {
+  if (transactionRealtimeTimer) clearInterval(transactionRealtimeTimer);
+});
+
+function exportTransactions() {
+  const table = Tabulator.findTable('#transactions-table')[0];
+  table?.download('csv', `transaksi-qr-${Date.now()}.csv`);
+}
+
+function showQr(qrId) {
+  const data = tableData.find((item) => item.qrId === qrId);
+  if (!data) return;
+  document.getElementById('tx-qr-img').src = data.qrImageBase64 || '';
+  document.getElementById('tx-qr-note').textContent = data.note || '';
+  document.getElementById('tx-qr-amount').textContent = fmt(data.finalAmount);
+  document.getElementById('tx-qr-expiry').textContent = `Expires: ${dateFmt(data.expiresAt)}`;
+  document.getElementById('tx-qr-modal').classList.remove('hidden');
+}
+
+function closeQrModal() {
+  document.getElementById('tx-qr-modal').classList.add('hidden');
+}
+
+function openStatusModalLoading(qrId) {
+  const modal = document.getElementById('tx-status-modal');
+  const content = document.getElementById('tx-status-content');
+  content.innerHTML = `
+    <div class="qris-status-loading">
+      <div class="qris-status-loading-icon"><i class="fa-solid fa-spinner fa-spin"></i></div>
+      <div>
+        <p class="qris-status-loading-title">Mengambil status transaksi</p>
+        <p class="qris-status-loading-sub">QR ID: ${qrId}</p>
+      </div>
+    </div>
+  `;
+  modal.classList.remove('hidden');
+}
+
+function renderStatusModal(data, remoteError) {
+  const rows = [
+    ['QR ID', data.qrId || '-'],
+    ['User ID', data.userIdExt || '-'],
+    ['Status Bayar', `<span class="${payBadge[data.statusPay] || 'qris-pill qris-pill-muted'}">${statusLabelMap[data.statusPay] || data.statusPay || '-'}</span>`],
+    ['BOT', '<span class="qris-pill qris-pill-muted">-</span>'],
+    ['Nominal', fmt(data.finalAmount || data.requestedAmount || 0)],
+    ['Dibuat', dateFmt(data.createdAt)],
+    ['Expire', dateFmt(data.expiresAt)],
+    ['Dibayar', data.paidAt ? dateFmt(data.paidAt) : '-'],
+    ['Issuer', data.issuerName || '-'],
+    ['RRN', data.rrn || '-'],
+    ['Receipt', data.receiptUrl ? `<a href="${data.receiptUrl}" target="_blank" class="text-[#ff7f6f] underline">Lihat</a>` : '-'],
+    ['Note', data.note || '-'],
+  ];
+
+  const errorBox = remoteError
+    ? `<div class="qris-status-alert">Status live belum bisa dibaca. Detail: ${remoteError}</div>`
+    : '';
+
+  const hero = `
+    <div class="qris-status-hero">
+      <div>
+        <p class="qris-status-hero-label">Status</p>
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <span class="${payBadge[data.statusPay] || 'qris-pill qris-pill-muted'}">${statusLabelMap[data.statusPay] || data.statusPay || '-'}</span>
+          <span class="qris-pill qris-pill-muted">-</span>
+        </div>
+      </div>
+      <div class="text-right">
+        <p class="qris-status-hero-label">Nominal</p>
+        <p class="qris-status-hero-amount">${fmt(data.finalAmount || data.requestedAmount || 0)}</p>
+      </div>
+    </div>
+  `;
+
+  const detailGrid = `<div class="qris-status-grid">${rows.map(([label, value]) => `
+    <div class="qris-status-item">
+      <span class="qris-status-item-label">${label}</span>
+      <span class="qris-status-item-value">${value}</span>
+    </div>
+  `).join('')}</div>`;
+
+  document.getElementById('tx-status-content').innerHTML = `${errorBox}${hero}${detailGrid}`;
+}
+
+async function showStatus(qrId) {
+  const fallback = tableData.find((item) => item.qrId === qrId);
+  if (!fallback) return;
+  openStatusModalLoading(qrId);
+
+  let remoteData = null;
+  let remoteError = '';
+
+  try {
+    const response = await fetch(apiUrl(`/api/v1/qris/${qrId}/status`), { headers: { 'Accept': 'application/json' } });
+    const json = await response.json().catch(() => ({ success: false, error: 'Respons tidak valid' }));
+    if (json && json.success) {
+      remoteData = json.data || null;
+    } else if (json && json.error) {
+      remoteError = json.error;
+    }
+  } catch (error) {
+    remoteError = error instanceof Error ? error.message : 'Gagal mengambil status';
+  }
+
+  const data = { ...fallback, ...(remoteData || {}) };
+  renderStatusModal(data, remoteError);
+}
+
+function closeStatusModal() {
+  document.getElementById('tx-status-modal').classList.add('hidden');
+}
+
+async function retryDeposit(qrId, button) {
+  if (!confirm('Retry auto deposit untuk transaksi ini?')) return;
+  button.disabled = true;
+  button.textContent = 'Processing...';
+
+  const response = await fetch(apiUrl(`/api/v1/qris/${qrId}/retry-deposit`), { method: 'POST' });
+  const json = await response.json().catch(() => ({ success: false, error: 'Unknown error' }));
+
+  if (json.success) {
+    alert('Deposit dijadwalkan ulang.');
+    window.location.reload();
+    return;
+  }
+
+  alert(`Gagal: ${json.error}`);
+  button.disabled = false;
+  button.textContent = 'Retry';
+}
+
+async function simulatePay(qrId, button) {
+  if (!confirm('Simulasikan pembayaran untuk QR ini?')) return;
+  button.disabled = true;
+  button.textContent = 'Processing...';
+
+  const response = await fetch(apiUrl('/dev/simulate-payment'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ qrId }),
+  });
+  const json = await response.json().catch(() => ({ success: false, error: 'Unknown error' }));
+
+  if (json.success) {
+    alert('Mutasi simulasi dibuat.');
+    setTimeout(() => window.location.reload(), 1800);
+    return;
+  }
+
+  alert(`Gagal: ${json.error}`);
+  button.disabled = false;
+  button.textContent = 'Sim';
+}
+
+async function checkStatusAll() {
+  const openRows = tableData.filter((row) => row.statusPay === 'open').slice(0, 20);
+  if (!openRows.length) {
+    alert('Tidak ada transaksi open yang perlu dicek.');
+    return;
+  }
+
+  await Promise.allSettled(openRows.map((row) => fetch(apiUrl(`/api/v1/qris/${row.qrId}/status`))));
+  window.location.reload();
+}
+
+// ── Sinkron ALL + Sinkron per-akun — state cooldown di SERVER (60s), 1 pintu (anti-bentrok), live lintas-menu ──
+// Logic/flow/schema SAMA dengan menu Mutasi QRIS (state di server -> freeze sinkron lintas-menu/tab).
+(function initSyncTx(){
+  const btnAll = document.getElementById('btnSyncAllTx');
+  const lblAll = document.getElementById('btnSyncAllTxLabel');
+  const sel = document.getElementById('syncOneSelTx');
+  const btnOne = document.getElementById('btnSyncOneTx');
+  const lblOne = document.getElementById('btnSyncOneTxLabel');
+  if (!btnAll) return;
+  const ALL_URL = apiUrl('/merchant-qr/sync-all');
+  const STATUS_URL = apiUrl('/merchant-qr/sync-all/status');
+  const ACCOUNTS_URL = apiUrl('/dashboard/api/qris-accounts');
+  const oneUrl = function(id){ return apiUrl('/merchant-qr/' + encodeURIComponent(id) + '/sync-one'); };
+  const ALL_CD = 60000, ONE_CD = 60000;
+  let busy = false, allNextAt = 0, perCd = {}, tick = null, lastResultAt = null, acctName = {};
+  function toast(msg, ok){
+    let box = document.getElementById('syncToastBox');
+    if (!box){ box = document.createElement('div'); box.id = 'syncToastBox'; box.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:99999;display:flex;flex-direction:column;gap:8px'; document.body.appendChild(box); }
+    const t = document.createElement('div');
+    t.style.cssText = 'background:' + (ok ? 'rgba(16,185,129,0.96)' : 'rgba(239,68,68,0.96)') + ';color:#fff;padding:11px 16px;border-radius:12px;font-size:13px;font-weight:700;box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:320px;opacity:0;transform:translateY(8px);transition:all .25s';
+    t.textContent = msg; box.appendChild(t);
+    requestAnimationFrame(function(){ t.style.opacity = '1'; t.style.transform = 'translateY(0)'; });
+    setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translateY(8px)'; setTimeout(function(){ t.remove(); }, 300); }, 4200);
+  }
+  function dis(btn, lbl, txt){ if (!btn) return; btn.disabled = true; btn.style.opacity = '.55'; btn.style.cursor = 'not-allowed'; btn.style.pointerEvents = 'none'; if (lbl) lbl.textContent = txt; }
+  function ena(btn, lbl, txt){ if (!btn) return; btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; btn.style.pointerEvents = 'auto'; if (lbl) lbl.textContent = txt; }
+  function render(){
+    const now = Date.now();
+    const allRem = allNextAt - now;
+    if (busy) dis(btnAll, lblAll, 'Menyinkron…');
+    else if (allRem > 0) dis(btnAll, lblAll, 'Tunggu ' + Math.ceil(allRem/1000) + 's');
+    else ena(btnAll, lblAll, 'Sinkron ALL');
+    const id = sel ? sel.value : '';
+    const oneRem = id ? Math.max(0, (perCd[id]||0) - now) : 0;
+    if (busy) dis(btnOne, lblOne, 'Menyinkron…');
+    else if (!id) dis(btnOne, lblOne, 'Sinkron');
+    else if (oneRem > 0) dis(btnOne, lblOne, 'Tunggu ' + Math.ceil(oneRem/1000) + 's');
+    else ena(btnOne, lblOne, 'Sinkron');
+  }
+  function startTick(){ if (tick) return; tick = setInterval(function(){ render(); const now = Date.now(); let act = busy || (allNextAt - now > 0); for (const k in perCd){ if (perCd[k] - now > 0) act = true; } if (!act){ clearInterval(tick); tick = null; } }, 500); }
+  async function loadAccounts(){
+    try {
+      const r = await fetch(ACCOUNTS_URL, { cache: 'no-store' });
+      const d = await r.json();
+      const list = (d && d.accounts) || [];
+      if (!sel) return;
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Pilih Akun…</option>' + list.map(function(a){ acctName[a.id] = a.merchantName || a.code || a.id; return '<option value="' + a.id + '">' + (a.merchantName || a.code || a.id) + '</option>'; }).join('');
+      if (cur) sel.value = cur;
+    } catch(_){}
+  }
+  async function poll(){
+    try {
+      const r = await fetch(STATUS_URL, { headers: { 'Accept': 'application/json' } });
+      const d = await r.json();
+      if (!d || !d.ok) return;
+      const now = Date.now();
+      busy = !!d.busy;
+      allNextAt = now + Math.max(0, Number(d.remainingMs) || 0);
+      const pc = {}; const pa = d.perAccount || {}; for (const k in pa){ pc[k] = now + Math.max(0, Number(pa[k]) || 0); }
+      perCd = pc;
+      const lr = d.lastResult;
+      if (lr && lr.at){ if (lastResultAt !== null && lr.at !== lastResultAt && !busy){ toast('Sinkron ALL selesai · ' + lr.ok + '/' + lr.total + ' akun tersinkron', true); } lastResultAt = lr.at; }
+      render(); startTick();
+    } catch(_){}
+  }
+  async function clickAll(){
+    if (btnAll.disabled) return;
+    busy = true; render(); startTick();
+    try {
+      const r = await fetch(ALL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const d = await r.json().catch(function(){ return {}; });
+      busy = !!d.running;
+      allNextAt = Date.now() + Math.max(0, Number(d.remainingMs) || ALL_CD);
+      if (r.status === 429) toast(d.error || 'Sinkron ALL belum bisa.', false);
+    } catch(_){ allNextAt = Date.now() + ALL_CD; }
+    render(); startTick(); poll();
+  }
+  async function clickOne(){
+    if (btnOne.disabled) return;
+    const id = sel ? sel.value : '';
+    if (!id){ toast('Pilih akun dulu.', false); return; }
+    busy = true; render(); startTick();
+    try {
+      const r = await fetch(oneUrl(id), { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const d = await r.json().catch(function(){ return {}; });
+      const now = Date.now();
+      busy = false;
+      if (r.ok && d.success){
+        perCd[id] = now + ONE_CD;
+        toast('✓ ' + (acctName[id] || 'Akun') + ' tersinkron · ' + (d.newQris || 0) + ' mutasi baru', true);
+      } else {
+        if (d.remainingMs) perCd[id] = now + Number(d.remainingMs);
+        toast(d.error || 'Gagal sinkron akun.', false);
+      }
+    } catch(_){ busy = false; toast('Koneksi gagal.', false); }
+    render(); startTick(); poll();
+  }
+  btnAll.addEventListener('click', clickAll);
+  if (btnOne) btnOne.addEventListener('click', clickOne);
+  if (sel) sel.addEventListener('change', render);
+  loadAccounts();
+  poll();
+  setInterval(poll, 3000);
+})();
+</script>
+<% } %>

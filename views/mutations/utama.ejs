@@ -1,0 +1,523 @@
+<%
+  const walletBucketValue = typeof walletBucket !== 'undefined' && typeof walletBucket === 'string' ? walletBucket : 'utama';
+  const walletRefreshValue = typeof walletRefresh !== 'undefined' && typeof walletRefresh === 'string' ? walletRefresh : walletBucketValue;
+  const walletFieldValue = typeof walletField !== 'undefined' && typeof walletField === 'string' ? walletField : 'lastMainBalance';
+  const walletTitleValue = typeof walletTitle !== 'undefined' && typeof walletTitle === 'string' ? walletTitle : 'Mutasi Utama';
+  const walletSubTitleValue = typeof walletSubTitle !== 'undefined' && typeof walletSubTitle === 'string' ? walletSubTitle : 'Riwayat mutasi saldo';
+  const walletLabelValue = typeof walletLabel !== 'undefined' && typeof walletLabel === 'string' ? walletLabel : 'Saldo';
+  const emptySubTitleValue = typeof emptySubTitle !== 'undefined' && typeof emptySubTitle === 'string' ? emptySubTitle : 'Pilih akun untuk melihat mutasi';
+  const loadingLabelValue = typeof loadingLabel !== 'undefined' && typeof loadingLabel === 'string' ? loadingLabel : 'Memuat mutasi...';
+  const emptyHintValue = typeof emptyHint !== 'undefined' && typeof emptyHint === 'string' ? emptyHint : 'Belum ada mutasi untuk akun ini.';
+  const isUtamaWallet = walletBucketValue === 'utama';
+%>
+
+<style>
+  .mut-hero{padding:18px 20px;border-radius:18px;border:1px solid var(--line);background:linear-gradient(135deg,rgba(255,124,108,.08),rgba(99,179,237,.06));margin-bottom:12px}
+  .mut-tabs-wrap{position:relative}
+  .mut-tabs{overflow-x:auto;scrollbar-width:none;padding:0 34px}
+  .mut-tabs::-webkit-scrollbar{display:none}
+  .mut-tab{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 16px;border:none;border-bottom:3px solid transparent;background:transparent;cursor:pointer;margin-bottom:-2px}
+  .mut-tab .a{font-size:10px;color:var(--muted);font-weight:700}.mut-tab .b{font-size:12px;color:var(--ink);font-weight:900;text-transform:uppercase}.mut-tab .c{font-size:10px;color:#93c5fd;background:rgba(59,130,246,.15);border:1px solid rgba(59,130,246,.28);border-radius:999px;padding:2px 8px}
+  .mut-tab.active{border-bottom-color:#f97316}.mut-tab.active .b{color:#ffb08a}
+  .mut-scroll{position:absolute;top:50%;transform:translateY(-50%);width:28px;height:28px;border-radius:50%;background:var(--card-hi);border:1px solid var(--line);color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;z-index:2}
+  #acct-header{display:flex;gap:10px;margin-top:10px;flex-wrap:nowrap}
+  .mut-card{flex:1 1 0;min-width:0;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.014));padding:11px 14px 12px 16px;position:relative;overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+  .mut-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,#94a3b8,#475569);opacity:.95}
+  .mut-card.acc-gold::before{background:linear-gradient(180deg,#fcd34d,#f59e0b)}
+  .mut-card.acc-green::before{background:linear-gradient(180deg,#4ade80,#16a34a)}
+  .mut-card.acc-red::before{background:linear-gradient(180deg,#f87171,#dc2626)}
+  .mut-card.acc-amber::before{background:linear-gradient(180deg,#fbbf24,#d97706)}
+  .mut-card .k{font-size:9.5px;color:var(--muted);font-weight:800;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mut-card .v{margin-top:7px;font-size:21px;line-height:1.05;font-weight:900;color:var(--ink);font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mut-card.acc-gold .v{color:#fde68a}
+  .mut-card .h{display:none}
+  .mut-table{border:1px solid var(--line);border-radius:18px;overflow:hidden;margin-top:12px;background:var(--card)}
+  #mut-main-tabulator .tabulator-col-title{text-align:center!important;font-size:10px!important;font-weight:900!important;letter-spacing:.06em!important}
+  #mut-main-tabulator .tabulator-row:nth-child(even){background:var(--panel)!important}
+  #mut-main-tabulator .tabulator-cell{text-align:center!important;vertical-align:middle!important;white-space:normal!important;word-break:break-word!important;font-weight:700!important}
+  #mut-main-tabulator .tabulator-page-size{background:var(--card-hi)!important;border:1px solid var(--line)!important;border-radius:8px!important;color:var(--ink)!important;font-size:11px!important;font-weight:700}
+  @media (max-width:900px){#acct-header{flex-wrap:wrap}.mut-card{flex:1 1 calc(33.333% - 8px)}}
+  @media (max-width:560px){.mut-card{flex:1 1 calc(50% - 6px)}}
+</style>
+
+<div class="mut-hero">
+  <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+    <div>
+      <h1 class="qris-page-title" style="margin:0"><%= walletTitleValue %></h1>
+      <p class="qris-section-sub mt-1"><%= walletSubTitleValue %></p>
+    </div>
+    <div class="flex items-center gap-3">
+      <div style="text-align:right">
+        <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700">Update Terakhir</div>
+        <div id="last-updated" style="font-size:20px;color:var(--ink);font-weight:900">-</div>
+      </div>
+      <span style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,.11);border:1px solid rgba(34,197,94,.25);color:#86efac;padding:6px 12px;border-radius:999px;font-size:11px;font-weight:800"><span id="live-dot" style="width:7px;height:7px;border-radius:50%;background:#4ade80;display:inline-block"></span>LIVE</span>
+      <button type="button" onclick="manualRefresh()" style="display:inline-flex;align-items:center;gap:7px;padding:8px 12px;background:rgba(99,179,237,.14);border:1px solid rgba(99,179,237,.3);color:#93c5fd;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer"><i id="refresh-icon" class="fa-solid fa-rotate-right text-xs"></i>Refresh</button>
+    </div>
+  </div>
+
+  <!-- Account tabs dihapus: pemilihan akun via dropdown "Akun" di panel filter -->
+  <% accounts.forEach(function(acct){ %><span id="tab-count-<%= acct.id %>" style="display:none"></span><% }) %>
+
+  <style>
+    .mqf-panel { display:flex; flex-direction:column; gap:12px; padding:14px 16px; margin-top:10px; background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.07); border-radius:16px; }
+    .mqf-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; }
+    .mqf-field { display:flex; flex-direction:column; gap:5px; min-width:150px; }
+    .mqf-field.mqf-grow { flex:1 1 220px; }
+    .mqf-label { font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+    .mqf-input { height:38px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--ink); border-radius:10px; padding:0 12px; font-size:13px; outline:none; transition:border-color .2s; }
+    .mqf-input:focus { border-color:rgba(99,179,237,0.4); }
+    select.mqf-input { cursor:pointer; -webkit-appearance:none; appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:30px; }
+    .mqf-input option { background:#141a26; color:#e6ebf5; }
+    .mqf-input option:checked, .mqf-input option:hover { background:#243043; color:#ffffff; }
+    .mqf-daterow { display:flex; align-items:center; gap:8px; }
+    .mqf-daterow .mqf-input { min-width:145px; }
+    .mqf-sep { color:var(--muted); font-weight:700; }
+    .mqf-pills { display:flex; flex-wrap:wrap; gap:6px; }
+    .date-pill { padding:8px 15px; border-radius:999px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid rgba(255,255,255,0.1); background:transparent; color:var(--muted); transition:all .18s; }
+    .date-pill:hover { border-color:rgba(255,255,255,0.25); color:var(--ink); }
+    .date-pill.active { border-color:rgba(255,124,108,0.5); background:rgba(255,124,108,0.15); color:#ffb4a8; font-weight:700; box-shadow:0 3px 12px -5px rgba(255,124,108,0.55); }
+    .mqf-actions { flex-direction:row; align-items:flex-end; gap:8px; min-width:auto; }
+    .mqf-btn { height:38px; display:inline-flex; align-items:center; gap:7px; padding:0 16px; border-radius:10px; font-size:13px; font-weight:800; cursor:pointer; border:1px solid transparent; transition:transform .15s; }
+    .mqf-btn:hover { transform:translateY(-1px); }
+    .mqf-btn-primary { background:linear-gradient(135deg,#ff7c6c,#f43f5e); color:#fff; box-shadow:0 6px 18px -8px rgba(244,63,94,0.7); }
+    .mqf-btn-ghost { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.12); color:var(--muted); }
+  </style>
+  <div class="mqf-panel">
+    <div class="mqf-row">
+      <div class="mqf-field">
+        <span class="mqf-label">Periode</span>
+        <div class="mqf-pills">
+          <button class="date-pill active" data-preset="today" onclick="setDatePreset('today',this)">Hari Ini</button>
+          <button class="date-pill" data-preset="yesterday" onclick="setDatePreset('yesterday',this)">Kemarin</button>
+          <button class="date-pill" data-preset="7d" onclick="setDatePreset('7d',this)">7 Hari</button>
+          <button class="date-pill" data-preset="30d" onclick="setDatePreset('30d',this)">30 Hari</button>
+          <button class="date-pill" data-preset="all" onclick="setDatePreset('all',this)">Semua</button>
+          <button class="date-pill" data-preset="custom" onclick="setDatePreset('custom',this)" style="display:none">Custom</button>
+        </div>
+      </div>
+      <div class="mqf-field">
+        <span class="mqf-label">Custom Range</span>
+        <div class="mqf-daterow">
+          <input id="date-from" type="date" class="mqf-input" onchange="onCustomDate()">
+          <span class="mqf-sep">/</span>
+          <input id="date-to" type="date" class="mqf-input" onchange="onCustomDate()">
+        </div>
+      </div>
+    </div>
+    <div class="mqf-row">
+      <div class="mqf-field">
+        <span class="mqf-label">Akun</span>
+        <select id="filter-account" class="mqf-input" onchange="onAccountChange(this.value)">
+          <option value="__all__">Semua Akun</option>
+          <% accounts.forEach(function(acct){ %>
+          <option value="<%= acct.id %>" data-site="<%= acct.siteName ? acct.siteName : '__none__' %>"><%= acct.merchantName %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="mqf-field">
+        <span class="mqf-label">Tipe</span>
+        <select id="filter-type" class="mqf-input" onchange="applyFilter()">
+          <option value="">Semua</option>
+          <option value="credit">Kredit (IN)</option>
+          <option value="debit">Debet (OUT)</option>
+        </select>
+      </div>
+      <div class="mqf-field">
+        <span class="mqf-label">Site</span>
+        <select id="filter-site" class="mqf-input" onchange="onSiteChange(this.value)">
+          <option value="">Semua Site</option>
+          <% (typeof sites !== 'undefined' ? sites : []).forEach(function(s){ %>
+            <option value="<%= s.name %>"><%= s.name %></option>
+          <% }); %>
+          <option value="__none__">Tanpa site</option>
+        </select>
+      </div>
+      <% if (isUtamaWallet) { %>
+      <div class="mqf-field">
+        <span class="mqf-label">Biaya 1%</span>
+        <select id="filter-fee-only" class="mqf-input" onchange="applyFilter()">
+          <option value="">Semua</option>
+          <option value="1">Hanya Biaya 1%</option>
+        </select>
+      </div>
+      <% } %>
+      <div class="mqf-field mqf-grow">
+        <span class="mqf-label">Cari (Keterangan / Ref / Nominal)</span>
+        <input id="search-input" type="text" class="mqf-input" placeholder="Cari...">
+      </div>
+      <div class="mqf-field mqf-actions">
+        <button class="mqf-btn mqf-btn-primary" onclick="applyFilter()"><i class="fa-solid fa-magnifying-glass" style="font-size:12px"></i> Filter</button>
+        <button class="mqf-btn mqf-btn-ghost" onclick="resetFilter()"><i class="fa-solid fa-xmark" style="font-size:12px"></i> Reset</button>
+      </div>
+    </div>
+  </div>
+  <span id="date-range-label" style="display:none"></span>
+
+  <div id="acct-header">
+    <div class="mut-card acc-slate"><p class="k">Saldo Awal</p><p class="v" id="hdr-opening">Rp 0</p><p class="h">Saldo sebelum transaksi pada periode terpilih.</p></div>
+    <div class="mut-card acc-gold"><p class="k"><%= walletLabelValue %></p><p class="v" id="hdr-current">Rp 0</p><p class="h">Saldo akhir terbaru akun yang dipilih.</p></div>
+    <div class="mut-card acc-green"><p class="k">Kredit</p><p class="v" id="hdr-credit" style="color:#4ade80">Rp 0</p><p class="h">Total dana masuk sesuai filter.</p></div>
+    <div class="mut-card acc-red"><p class="k">Debet</p><p class="v" id="hdr-debit" style="color:#f87171">Rp 0</p><p class="h">Total dana keluar sesuai filter.</p></div>
+    <% if (isUtamaWallet) { %>
+      <div class="mut-card acc-amber" title="Biaya Percepatan Pencairan QRIS (1%)"><p class="k">Biaya QRIS 1%</p><p class="v" id="hdr-fee" style="color:#fbbf24">Rp 0</p><p class="h">Muncul otomatis jika ada mutasi biaya 1%.</p></div>
+    <% } %>
+  </div>
+  <!-- Strip Rekonsiliasi (khusus Utama): cocokkan catatan OrderKuota vs saldo fisik -->
+  <div id="reconcile-strip" style="display:none;margin-top:12px"></div>
+</div>
+
+<div class="mut-table">
+  <div id="tbl-initial" class="qris-empty py-16"><i class="fa-solid fa-hand-pointer qris-empty-icon"></i><p class="qris-empty-title">Pilih Akun</p><p class="qris-empty-sub"><%= emptySubTitleValue %></p></div>
+  <div id="tbl-loading" style="display:none;text-align:center;padding:3rem;color:var(--muted)"><i class="fa-solid fa-circle-notch fa-spin" style="font-size:24px;margin-bottom:8px"></i><p style="font-size:13px"><%= loadingLabelValue %></p></div>
+  <div id="tbl-empty" style="display:none" class="qris-empty py-14"><i class="fa-solid fa-wallet qris-empty-icon"></i><p class="qris-empty-title">Tidak ada mutasi</p><p class="qris-empty-sub"><%- emptyHintValue %></p></div>
+  <div id="tbl-wrap" style="display:none"><div id="mut-main-tabulator"></div><div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--line);font-size:11px;color:var(--muted);font-style:italic"><span id="tbl-meta">Data mutasi tersinkron otomatis dari source OrderKuota.</span><span id="tbl-count">0 transaksi</span></div></div>
+</div>
+
+<script>
+(function(){
+  const apiUrl = '<%= url('/dashboard/api/mutations') %>';
+  const refreshUrlTemplate = '<%= url('/dashboard/api/qris-accounts/__ACCOUNT_ID__/refresh-balance') %>';
+  const walletBucket = <%- JSON.stringify(walletBucketValue) %>;
+  const walletRefresh = <%- JSON.stringify(walletRefreshValue) %>;
+  const walletField = <%- JSON.stringify(walletFieldValue) %>;
+  const STREAM_URL = <%- (typeof streamUrl !== 'undefined' && streamUrl) ? JSON.stringify(streamUrl) : 'null' %>;
+  const apiReconcileUrl = '<%= url('/dashboard/api/mutations/reconcile') %>';
+  // Rekonsiliasi: Utama pakai rantai saldo provider; Madera pakai feed-vs-DB (saldo per baris tak ada).
+  const RECONCILE_WALLET = walletBucket === 'utama' ? 'utama' : (walletBucket === 'madera' ? 'madera' : null);
+  const isUtamaWallet = walletBucket === 'utama';
+  const AUTO_REFRESH_MS = walletBucket === 'madera' ? 30000 : 10000;
+  const PAGE_SIZES = [15,30,50,100,200,300,500];
+  const ALL_ID = '__all__';
+
+  const accountMap = {};
+  const accountRows = <%- JSON.stringify(accounts.map((a)=>({id:a.id,code:a.code,merchantName:a.merchantName,lastBalance:a[walletFieldValue]}))) %>;
+  accountRows.forEach((a)=>{accountMap[a.id]=a;});
+
+  let currentAccountId = null;
+  let allRows = [];
+  let filteredRows = [];
+  let currentPreset = 'today';
+  let pollTimer = null;
+  let table = null;
+  let tableReady = null;
+  let filterOpen = false;
+  let fetchInFlight = false;
+
+  const esc = (v)=>String(v??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  const rp = (n)=>'Rp '+Number(n||0).toLocaleString('id-ID');
+  const num = (v)=>{const d=String(v||'').replace(/[^\d]/g,''); if(!d) return null; const p=parseInt(d,10); return Number.isFinite(p)?p:null;};
+  const fmtDateInput=(d)=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const fmtTime=(v)=>{const d=new Date(v); if(Number.isNaN(d.getTime())) return '-'; return d.toLocaleDateString('id-ID',{day:'2-digit',month:'2-digit',year:'numeric',timeZone:'Asia/Bangkok'})+' '+d.toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false,timeZone:'Asia/Bangkok'});};
+  const parseRaw=(r)=>{try{return JSON.parse(r.rawDataJson||'{}')||{};}catch(_){return{};}};
+  const desc=(r)=>String(r.description||parseRaw(r).keterangan||parseRaw(r).description||parseRaw(r).note||'-').trim();
+  const feeRow=(r)=>{const t=desc(r).toLowerCase(); return t.includes('biaya percepatan pencairan qris') || (t.includes('biaya percepatan') && t.includes('qris')) || t.includes('biaya percepatan pencairan');};
+  const feeAmount=(r)=>{if(!isUtamaWallet) return 0; const raw=parseRaw(r); const c=[raw.biaya_percepatan_pencairan_qris,raw.biaya_percepatan,raw.biaya_pencairan,raw.service_fee,raw.fee]; for(const x of c){if(x===null||x===undefined) continue; const p=Number(String(x).replace(/[^\d-]/g,'')); if(Number.isFinite(p)&&p>0) return p;} return feeRow(r)?Math.abs(Number(r.amount||0)):0;};
+  const balanceBefore=(r)=>r.type==='credit'?Number(r.balanceAfter||0)-Number(r.amount||0):Number(r.balanceAfter||0)+Number(r.amount||0);
+  const refreshUrl=(id)=>refreshUrlTemplate.replace('__ACCOUNT_ID__',encodeURIComponent(id));
+
+  function dateWindow(){
+    const now=new Date(); let start=null; let end=null;
+    if(currentPreset==='today'){start=new Date(now); start.setHours(0,0,0,0); end=new Date(now); end.setHours(23,59,59,999);}
+    else if(currentPreset==='yesterday'){const y=new Date(now); y.setDate(y.getDate()-1); start=new Date(y); start.setHours(0,0,0,0); end=new Date(y); end.setHours(23,59,59,999);}
+    else if(currentPreset==='7d'){end=new Date(now); end.setHours(23,59,59,999); start=new Date(now); start.setDate(start.getDate()-6); start.setHours(0,0,0,0);}
+    else if(currentPreset==='30d'){end=new Date(now); end.setHours(23,59,59,999); start=new Date(now); start.setDate(start.getDate()-29); start.setHours(0,0,0,0);}
+    else if(currentPreset==='all'){return null;}
+    else{const from=document.getElementById('date-from').value; const to=document.getElementById('date-to').value; if(from) start=new Date(`${from}T00:00:00`); if(to) end=new Date(`${to}T23:59:59.999`); if(!from&&!to) return null;}
+    if(start&&Number.isNaN(start.getTime())) start=null; if(end&&Number.isNaN(end.getTime())) end=null; return {start,end};
+  }
+
+  function setDateLabel(){
+    const el=document.getElementById('date-range-label');
+    if(currentPreset==='today'){el.textContent=new Date().toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'}); return;}
+    if(currentPreset==='yesterday'){const y=new Date(); y.setDate(y.getDate()-1); el.textContent=y.toLocaleDateString('id-ID',{day:'2-digit',month:'long',year:'numeric'}); return;}
+    if(currentPreset==='7d'){const s=new Date(); s.setDate(s.getDate()-6); el.textContent=fmtDateInput(s)+' \u2013 '+fmtDateInput(new Date()); return;}
+    if(currentPreset==='30d'){const s=new Date(); s.setDate(s.getDate()-29); el.textContent=fmtDateInput(s)+' \u2013 '+fmtDateInput(new Date()); return;}
+    if(currentPreset==='all'){el.textContent='Semua data'; return;}
+    const from=document.getElementById('date-from').value; const to=document.getElementById('date-to').value; el.textContent=(from||to)?(from||'-')+' - '+(to||'-'):'';
+  }
+
+  function normalizeRows(rows){
+    return (rows||[]).map((r)=>({...r,_time:new Date(r.time||r.createdAt),_desc:desc(r),_account:`${String(r.accountCode||accountMap[currentAccountId]?.code||'-')} ${String(r.merchant||accountMap[currentAccountId]?.merchantName||'-')}`.trim(),_fee:feeAmount(r)})).sort((a,b)=>b._time-a._time);
+  }
+
+  function populateSiteFilter(){
+    // Dropdown Site kini di-server-render dari sites.json (semua site + "Tanpa site"),
+    // tak dibangun ulang dari baris — supaya opsi lengkap & konsisten dgn menu QRIS/Transaction.
+  }
+
+  function updateSummary(rows){
+    const isAll=currentAccountId===ALL_ID;
+    const current = isAll
+      ? Object.keys(accountMap).reduce((s,k)=>s+Number(accountMap[k].lastBalance||0),0)
+      : Number(accountMap[currentAccountId]?.lastBalance||0);
+    const credit = rows.reduce((s,r)=>s+(r.type==='credit'?Number(r.amount||0):0),0);
+    const debit = rows.reduce((s,r)=>s+(r.type==='debit'?Number(r.amount||0):0),0);
+    const fee = isUtamaWallet ? rows.reduce((s,r)=>s+Number(r._fee||0),0) : 0;
+    let opening=current; if(!isAll&&rows.length){opening=balanceBefore(rows[rows.length-1]);}
+    document.getElementById('hdr-opening').textContent=rp(opening);
+    document.getElementById('hdr-current').textContent=rp(current);
+    document.getElementById('hdr-credit').textContent=rp(credit);
+    document.getElementById('hdr-debit').textContent=rp(debit);
+    if(isUtamaWallet&&document.getElementById('hdr-fee')) document.getElementById('hdr-fee').textContent=rp(fee);
+  }
+
+  function buildColumns(){
+    const cols=[
+      {title:'No',field:'_n',width:60,headerSort:false,formatter:(c)=>`<span style="font-size:11px;color:var(--muted);font-weight:800;font-family:ui-monospace,SFMono-Regular,monospace">${c.getRow().getPosition(true)}</span>`},
+      {title:'Waktu',field:'_time',width:150,sorter:'datetime',formatter:(c)=>{var dt=fmtTime(c.getValue());var sp=dt.indexOf(' ');var d=sp>0?dt.slice(0,sp):dt;var t=sp>0?dt.slice(sp+1):'';return `<div style="font-family:ui-monospace,SFMono-Regular,monospace;line-height:1.35"><div style="font-size:12px;font-weight:800;color:var(--ink)">${esc(d)}</div>${t?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${esc(t)}</div>`:''}</div>`;}},
+      {title:'Akun',field:'_account',minWidth:170,formatter:(c)=>{const p=String(c.getValue()||'-').split(' ');const code=p.shift()||'-';const name=p.join(' ')||'-';return `<div style="display:grid;gap:6px;justify-items:center"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:56px;padding:5px 10px;border-radius:999px;background:rgba(59,130,246,.14);border:1px solid rgba(59,130,246,.28);color:#93c5fd;font-size:11px;font-weight:900">${esc(code)}</span><div style="font-size:12px;color:var(--ink);font-weight:800;text-transform:uppercase;line-height:1.35">${esc(name)}</div></div>`;}},
+      {title:'Site',field:'siteName',minWidth:120,formatter:(c)=>{const v=String(c.getValue()||'').trim();return v?`<span style="display:inline-flex;align-items:center;padding:5px 10px;border-radius:999px;background:rgba(139,92,246,.14);border:1px solid rgba(139,92,246,.3);color:#c4b5fd;font-size:11px;font-weight:800">${esc(v)}</span>`:'<span style="color:var(--muted);font-size:11px;font-style:italic">— Tanpa site —</span>';}},
+      {title:'Keterangan',field:'_desc',minWidth:330,formatter:(c)=>`<div style="font-size:12px;line-height:1.45;color:var(--ink);font-weight:800;white-space:normal">${esc(c.getValue()||'-')}</div>`},
+      {title:'Debet',field:'amount',width:140,sorter:'number',formatter:(c)=>{const r=c.getRow().getData();return r.type==='debit'?`<div style="font-size:14px;font-weight:900;color:#ef4444;font-family:ui-monospace,SFMono-Regular,monospace">-${esc(rp(r.amount))}</div>`:'<span style="color:var(--muted)">-</span>';}},
+      {title:'Kredit',field:'amount',width:140,sorter:'number',formatter:(c)=>{const r=c.getRow().getData();return r.type==='credit'?`<div style="font-size:14px;font-weight:900;color:#22c55e;font-family:ui-monospace,SFMono-Regular,monospace">+${esc(rp(r.amount))}</div>`:'<span style="color:var(--muted)">-</span>';}}
+    ];
+    if(isUtamaWallet){cols.push({title:'Biaya Percepatan Pencairan QRIS (1%)',field:'_fee',width:230,sorter:'number',formatter:(c)=>Number(c.getValue()||0)>0?`<div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:ui-monospace,SFMono-Regular,monospace">${esc(rp(c.getValue()))}</div>`:'<span style="color:var(--muted)">-</span>'});}
+    cols.push({title:'Saldo',field:'balanceAfter',width:150,sorter:'number',formatter:(c)=>`<div style="font-size:14px;font-weight:900;color:var(--ink);font-family:ui-monospace,SFMono-Regular,monospace">${esc(rp(c.getValue()))}</div>`});
+    return cols;
+  }
+
+  function initTable(){
+    if(table) return Promise.resolve(table);
+    if(tableReady) return tableReady;
+    tableReady=new Promise((resolve,reject)=>{try{
+      table=new Tabulator('#mut-main-tabulator',{layout:'fitDataStretch',placeholder:'Tidak ada data mutasi',pagination:true,paginationSize:50,paginationSizeSelector:PAGE_SIZES,paginationCounter:(ps,cr,cp,tr)=>`<span style="font-size:11px;color:var(--muted)">Menampilkan ${cr}-${Math.min(cr+ps-1,tr)} dari <b style="color:var(--ink)">${tr}</b> mutasi</span>`,columnDefaults:{vertAlign:'middle',headerHozAlign:'center',hozAlign:'center',headerSort:true,resizable:true},columns:buildColumns(),tableBuilt:()=>resolve(table)});
+    }catch(e){tableReady=null;reject(e);}});
+    return tableReady;
+  }
+
+  function renderTable(rows){
+    document.getElementById('tbl-loading').style.display='none';
+    document.getElementById('tbl-initial').style.display='none';
+    document.getElementById('tbl-count').textContent=`${rows.length} transaksi`;
+    if(!rows.length){document.getElementById('tbl-empty').style.display='';document.getElementById('tbl-wrap').style.display='none'; if(table) table.clearData(); return;}
+    document.getElementById('tbl-empty').style.display='none';document.getElementById('tbl-wrap').style.display='';
+    initTable().then((t)=>t.setData(rows)).catch(()=>{});
+  }
+
+  function applyFiltersInternal(){
+    const search=String(document.getElementById('search-input').value||'').trim().toLowerCase();
+    const type=String(document.getElementById('filter-type').value||'');
+    const site=String(document.getElementById('filter-site')?.value||'');
+    const minEl=document.getElementById('filter-min'); const min=minEl?num(minEl.value):null;
+    const maxEl=document.getElementById('filter-max'); const max=maxEl?num(maxEl.value):null;
+    const feeEl=document.getElementById('filter-fee-only'); const feeOnly=isUtamaWallet&&feeEl?feeEl.value==='1':false;
+    const win=dateWindow();
+    filteredRows=allRows.filter((r)=>{
+      if(type&&r.type!==type) return false;
+      if(site==='__none__'){ if(String(r.siteName||'').trim()) return false; }
+      else if(site&&String(r.siteName||'')!==site) return false;
+      const amount=Number(r.amount||0); if(min!==null&&amount<min) return false; if(max!==null&&amount>max) return false;
+      if(feeOnly&&Number(r._fee||0)<=0) return false;
+      if(win){if(win.start&&r._time<win.start) return false; if(win.end&&r._time>win.end) return false;}
+      if(search){const pool=[r._desc,r.rrn||'',r.refId||'',r.accountCode||'',r.merchant||'',r.siteName||'',r.userIdExt||'',String(r.amount||''),fmtTime(r._time)].join(' ').toLowerCase(); if(!pool.includes(search)) return false;}
+      return true;
+    });
+    updateSummary(filteredRows);
+    renderTable(filteredRows);
+  }
+
+  async function refreshBalance(){
+    if(!currentAccountId||currentAccountId===ALL_ID) return;
+    try{
+      const r=await fetch(refreshUrl(currentAccountId),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({wallet:walletRefresh})});
+      const p=await r.json();
+      if(p.ok&&p.account&&typeof p.account[walletField]==='number'){accountMap[currentAccountId].lastBalance=p.account[walletField];}
+    }catch(_){}
+  }
+
+  async function fetchMutations(){
+    if(!currentAccountId||fetchInFlight) return;
+    fetchInFlight=true;
+    const isAll=currentAccountId===ALL_ID;
+    try{
+      const q=isAll
+        ? `${apiUrl}?source=qris&bucket=${encodeURIComponent(walletBucket)}&limit=500`
+        : `${apiUrl}?source=qris&accountId=${encodeURIComponent(currentAccountId)}&bucket=${encodeURIComponent(walletBucket)}&limit=500`;
+      const r=await fetch(q,{cache:'no-store'});
+      const p=await r.json();
+      if(!p.ok) return;
+      if(!isAll&&typeof p.currentBalance==='number'&&accountMap[currentAccountId]) accountMap[currentAccountId].lastBalance=p.currentBalance;
+      if(isAll&&p.accountBalances){Object.keys(p.accountBalances).forEach((k)=>{if(accountMap[k]) accountMap[k].lastBalance=Number(p.accountBalances[k]||0);});}
+      allRows=normalizeRows(p.mutations||[]);
+      populateSiteFilter();
+      if(!isAll){const ct=document.getElementById(`tab-count-${currentAccountId}`); if(ct) ct.textContent=`${allRows.length} transaksi`;}
+      const dot=document.getElementById('live-dot'); dot.style.background='#facc15'; setTimeout(()=>{dot.style.background='#4ade80';},250);
+      document.getElementById('last-updated').textContent=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+      applyFiltersInternal();
+      // Auto-cek hanya UTAMA (endpoint saldo bebas-limit). MADERA on-demand (tombol) krn feed sensitif.
+      if(RECONCILE_WALLET==='utama') fetchReconcile();
+    }catch(_){}
+    finally{fetchInFlight=false;}
+  }
+
+  // ── Rekonsiliasi saldo (cocok / selisih) — hanya Utama ───────────────────────
+  let lastReconcileAt=0, reconcileInFlight=false;
+  function reconcileBadge(bg,border,color,icon,text){
+    return '<div style="display:flex;align-items:center;gap:10px;background:'+bg+';border:1px solid '+border+';border-radius:12px;padding:10px 14px;font-size:12.5px;font-weight:800;color:'+color+'"><i class="fa-solid '+icon+'" style="font-size:15px"></i><span>'+text+'</span></div>';
+  }
+  function renderReconcileOne(acc){
+    const strip=document.getElementById('reconcile-strip'); if(!strip||!acc) return; strip.style.display='';
+    // no_data / error (mis. Madera tak bisa ambil feed) -> abu-abu, bukan merah (bukan bukti data hilang).
+    if(acc.status==='no_data'||acc.status==='error'){ strip.innerHTML=reconcileBadge('rgba(148,163,184,.1)','rgba(148,163,184,.25)','#cbd5e1','fa-circle-info', acc.detailText || 'Belum ada data mutasi untuk diverifikasi.'); return; }
+    if(acc.match){
+      const okMsg = acc.okText || ('Saldo COCOK — catatan OrderKuota sesuai saldo fisik ('+rp(acc.physicalBalance)+'). Semua mutasi tertarik.');
+      strip.innerHTML=reconcileBadge('rgba(34,197,94,.1)','rgba(34,197,94,.28)','#86efac','fa-circle-check', (acc.okText?'COCOK — ':'')+okMsg); return;
+    }
+    // Madera: pakai detailText (feed-vs-DB). Utama/QRIS: pakai diff/gap (rantai saldo).
+    if(acc.detailText){ strip.innerHTML=reconcileBadge('rgba(239,68,68,.1)','rgba(239,68,68,.3)','#fca5a5','fa-triangle-exclamation','TIDAK COCOK — '+acc.detailText); return; }
+    const parts=[];
+    if(acc.diff&&acc.diff!==0){ const arah=acc.diff>0?'saldo fisik lebih besar — ada mutasi MASUK terbaru belum tertarik':'saldo fisik lebih kecil — ada mutasi KELUAR terbaru belum tertarik'; parts.push('Selisih '+rp(Math.abs(acc.diff))+' ('+arah+')'); }
+    if(acc.gap&&acc.gap.jump){ let jam=''; try{ jam=new Date(acc.gap.atTime).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Bangkok'});}catch(_){}
+      parts.push('kemungkinan mutasi masuk hilang '+rp(acc.gap.jump)+(jam?' sekitar '+jam:'')); }
+    strip.innerHTML=reconcileBadge('rgba(239,68,68,.1)','rgba(239,68,68,.3)','#fca5a5','fa-triangle-exclamation','TIDAK COCOK — '+(parts.join('; ')||'saldo tidak sesuai')+'.');
+  }
+  function renderReconcileAll(data){
+    const strip=document.getElementById('reconcile-strip'); if(!strip||!data) return; strip.style.display='';
+    const sum=data.summary||{};
+    const head=sum.allMatch
+      ? reconcileBadge('rgba(34,197,94,.1)','rgba(34,197,94,.28)','#86efac','fa-circle-check','Semua '+(sum.total||0)+' akun COCOK — tidak ada mutasi ketinggalan.')
+      : reconcileBadge('rgba(239,68,68,.1)','rgba(239,68,68,.3)','#fca5a5','fa-triangle-exclamation',(sum.mismatch||0)+' akun SELISIH dari '+(sum.total||0)+' — cek chip merah di bawah.');
+    const chips=(data.accounts||[]).map(function(a){
+      const ok=a.match, nd=(a.status==='no_data'||a.status==='error');
+      const bg=nd?'rgba(148,163,184,.1)':(ok?'rgba(34,197,94,.1)':'rgba(239,68,68,.12)');
+      const bd=nd?'rgba(148,163,184,.25)':(ok?'rgba(34,197,94,.28)':'rgba(239,68,68,.32)');
+      const cl=nd?'#cbd5e1':(ok?'#86efac':'#fca5a5');
+      const ic=nd?'fa-circle-info':(ok?'fa-circle-check':'fa-triangle-exclamation');
+      let extra='';
+      if(!ok&&!nd){ extra = (a.missingCount!=null) ? (' · '+a.missingCount+' mutasi') : (a.diff?(' · '+rp(Math.abs(a.diff))):''); }
+      return '<div style="display:flex;align-items:center;gap:7px;background:'+bg+';border:1px solid '+bd+';border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:800;color:'+cl+'"><i class="fa-solid '+ic+'"></i>'+esc(a.code||'-')+extra+'</div>';
+    }).join('');
+    strip.innerHTML=head+'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">'+chips+'</div>';
+  }
+  async function fetchReconcile(force){
+    if(!RECONCILE_WALLET||!currentAccountId) return;
+    const now=Date.now();
+    if(!force&&(reconcileInFlight||now-lastReconcileAt<8000)) return;
+    reconcileInFlight=true; lastReconcileAt=now;
+    try{
+      const isAll=currentAccountId===ALL_ID;
+      let url=apiReconcileUrl+'?wallet='+encodeURIComponent(RECONCILE_WALLET);
+      if(!isAll) url+='&accountId='+encodeURIComponent(currentAccountId);
+      const r=await fetch(url,{cache:'no-store'});
+      const data=await r.json();
+      if(!data.ok) return;
+      if(isAll) renderReconcileAll(data); else renderReconcileOne(data.account);
+      if(RECONCILE_WALLET==='madera') appendMaderaRecheck();
+    }catch(_){}
+    finally{ reconcileInFlight=false; }
+  }
+
+  // Madera on-demand: feed app sensitif -> hanya cek saat tombol diklik (tak auto-poll).
+  function maderaBtnHtml(label){
+    return '<button type="button" onclick="checkMaderaSync()" style="display:inline-flex;align-items:center;gap:7px;background:rgba(59,130,246,.14);border:1px solid rgba(59,130,246,.3);color:#93c5fd;border-radius:10px;padding:8px 14px;font-size:12px;font-weight:800;cursor:pointer"><i class="fa-solid fa-rotate"></i>'+label+'</button>';
+  }
+  function renderMaderaInitial(){
+    const strip=document.getElementById('reconcile-strip'); if(!strip) return; strip.style.display='';
+    strip.innerHTML='<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+maderaBtnHtml('Cek Sinkron Madera')+'<span style="color:var(--muted);font-size:12px">Verifikasi mutasi Madera di app vs sistem — on-demand (hemat, tak ganggu worker).</span></div>';
+  }
+  function appendMaderaRecheck(){
+    const strip=document.getElementById('reconcile-strip'); if(!strip) return;
+    strip.insertAdjacentHTML('beforeend','<div style="margin-top:8px">'+maderaBtnHtml('Cek lagi')+'</div>');
+  }
+  window.checkMaderaSync=function(){
+    const strip=document.getElementById('reconcile-strip'); if(strip){strip.style.display='';strip.innerHTML='<div style="color:var(--muted);font-size:12px;display:flex;align-items:center;gap:8px"><i class="fa-solid fa-circle-notch fa-spin"></i>Mengecek mutasi Madera di app...</div>';}
+    fetchReconcile(true);
+  };
+
+  function showLoading(){document.getElementById('tbl-initial').style.display='none';document.getElementById('tbl-empty').style.display='none';document.getElementById('tbl-wrap').style.display='none';document.getElementById('tbl-loading').style.display='';}
+
+  window.selectAccount=function(id,btn){
+    currentAccountId=id;
+    var accSel=document.getElementById('filter-account'); if(accSel&&accSel.value!==id) accSel.value=id;
+    if(id===ALL_ID){
+      document.getElementById('tbl-meta').textContent=`Semua akun - sinkron otomatis ${AUTO_REFRESH_MS/1000} detik.`;
+    }else{
+      const a=accountMap[id];
+      document.getElementById('tbl-meta').textContent=`Akun ${a?.merchantName||'-'} (${a?.code||'-'}) - sinkron otomatis ${AUTO_REFRESH_MS/1000} detik.`;
+    }
+    var recStrip=document.getElementById('reconcile-strip'); if(recStrip){recStrip.style.display='none';recStrip.innerHTML='';}
+    showLoading();
+    if(pollTimer) clearInterval(pollTimer);
+    // Muat awal: 1x refresh saldo (app-API, instan) + mutasi. Poll berkala UTAMA: MURNI baca DB (fetchMutations)
+    // -> saldo dari currentBalance (DB, di-update worker) -> hemat, tak panggil provider tiap poll. Madera tak diubah.
+    // Tombol refresh manual tetap ada utk saldo on-demand.
+    Promise.allSettled([refreshBalance(),fetchMutations()]).finally(()=>{pollTimer=setInterval(()=>{if(document.hidden) return; if(isUtamaWallet){fetchMutations();}else{Promise.allSettled([refreshBalance(),fetchMutations()]);}},AUTO_REFRESH_MS);});
+    if(RECONCILE_WALLET==='utama') fetchReconcile(true);
+    else if(RECONCILE_WALLET==='madera') renderMaderaInitial();
+  };
+
+  window.manualRefresh=function(){const i=document.getElementById('refresh-icon'); i.classList.add('fa-spin'); Promise.allSettled([refreshBalance(),fetchMutations()]).finally(()=>setTimeout(()=>i.classList.remove('fa-spin'),420));};
+  window.scrollTabs=function(d){document.getElementById('acct-tab-scroll').scrollBy({left:d*200,behavior:'smooth'});};
+  window.toggleFilter=function(){filterOpen=!filterOpen; const p=document.getElementById('filter-panel'); p.style.display=filterOpen?'flex':'none'; const b=document.getElementById('btn-filter'); b.style.borderColor=filterOpen?'rgba(255,124,108,.35)':'rgba(255,255,255,.1)'; b.style.color=filterOpen?'#ffb4a8':'var(--muted)';};
+  window.applyFilter=function(){setDateLabel();applyFiltersInternal();};
+  window.setDatePreset=function(preset,btn){
+    currentPreset=preset;
+    document.querySelectorAll('.date-pill').forEach((p)=>p.classList.remove('active'));
+    if(btn) btn.classList.add('active');
+    if(preset==='today'){const t=fmtDateInput(new Date());document.getElementById('date-from').value=t;document.getElementById('date-to').value=t;}
+    if(preset==='yesterday'){const y=new Date();y.setDate(y.getDate()-1);const v=fmtDateInput(y);document.getElementById('date-from').value=v;document.getElementById('date-to').value=v;}
+    if(preset==='7d'){const s=new Date();s.setDate(s.getDate()-6);document.getElementById('date-from').value=fmtDateInput(s);document.getElementById('date-to').value=fmtDateInput(new Date());}
+    if(preset==='30d'){const s=new Date();s.setDate(s.getDate()-29);document.getElementById('date-from').value=fmtDateInput(s);document.getElementById('date-to').value=fmtDateInput(new Date());}
+    if(preset==='all'){document.getElementById('date-from').value='';document.getElementById('date-to').value='';}
+    setDateLabel();applyFiltersInternal();
+  };
+  window.onCustomDate=function(){
+    currentPreset='custom';
+    document.querySelectorAll('.date-pill').forEach((p)=>p.classList.remove('active'));
+    const c=document.querySelector('.date-pill[data-preset="custom"]'); if(c) c.classList.add('active');
+    setDateLabel();applyFiltersInternal();
+  };
+  window.onAccountChange=function(id){ if(id) selectAccount(id,null); };
+  // Dropdown Akun mengikuti Site terpilih: opsi akun di luar site disembunyikan.
+  function syncAccountBySite(siteName){
+    var accSel=document.getElementById('filter-account'); if(!accSel) return;
+    var sv=String(siteName||'');
+    var hiddenSelected=false;
+    accSel.querySelectorAll('option[data-site]').forEach(function(o){
+      var show=(sv===''||o.getAttribute('data-site')===sv);
+      o.hidden=!show; o.disabled=!show;
+      if(!show&&o.selected) hiddenSelected=true;
+    });
+    if(hiddenSelected){ accSel.value=ALL_ID; selectAccount(ALL_ID,null); }
+  }
+  window.onSiteChange=function(val){ syncAccountBySite(val); applyFilter(); };
+  window.resetFilter=function(){
+    document.getElementById('search-input').value='';
+    document.getElementById('filter-type').value='';
+    var siteEl=document.getElementById('filter-site'); if(siteEl) siteEl.value='';
+    var feeEl=document.getElementById('filter-fee-only'); if(feeEl) feeEl.value='';
+    syncAccountBySite('');
+    setDatePreset('all',document.querySelector('.date-pill[data-preset="all"]'));applyFiltersInternal();
+  };
+
+  document.getElementById('search-input').addEventListener('input',applyFiltersInternal);
+
+  (function init(){
+    const t=fmtDateInput(new Date());
+    document.getElementById('date-from').value=t;
+    document.getElementById('date-to').value=t;
+    setDateLabel();
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&currentAccountId){Promise.allSettled([refreshBalance(),fetchMutations()]);}});
+    window.addEventListener('beforeunload',()=>{if(pollTimer) clearInterval(pollTimer);});
+    // Live seperti menu QRIS: SSE stream (jika disediakan, mis. menu Madera) memicu fetchMutations
+    // instan saat ada mutasi baru dari worker. Poll berkala tetap jadi cadangan.
+    (function connectStream(){
+      if(!STREAM_URL || typeof EventSource==='undefined') return;
+      let es=null, reconnectTimer=null;
+      const onDelta=()=>{ if(document.hidden||!currentAccountId) return; const dot=document.getElementById('live-dot'); if(dot){dot.style.background='#facc15'; setTimeout(()=>{dot.style.background='#4ade80';},250);} fetchMutations(); };
+      function connect(){
+        try{ if(es) es.close(); es=new EventSource(STREAM_URL,{withCredentials:true}); }catch(_){ return; }
+        es.addEventListener('mutation.delta',onDelta);
+        es.onerror=function(){ if(reconnectTimer) return; reconnectTimer=setTimeout(()=>{reconnectTimer=null;connect();},2500); };
+      }
+      connect();
+      window.addEventListener('beforeunload',()=>{ if(es) es.close(); });
+    })();
+    // Default "Semua Akun" — panggil LANGSUNG (persis menu QRIS: `selectAccount(ALL_ID,null)`).
+    // JANGAN bungkus DOMContentLoaded/window.load: rantai stylesheet FontAwesome(cdnjs)->script footer
+    // bisa menunda DOMContentLoaded belasan detik. Tabulator sudah dimuat sinkron di <head> jadi siap.
+    selectAccount(ALL_ID, null);
+  })();
+})();
+</script>

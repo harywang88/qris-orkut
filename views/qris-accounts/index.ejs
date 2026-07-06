@@ -1,0 +1,350 @@
+<div class="qris-page-header flex items-start justify-between gap-4">
+  <div>
+    <h1 class="qris-page-title">Akun <span>QRIS</span></h1>
+    <p class="qris-section-sub mt-1">Kelola akun QRIS yang digunakan untuk menerima pembayaran</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <button type="button" onclick="openSiteModal()" class="qris-btn qris-btn-ghost">
+      <i class="fa-solid fa-sitemap text-xs"></i>
+      Kelola Site
+    </button>
+    <a href="<%= url('/qris-accounts/new') %>" class="qris-btn qris-btn-accent">
+      <i class="fa-solid fa-plus text-xs"></i>
+      Tambah Akun
+    </a>
+  </div>
+</div>
+
+<div class="qris-table-wrap">
+  <div class="overflow-x-auto">
+    <table class="qris-table">
+      <thead>
+        <tr>
+          <th>Kode</th>
+          <th>Merchant</th>
+          <th>Site</th>
+          <th class="hidden md:table-cell">Nomor Akun</th>
+          <th class="text-center">Index</th>
+          <th class="text-center">Status</th>
+          <th class="text-center">Kesehatan</th>
+          <th class="hidden lg:table-cell">Penggunaan Harian</th>
+          <th class="text-center">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (accounts.length === 0) { %>
+          <tr>
+            <td colspan="9">
+              <div class="qris-empty">
+                <i class="fa-solid fa-qrcode qris-empty-icon"></i>
+                <p class="qris-empty-title">Belum ada akun QRIS</p>
+                <p class="qris-empty-sub">
+                  <a href="<%= url('/qris-accounts/new') %>" style="color:#ff9b90" class="hover:underline">Tambah sekarang</a>
+                </p>
+              </div>
+            </td>
+          </tr>
+        <% } %>
+        <% accounts.forEach(acc => { %>
+          <%
+            const sPill = acc.status === 'active' ? 'qris-pill-active' : 'qris-pill-inactive';
+            const hPill = {
+              healthy:  'qris-pill-paid',
+              degraded: 'qris-pill-warn',
+              down:     'qris-pill-danger',
+            }[acc.healthStatus] || 'qris-pill-muted';
+            const usedPct = acc.dailyLimit > 0 ? Math.min(100, Math.round(acc.usedToday / acc.dailyLimit * 100)) : 0;
+            const barClass = usedPct >= 90 ? 'qris-progress-bar-red' : usedPct >= 70 ? 'qris-progress-bar-amber' : 'qris-progress-bar-blue';
+            const accSiteObj = sites.find(s => s.id === acc.siteId);
+            const accSiteColor = accSiteObj && accSiteObj.color ? accSiteObj.color : '';
+          %>
+          <tr data-id="<%= acc.id %>">
+            <td>
+              <span class="font-bold font-mono text-sm" style="color:#93c5fd"><%= acc.code %></span>
+            </td>
+            <td class="font-medium text-ink"><%= acc.merchantName %></td>
+            <td>
+              <div class="flex items-center gap-2">
+                <span class="site-dot" style="width:11px;height:11px;border-radius:50%;flex-shrink:0;border:1px solid rgba(148,163,184,.5);background:<%= accSiteColor || 'transparent' %>"></span>
+                <select class="qris-input qris-site-select" data-id="<%= acc.id %>" data-prev="<%= acc.siteId || '' %>"
+                        onchange="assignSite(this)"
+                        style="min-width:132px;padding:5px 8px;font-size:12px">
+                  <option value="">— Tanpa site —</option>
+                  <% sites.forEach(s => { %>
+                    <option value="<%= s.id %>" <%= acc.siteId === s.id ? 'selected' : '' %>><%= s.name %></option>
+                  <% }); %>
+                </select>
+              </div>
+            </td>
+            <td class="hidden md:table-cell">
+              <span class="qris-code"><%= acc.accountNumber %></span>
+            </td>
+            <td class="text-center">
+              <span class="qris-pill qris-pill-muted"><%= acc.orkutAccountIndex ?? '-' %></span>
+            </td>
+            <td class="text-center">
+              <button onclick="toggleStatus('<%= acc.id %>', this)"
+                      class="qris-pill cursor-pointer transition-all <%= sPill %>"
+                      data-active="<%= acc.status === 'active' ? '1' : '0' %>">
+                <%= acc.status === 'active' ? 'Aktif' : 'Nonaktif' %>
+              </button>
+            </td>
+            <td class="text-center">
+              <span class="qris-pill <%= hPill %>"><%= acc.healthStatus %></span>
+            </td>
+            <td class="hidden lg:table-cell">
+              <% if (acc.dailyLimit > 0) { %>
+                <div class="flex items-center gap-2 min-w-[140px]">
+                  <div class="qris-progress flex-1">
+                    <div class="qris-progress-bar <%= barClass %>" style="width:<%= usedPct %>%"></div>
+                  </div>
+                  <span class="text-xs text-muted whitespace-nowrap"><%= usedPct %>%</span>
+                </div>
+                <p class="text-[10px] text-muted-2 mt-1">
+                  Rp <%= acc.usedToday.toLocaleString('id-ID') %> / Rp <%= acc.dailyLimit.toLocaleString('id-ID') %>
+                </p>
+              <% } else { %>
+                <span class="text-xs text-muted-2">Unlimited</span>
+              <% } %>
+            </td>
+            <td class="text-center">
+              <div class="flex items-center justify-center gap-1.5">
+                <a href="<%= url(`/qris-accounts/${acc.id}/edit`) %>"
+                   class="qris-icon-btn" title="Edit">
+                  <i class="fa-solid fa-pen-to-square text-xs"></i>
+                </a>
+                <form action="<%= url(`/qris-accounts/${acc.id}/reset-daily`) %>" method="POST"
+                      onsubmit="return confirm('Reset penggunaan harian akun ini?')">
+                  <button type="submit" class="qris-icon-btn qris-icon-btn-amber" title="Reset Harian">
+                    <i class="fa-solid fa-rotate text-xs"></i>
+                  </button>
+                </form>
+                <form action="<%= url(`/qris-accounts/${acc.id}/delete`) %>" method="POST"
+                      onsubmit="return confirm('Hapus akun QRIS ini? Tidak dapat dibatalkan.')">
+                  <button type="submit" class="qris-icon-btn qris-icon-btn-red" title="Hapus">
+                    <i class="fa-solid fa-trash text-xs"></i>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal Kelola Site -->
+<div id="siteModal"
+     style="display:none;position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.6);backdrop-filter:blur(2px);align-items:flex-start;justify-content:center;padding:56px 16px;overflow-y:auto"
+     onclick="if(event.target===this)closeSiteModal()">
+  <div class="qris-card" style="width:100%;max-width:460px;padding:0;overflow:hidden">
+    <div class="flex items-center justify-between px-5 py-4 border-b border-line">
+      <h3 class="text-sm font-bold text-ink">
+        <i class="fa-solid fa-sitemap text-xs" style="color:#93c5fd"></i> Kelola Site
+      </h3>
+      <button type="button" onclick="closeSiteModal()" class="qris-icon-btn" title="Tutup">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+    <div class="p-5">
+      <label class="qris-label">Tambah Site Baru</label>
+      <div class="flex gap-2 mb-4 items-center">
+        <input id="newSiteName" class="qris-input" style="flex:1" maxlength="60"
+               placeholder="mis. Pempek Samudra"
+               onkeydown="if(event.key==='Enter'){event.preventDefault();addSite();}" />
+        <input type="color" id="newSiteColor" value="#8b5cf6" title="Pilih warna site"
+               style="width:44px;height:38px;padding:2px;border:1px solid var(--line);border-radius:8px;background:transparent;cursor:pointer;flex-shrink:0" />
+        <button type="button" onclick="addSite()" class="qris-btn qris-btn-accent">
+          <i class="fa-solid fa-plus text-xs"></i> Tambah
+        </button>
+      </div>
+      <label class="qris-label">Daftar Site</label>
+      <div id="siteList" class="mt-2 flex flex-col gap-2"></div>
+    </div>
+  </div>
+</div>
+<div id="siteToast"
+     style="display:none;position:fixed;bottom:24px;left:50%;transform:translateX(-50%);z-index:1100;padding:10px 18px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 8px 24px rgba(0,0,0,.3)"></div>
+
+<script>
+const SITE_BASE = '<%= url('/qris-accounts') %>';
+let SITES = <%- JSON.stringify(sites || []) %>;
+
+function siteEsc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function siteToast(msg, ok) {
+  const t = document.getElementById('siteToast');
+  t.textContent = msg;
+  t.style.background = ok ? 'rgba(34,197,94,.95)' : 'rgba(239,68,68,.95)';
+  t.style.color = '#fff';
+  t.style.display = 'block';
+  clearTimeout(t._tmr);
+  t._tmr = setTimeout(() => { t.style.display = 'none'; }, 2200);
+}
+function openSiteModal() {
+  renderSiteList();
+  document.getElementById('siteModal').style.display = 'flex';
+  setTimeout(() => { const el = document.getElementById('newSiteName'); if (el) el.focus(); }, 50);
+}
+function closeSiteModal() {
+  document.getElementById('siteModal').style.display = 'none';
+}
+function renderSiteList() {
+  const box = document.getElementById('siteList');
+  if (!SITES.length) {
+    box.innerHTML = '<p class="text-xs text-muted-2" style="padding:8px 0">Belum ada site. Tambahkan di atas.</p>';
+    return;
+  }
+  box.innerHTML = SITES.map(s => {
+    const col = s.color || '#8b5cf6';
+    return '<div class="flex items-center gap-2" style="padding:8px 12px;border-radius:8px;background:rgba(148,163,184,.08);border:1px solid var(--line,rgba(148,163,184,.15))">' +
+      '<span style="width:16px;height:16px;border-radius:5px;flex-shrink:0;border:1px solid rgba(255,255,255,.25);background:' + siteEsc(col) + '"></span>' +
+      '<span class="text-sm text-ink" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + siteEsc(s.name) + '</span>' +
+      '<input type="color" value="' + siteEsc(col) + '" title="Ubah warna" onchange="setSiteColor(\'' + siteEsc(s.id) + '\', this.value)" style="width:30px;height:26px;padding:1px;border:1px solid var(--line);border-radius:6px;background:transparent;cursor:pointer;flex-shrink:0" />' +
+      '<button type="button" class="qris-icon-btn" title="Ubah nama" onclick="renameSite(\'' + siteEsc(s.id) + '\')"><i class="fa-solid fa-pen text-[10px]"></i></button>' +
+      '<button type="button" class="qris-icon-btn qris-icon-btn-red" title="Hapus" onclick="removeSite(\'' + siteEsc(s.id) + '\')"><i class="fa-solid fa-trash text-[10px]"></i></button>' +
+    '</div>';
+  }).join('');
+}
+function updateSiteDot(sel) {
+  const dot = sel.parentElement ? sel.parentElement.querySelector('.site-dot') : null;
+  if (!dot) return;
+  const s = SITES.find(x => x.id === sel.value);
+  dot.style.background = s && s.color ? s.color : 'transparent';
+}
+function rebuildAllSiteSelects() {
+  document.querySelectorAll('.qris-site-select').forEach(sel => {
+    const cur = sel.value;
+    let html = '<option value="">— Tanpa site —</option>';
+    SITES.forEach(s => {
+      html += '<option value="' + siteEsc(s.id) + '">' + siteEsc(s.name) + '</option>';
+    });
+    sel.innerHTML = html;
+    const keep = SITES.some(s => s.id === cur) ? cur : '';
+    sel.value = keep;
+    sel.dataset.prev = keep;   // sinkronkan "prev" (mis. site dihapus/berubah)
+    updateSiteDot(sel);
+  });
+}
+async function setSiteColor(id, color) {
+  try {
+    const res = await fetch(SITE_BASE + '/sites/' + encodeURIComponent(id), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ color }),
+    });
+    const data = await res.json();
+    if (!data.success) { siteToast(data.error || 'Gagal ubah warna', false); return; }
+    const idx = SITES.findIndex(x => x.id === id);
+    if (idx >= 0) SITES[idx] = data.site;
+    renderSiteList();
+    rebuildAllSiteSelects();
+    siteToast('Warna site diperbarui', true);
+  } catch (e) { siteToast('Kesalahan jaringan', false); }
+}
+async function addSite() {
+  const inp = document.getElementById('newSiteName');
+  const name = (inp.value || '').trim();
+  if (!name) { inp.focus(); return; }
+  const colEl = document.getElementById('newSiteColor');
+  const color = colEl ? colEl.value : '';
+  try {
+    const res = await fetch(SITE_BASE + '/sites', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color }),
+    });
+    const data = await res.json();
+    if (!data.success) { siteToast(data.error || 'Gagal menambah site', false); return; }
+    SITES.push(data.site);
+    SITES.sort((a, b) => String(a.name).localeCompare(String(b.name), 'id'));
+    inp.value = '';
+    renderSiteList();
+    rebuildAllSiteSelects();
+    siteToast('Site "' + data.site.name + '" ditambahkan', true);
+    inp.focus();
+  } catch (e) { siteToast('Kesalahan jaringan', false); }
+}
+async function renameSite(id) {
+  const s = SITES.find(x => x.id === id);
+  const name = prompt('Ubah nama site:', s ? s.name : '');
+  if (name == null) return;
+  const clean = name.trim();
+  if (!clean) return;
+  try {
+    const res = await fetch(SITE_BASE + '/sites/' + encodeURIComponent(id), {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: clean }),
+    });
+    const data = await res.json();
+    if (!data.success) { siteToast(data.error || 'Gagal mengubah site', false); return; }
+    const idx = SITES.findIndex(x => x.id === id);
+    if (idx >= 0) SITES[idx] = data.site;
+    SITES.sort((a, b) => String(a.name).localeCompare(String(b.name), 'id'));
+    renderSiteList();
+    rebuildAllSiteSelects();
+    siteToast('Nama site diperbarui', true);
+  } catch (e) { siteToast('Kesalahan jaringan', false); }
+}
+async function removeSite(id) {
+  const s = SITES.find(x => x.id === id);
+  if (!confirm('Hapus site "' + (s ? s.name : '') + '"? Akun yang tertaut akan menjadi "Tanpa site".')) return;
+  try {
+    const res = await fetch(SITE_BASE + '/sites/' + encodeURIComponent(id) + '/delete', { method: 'POST' });
+    const data = await res.json();
+    if (!data.success) { siteToast(data.error || 'Gagal menghapus site', false); return; }
+    SITES = SITES.filter(x => x.id !== id);
+    renderSiteList();
+    rebuildAllSiteSelects();
+    siteToast('Site dihapus', true);
+  } catch (e) { siteToast('Kesalahan jaringan', false); }
+}
+async function assignSite(sel) {
+  const id = sel.dataset.id;
+  const siteId = sel.value;
+  const prev = sel.dataset.prev || '';
+  if (siteId === prev) return;   // tak ada perubahan
+  const s = SITES.find(x => x.id === siteId);
+  const newName = siteId ? (s ? s.name : 'site') : 'Tanpa site';
+  const row = sel.closest('tr');
+  const accCell = row ? row.querySelector('td:nth-child(2)') : null;
+  const accLabel = (accCell ? accCell.textContent : '').trim() || 'akun ini';
+  // KONFIRMASI dulu — cegah salah pencet langsung berubah.
+  if (!confirm('Ubah site "' + accLabel + '" menjadi "' + newName + '"?')) {
+    sel.value = prev;          // batal -> kembalikan pilihan semula
+    updateSiteDot(sel);
+    return;
+  }
+  sel.disabled = true;
+  try {
+    const res = await fetch(SITE_BASE + '/accounts/' + encodeURIComponent(id) + '/site', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ siteId }),
+    });
+    const data = await res.json();
+    if (!data.success) { sel.value = prev; updateSiteDot(sel); siteToast(data.error || 'Gagal menetapkan site', false); return; }
+    sel.dataset.prev = siteId;   // commit
+    updateSiteDot(sel);
+    siteToast(siteId ? ('Akun → ' + newName) : 'Akun dilepas dari site', true);
+  } catch (e) { sel.value = prev; updateSiteDot(sel); siteToast('Kesalahan jaringan', false); }
+  finally { sel.disabled = false; }
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSiteModal(); });
+
+async function toggleStatus(id, btn) {
+  if (!confirm('Ubah status akun ini?')) return;
+  try {
+    const res  = await fetch(`<%= url('/qris-accounts') %>/${id}/toggle-status`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      const isActive = data.status === 'active';
+      btn.textContent = isActive ? 'Aktif' : 'Nonaktif';
+      btn.className = 'qris-pill cursor-pointer transition-all ' + (isActive ? 'qris-pill-active' : 'qris-pill-inactive');
+    } else {
+      alert('Gagal: ' + data.error);
+    }
+  } catch (e) {
+    alert('Terjadi kesalahan jaringan.');
+  }
+}
+</script>

@@ -1,0 +1,26 @@
+<% if (flash) { %>
+  <%
+    const colorMap = {
+      success: 'flash-success',
+      error:   'flash-error',
+      info:    'flash-info',
+      warning: 'flash-warning',
+    };
+    const iconMap = {
+      success: 'fa-circle-check',
+      error:   'fa-circle-xmark',
+      info:    'fa-circle-info',
+      warning: 'fa-triangle-exclamation',
+    };
+    const colorClass = colorMap[flash.type] || 'flash-info';
+    const iconClass  = iconMap[flash.type]  || 'fa-circle-info';
+  %>
+  <div class="mb-5 <%= colorClass %>" role="alert">
+    <i class="fa-solid <%= iconClass %> mt-0.5 flex-shrink-0 text-sm"></i>
+    <span class="flex-1 text-sm"><%- flash.message %></span>
+    <button onclick="this.closest('[role=alert]').remove()"
+            class="ml-auto opacity-50 hover:opacity-100 transition-opacity flex-shrink-0">
+      <i class="fa-solid fa-xmark text-sm"></i>
+    </button>
+  </div>
+<% } %>

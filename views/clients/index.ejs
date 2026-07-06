@@ -1,0 +1,172 @@
+<%
+/* ───── API Clients Index ───── */
+%>
+
+<style>
+  .cli-hero { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+  .cli-hero-title { font-size:22px; font-weight:800; color:var(--color-ink); letter-spacing:-.3px; margin:0 0 4px; }
+  .cli-hero-title span { color:#a5b4fc; }
+  .cli-hero-sub { font-size:12px; color:var(--color-muted); margin:0; }
+
+  .cli-add-btn {
+    display:inline-flex; align-items:center; gap:7px;
+    padding:9px 18px; border-radius:12px; border:none;
+    background:linear-gradient(135deg,#818cf8,#6366f1); color:#fff;
+    font-size:12px; font-weight:700; cursor:pointer; text-decoration:none;
+    transition:opacity .15s; box-shadow:0 4px 14px rgba(99,102,241,0.25);
+  }
+  .cli-add-btn:hover { opacity:.88; }
+
+  .cli-table-wrap { border-radius:18px; border:1px solid var(--color-line); overflow:hidden; background:var(--color-card); }
+  .cli-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .cli-table thead tr { background:rgba(255,255,255,0.03); border-bottom:1px solid var(--color-line); }
+  .cli-table th { padding:11px 14px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--color-muted); white-space:nowrap; }
+  .cli-table th.center { text-align:center; }
+  .cli-table td { padding:13px 14px; border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:middle; }
+  .cli-table tbody tr:last-child td { border-bottom:none; }
+  .cli-table tbody tr { transition:background .15s; }
+  .cli-table tbody tr:hover { background:rgba(255,255,255,0.025); }
+
+  .cli-badge {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 9px; border-radius:999px; font-size:10px; font-weight:700;
+    border:1px solid transparent;
+  }
+  .cli-badge-green { background:rgba(34,197,94,0.1);  color:#86efac; border-color:rgba(34,197,94,0.22); }
+  .cli-badge-red   { background:rgba(239,68,68,0.1);  color:#fca5a5; border-color:rgba(239,68,68,0.22); }
+  .cli-badge-dot   { width:5px; height:5px; border-radius:50%; background:currentColor; }
+
+  .cli-code { font-family:monospace; font-size:11px; color:#a5b4fc; background:rgba(165,180,252,0.08); padding:2px 7px; border-radius:6px; }
+  .cli-api-key { font-family:monospace; font-size:11px; color:var(--color-muted); }
+
+  .cli-action-btn {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:30px; height:30px; border-radius:9px; border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04); color:var(--color-muted);
+    cursor:pointer; transition:all .15s; text-decoration:none; font-size:12px;
+  }
+  .cli-action-btn:hover { background:rgba(255,255,255,0.09); color:var(--color-ink); }
+  .cli-action-btn.blue:hover { background:rgba(99,102,241,0.14); border-color:rgba(99,102,241,0.3); color:#a5b4fc; }
+  .cli-action-btn.red:hover { background:rgba(239,68,68,0.14); border-color:rgba(239,68,68,0.3); color:#fca5a5; }
+  .cli-action-btn.green:hover { background:rgba(34,197,94,0.14); border-color:rgba(34,197,94,0.3); color:#86efac; }
+
+  .cli-copy-btn {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:26px; height:26px; border-radius:7px; border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04); color:var(--color-muted);
+    cursor:pointer; transition:all .15s; font-size:11px;
+  }
+  .cli-copy-btn:hover { background:rgba(99,102,241,0.14); border-color:rgba(99,102,241,0.3); color:#a5b4fc; }
+
+  .cli-empty { text-align:center; padding:48px 24px; }
+  .cli-empty-icon { font-size:36px; color:rgba(255,255,255,0.1); margin-bottom:12px; }
+  .cli-empty-title { font-size:14px; font-weight:600; color:var(--color-muted); margin-bottom:4px; }
+  .cli-empty-link { font-size:12px; color:#a5b4fc; text-decoration:none; }
+  .cli-empty-link:hover { text-decoration:underline; }
+
+  .cli-url { font-size:11px; color:var(--color-muted); max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
+
+<!-- Header -->
+<div class="cli-hero">
+  <div>
+    <h1 class="cli-hero-title">API <span>Client</span></h1>
+    <p class="cli-hero-sub">Panel klien yang terhubung beserta API key dan konfigurasi callback</p>
+  </div>
+  <a href="<%= url('/clients/new') %>" class="cli-add-btn">
+    <i class="fa-solid fa-plus" style="font-size:11px"></i>
+    Tambah Klien
+  </a>
+</div>
+
+<!-- Table -->
+<div class="cli-table-wrap">
+  <div style="overflow-x:auto">
+    <table class="cli-table">
+      <thead>
+        <tr>
+          <th>Nama</th>
+          <th>Kode Panel</th>
+          <th class="hidden md:table-cell">API Key</th>
+          <th class="center">Status</th>
+          <th class="hidden lg:table-cell">Callback URL</th>
+          <th class="center">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (clients.length === 0) { %>
+          <tr>
+            <td colspan="6">
+              <div class="cli-empty">
+                <div class="cli-empty-icon"><i class="fa-solid fa-key"></i></div>
+                <p class="cli-empty-title">Belum ada klien terdaftar</p>
+                <a href="<%= url('/clients/new') %>" class="cli-empty-link">Tambah klien pertama →</a>
+              </div>
+            </td>
+          </tr>
+        <% } %>
+        <% clients.forEach(client => { %>
+          <tr>
+            <td>
+              <div style="font-weight:600;color:var(--color-ink)"><%= client.name %></div>
+            </td>
+            <td>
+              <span class="cli-code"><%= client.panelCode %></span>
+            </td>
+            <td class="hidden md:table-cell">
+              <div style="display:flex;align-items:center;gap:7px">
+                <span class="cli-api-key"><%= client.apiKey.slice(0, 24) %>…</span>
+                <button onclick="copyText('<%= client.apiKey %>', this)"
+                        class="cli-copy-btn" title="Salin API Key">
+                  <i class="fa-regular fa-copy"></i>
+                </button>
+              </div>
+            </td>
+            <td style="text-align:center">
+              <span class="cli-badge <%= client.status === 'active' ? 'cli-badge-green' : 'cli-badge-red' %>">
+                <span class="cli-badge-dot"></span>
+                <%= client.status === 'active' ? 'Aktif' : 'Nonaktif' %>
+              </span>
+            </td>
+            <td class="hidden lg:table-cell">
+              <% if (client.callbackUrl) { %>
+                <span class="cli-url" title="<%= client.callbackUrl %>"><%= client.callbackUrl %></span>
+              <% } else { %>
+                <span style="font-size:11px;color:rgba(255,255,255,0.2)">—</span>
+              <% } %>
+            </td>
+            <td style="text-align:center">
+              <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+                <a href="<%= url(`/clients/${client.id}`) %>" class="cli-action-btn blue" title="Detail">
+                  <i class="fa-solid fa-eye"></i>
+                </a>
+                <a href="<%= url(`/clients/${client.id}/edit`) %>" class="cli-action-btn" title="Edit">
+                  <i class="fa-solid fa-pen-to-square"></i>
+                </a>
+                <form action="<%= url(`/clients/${client.id}/delete`) %>" method="POST"
+                      onsubmit="return confirm('Hapus klien ini?')" style="margin:0">
+                  <button type="submit" class="cli-action-btn red" title="Hapus">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-check"></i>';
+    btn.style.background = 'rgba(34,197,94,0.14)';
+    btn.style.borderColor = 'rgba(34,197,94,0.3)';
+    btn.style.color = '#86efac';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.cssText = ''; }, 1500);
+  });
+}
+</script>

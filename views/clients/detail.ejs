@@ -1,0 +1,193 @@
+<div class="mb-5">
+  <a href="<%= url('/clients') %>"
+     class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors">
+    <i class="fa-solid fa-arrow-left text-xs"></i>
+    Kembali ke daftar klien
+  </a>
+</div>
+
+<div class="max-w-2xl space-y-5">
+
+  <!-- Info Card -->
+  <div class="qris-card p-6">
+    <div class="flex items-start justify-between mb-5">
+      <div>
+        <h2 class="text-xl font-bold text-ink"><%= client.name %></h2>
+        <span class="qris-code mt-2 inline-block"><%= client.panelCode %></span>
+      </div>
+      <div class="flex gap-2">
+        <a href="<%= url(`/clients/${client.id}/edit`) %>" class="qris-btn qris-btn-ghost qris-btn-sm">
+          <i class="fa-solid fa-pen-to-square text-xs"></i> Edit
+        </a>
+        <form action="<%= url(`/clients/${client.id}/delete`) %>" method="POST"
+              onsubmit="return confirm('Hapus klien ini?')">
+          <button type="submit" class="qris-btn qris-btn-danger qris-btn-sm">
+            <i class="fa-solid fa-trash text-xs"></i> Hapus
+          </button>
+        </form>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-3 text-sm">
+      <div>
+        <span class="text-muted text-xs uppercase tracking-wide">Status</span>
+        <p class="mt-1">
+          <span class="qris-pill <%= client.status === 'active' ? 'qris-pill-active' : 'qris-pill-inactive' %>">
+            <%= client.status === 'active' ? 'Aktif' : 'Nonaktif' %>
+          </span>
+        </p>
+      </div>
+      <div>
+        <span class="text-muted text-xs uppercase tracking-wide">Dibuat</span>
+        <p class="mt-1 text-ink-2 font-medium"><%= new Date(client.createdAt).toLocaleDateString('id-ID') %></p>
+      </div>
+      <div class="col-span-2">
+        <span class="text-muted text-xs uppercase tracking-wide">Callback URL</span>
+        <p class="mt-1 font-mono text-xs text-ink-2 break-all"><%= client.callbackUrl || '—' %></p>
+      </div>
+      <div class="col-span-2">
+        <span class="text-muted text-xs uppercase tracking-wide">Deposit API URL</span>
+        <p class="mt-1 font-mono text-xs text-ink-2 break-all"><%= client.depositApiUrl || '—' %></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- API Credentials -->
+  <div class="qris-card p-6">
+    <h3 class="text-sm font-bold text-ink mb-4 flex items-center gap-2">
+      <i class="fa-solid fa-key text-xs" style="color:#93c5fd"></i>
+      Kredensial API
+    </h3>
+
+    <% if (newSecret) { %>
+      <div class="rounded-2xl border p-4 mb-4" style="border-color:rgba(245,158,11,0.35);background:rgba(245,158,11,0.08)">
+        <p class="text-xs font-bold mb-2" style="color:#fcd34d">
+          <i class="fa-solid fa-triangle-exclamation mr-1.5"></i>
+          API Secret Baru — Simpan segera! Tidak akan ditampilkan lagi.
+        </p>
+        <div class="flex items-center gap-2">
+          <code class="flex-1 text-xs font-mono p-2.5 rounded-xl break-all"
+                style="background:rgba(0,0,0,0.3);color:#fcd34d;border:1px solid rgba(245,158,11,0.25)">
+            <%= newSecret %>
+          </code>
+          <button onclick="copyText('<%= newSecret %>', this)" class="qris-icon-btn qris-icon-btn-amber">
+            <i class="fa-regular fa-copy text-xs"></i>
+          </button>
+        </div>
+      </div>
+    <% } %>
+
+    <div class="space-y-4">
+      <!-- API Key -->
+      <div>
+        <label class="qris-label">API Key</label>
+        <div class="flex items-center gap-2">
+          <code class="flex-1 text-xs font-mono p-2.5 rounded-xl break-all"
+                style="background:#1a1d24;color:#c4b5fd;border:1px solid rgba(139,92,246,0.2)">
+            <%= client.apiKey %>
+          </code>
+          <button onclick="copyText('<%= client.apiKey %>', this)" class="qris-icon-btn qris-icon-btn-blue" title="Salin">
+            <i class="fa-regular fa-copy text-xs"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- API Secret -->
+      <div>
+        <label class="qris-label">API Secret</label>
+        <div class="flex items-center gap-2">
+          <code id="secret-display"
+                class="flex-1 text-xs font-mono p-2.5 rounded-xl"
+                style="background:#1a1d24;color:#6b6560;border:1px solid var(--line)">
+            ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+          </code>
+          <button onclick="revealSecret('<%= client.id %>')" id="reveal-btn"
+                  class="qris-icon-btn" title="Tampilkan">
+            <i class="fa-regular fa-eye text-xs"></i>
+          </button>
+          <form action="<%= url(`/clients/${client.id}/rotate-secret`) %>" method="POST"
+                onsubmit="return confirm('Rotasi API Secret? Secret lama akan langsung tidak berlaku.')">
+            <button type="submit" class="qris-icon-btn qris-icon-btn-amber" title="Rotasi Secret">
+              <i class="fa-solid fa-rotate text-xs"></i>
+            </button>
+          </form>
+        </div>
+        <p class="text-xs text-muted-2 mt-1.5">Rotasi secret akan membatalkan semua request dengan secret lama.</p>
+      </div>
+
+      <!-- Widget Key (public, alfael-style) -->
+      <div>
+        <label class="qris-label">Widget Key <span class="text-muted-2 normal-case font-normal">untuk script browser (?key=)</span></label>
+        <div class="flex items-center gap-2">
+          <code class="flex-1 text-xs font-mono p-2.5 rounded-xl break-all"
+                style="background:#1a1d24;color:#7dd3fc;border:1px solid rgba(56,189,248,0.2)">
+            <%= client.widgetKey || '— belum dibuat —' %>
+          </code>
+          <% if (client.widgetKey) { %>
+          <button onclick="copyText('<%= client.widgetKey %>', this)" class="qris-icon-btn qris-icon-btn-blue" title="Salin">
+            <i class="fa-regular fa-copy text-xs"></i>
+          </button>
+          <% } %>
+          <form action="<%= url(`/clients/${client.id}/rotate-widget-key`) %>" method="POST"
+                onsubmit="return confirm('Buat ulang Widget Key? Key lama akan langsung tidak berlaku dan script yang memakainya harus diperbarui.')">
+            <button type="submit" class="qris-icon-btn qris-icon-btn-amber" title="Buat ulang Widget Key">
+              <i class="fa-solid fa-rotate text-xs"></i>
+            </button>
+          </form>
+        </div>
+        <p class="text-xs text-muted-2 mt-1.5">
+          Key ini aman ditaruh di JavaScript browser (low-privilege: hanya generate QR & baca status QR-nya sendiri).
+          Kunci pemakaiannya lewat <strong>Widget Allowed Origins</strong>:
+          <code class="font-mono text-xs"><%= client.widgetAllowedOrigins || 'semua origin (belum dikunci)' %></code>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <!-- HMAC Info -->
+  <div class="qris-card p-5" style="background:#13151a">
+    <h3 class="text-xs font-bold text-muted uppercase tracking-wider mb-3">
+      <i class="fa-solid fa-code mr-1.5"></i>
+      Cara Penggunaan HMAC
+    </h3>
+    <pre class="text-xs overflow-x-auto leading-relaxed" style="color:#c4b5fd;font-family:monospace"><code>// Header wajib pada setiap request
+X-API-Key:    &lt;API_KEY&gt;
+X-Timestamp:  &lt;Unix timestamp detik&gt;
+X-Nonce:      &lt;UUID random unik per request&gt;
+X-Signature:  &lt;HMAC-SHA256 canonical string&gt;
+
+// Canonical string (dipisah \n)
+METHOD\nPATH\nTIMESTAMP\nNONCE\nSHA256(body)</code></pre>
+  </div>
+
+</div>
+
+<script>
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-check text-xs"></i>';
+    btn.style.borderColor = 'rgba(34,197,94,0.4)';
+    btn.style.background = 'rgba(34,197,94,0.12)';
+    btn.style.color = '#86efac';
+    setTimeout(() => { btn.innerHTML = orig; btn.style.cssText = ''; }, 1500);
+  });
+}
+
+async function revealSecret(clientId) {
+  const btn     = document.getElementById('reveal-btn');
+  const display = document.getElementById('secret-display');
+  if (display.textContent.includes('•')) {
+    const res  = await fetch(`<%= url('/clients') %>/${clientId}/reveal-secret`);
+    const data = await res.json();
+    if (data.success) {
+      display.textContent = data.secret;
+      display.style.color = '#c4b5fd';
+      btn.innerHTML = '<i class="fa-regular fa-eye-slash text-xs"></i>';
+    }
+  } else {
+    display.textContent = '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••';
+    display.style.color = '#6b6560';
+    btn.innerHTML = '<i class="fa-regular fa-eye text-xs"></i>';
+  }
+}
+</script>

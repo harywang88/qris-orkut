@@ -1,0 +1,250 @@
+<aside class="qris-sidebar" id="mainSidebar">
+
+  <!-- Logo -->
+  <div class="qris-sidebar-logo" style="gap:10px;padding:14px 14px 12px">
+    <!-- Animated mini 3D logo canvas -->
+    <div style="position:relative;width:46px;height:46px;flex-shrink:0">
+      <canvas id="sidebar-logo-canvas" width="92" height="92"
+        style="width:46px;height:46px;border-radius:14px;display:block;cursor:pointer"
+        title="QRISKITA" onclick="window.location='<%= url('/dashboard') %>'"></canvas>
+    </div>
+    <div class="min-w-0">
+      <p style="font-size:13px;font-weight:800;letter-spacing:.15em;color:#f1ece4;line-height:1.2">QRISKITA</p>
+      <p style="font-size:9px;text-transform:uppercase;letter-spacing:.22em;color:#9a9085;margin-top:2px">Merchant Admin</p>
+    </div>
+  </div>
+
+  <script>
+  // Sidebar logo — Canvas 2D, clean static green "QK" mark (professional, brand green)
+  (function sidebarLogo() {
+    const cv = document.getElementById('sidebar-logo-canvas');
+    if (!cv) return;
+    const c = cv.getContext('2d');
+    const S = 92; // canvas resolution (displayed at 46px)
+
+    function draw() {
+      c.clearRect(0, 0, S, S);
+      const r = 20; // corner radius for the rounded square
+
+      // ── Rounded square background — brand green gradient ───────────
+      const bg = c.createLinearGradient(0, 0, S, S);
+      bg.addColorStop(0, '#16a34a');
+      bg.addColorStop(1, '#15803d');
+      c.fillStyle = bg;
+      c.beginPath();
+      if (c.roundRect) {
+        c.roundRect(4, 4, S - 8, S - 8, r);
+      } else {
+        // fallback for older browsers
+        const x = 4, y = 4, w = S - 8, h = S - 8;
+        c.moveTo(x + r, y);
+        c.arcTo(x + w, y, x + w, y + h, r);
+        c.arcTo(x + w, y + h, x, y + h, r);
+        c.arcTo(x, y + h, x, y, r);
+        c.arcTo(x, y, x + w, y, r);
+      }
+      c.closePath();
+      c.fill();
+
+      // ── "QK" wordmark ──────────────────────────────────────────────
+      c.fillStyle = '#ffffff';
+      c.font = 'bold 32px "Inter", Arial, sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'middle';
+      c.fillText('QK', S / 2, S / 2 + 2);
+    }
+
+    draw();
+  })();
+  </script>
+
+  <!-- Navigation -->
+  <%
+    // Helper hak-akses menu (Akun Alias). Master = semua; user lain sesuai menuPerms['<key>.view'].
+    const _u = (typeof user !== 'undefined') ? user : null;
+    const can = (k) => !!(_u && (_u.isMaster || (_u.menuPerms && _u.menuPerms[k + '.view'])));
+    const isMaster = !!(_u && _u.isMaster);
+    const isAlias = !!(_u && _u.isAlias);
+    const anyHistory = can('generate-qr') || can('transactions') || can('mutasi-qris') || can('mutasi-utama') || can('mutasi-madera');
+  %>
+  <nav class="flex-1 px-3 py-4 space-y-0.5 text-sm overflow-y-auto">
+    <p class="px-3 pb-2.5 pt-1 text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60">Utama</p>
+
+    <% if (can('dashboard')) { %>
+    <a href="<%= url('/dashboard') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-house-chimney qris-nav-icon"></i>
+        <span>Dashboard</span>
+      </span>
+    </a>
+    <% } %>
+
+    <!-- Transactions Group -->
+    <% if (anyHistory) { %>
+    <div class="qris-nav-group">
+      <button type="button" class="qris-nav-link qris-nav-parent w-full" data-toggle-nav>
+        <span class="flex items-center gap-3">
+          <i class="fa-solid fa-bolt qris-nav-icon"></i>
+          <span>History</span>
+        </span>
+        <i class="fa-solid fa-chevron-right text-[10px] text-muted transition-transform duration-200 group-chevron"></i>
+      </button>
+      <div class="qris-subnav">
+        <% if (can('generate-qr')) { %><a href="<%= url('/dashboard/generate-qr') %>" class="qris-subnav-link">Generate QR</a><% } %>
+        <% if (can('generate-qr')) { %><a href="<%= url('/dashboard/history') %>" class="qris-subnav-link">History Generate QR</a><% } %>
+        <% if (can('transactions')) { %><a href="<%= url('/dashboard/transactions') %>" class="qris-subnav-link">Transaction</a><% } %>
+        <% if (can('mutasi-qris')) { %><a href="<%= url('/dashboard/mutations/qris') %>" class="qris-subnav-link">Mutasi QRIS</a><% } %>
+        <% if (can('mutasi-utama')) { %><a href="<%= url('/dashboard/mutations/utama') %>" class="qris-subnav-link">Mutasi Utama</a><% } %>
+        <% if (can('mutasi-madera')) { %><a href="<%= url('/dashboard/mutations/madera') %>" class="qris-subnav-link">Mutasi Madera</a><% } %>
+      </div>
+    </div>
+    <% } %>
+
+    <% if (can('settlement')) { %>
+    <a href="<%= url('/dashboard/settlement') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-money-bill-transfer qris-nav-icon"></i>
+        <span>Kirim Uang</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (can('mutasi-madera')) { %>
+    <a href="<%= url('/dashboard/madera-nobu') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-building-columns qris-nav-icon"></i>
+        <span>History Nobu</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (can('merchant-qr') || can('clients') || can('reports')) { %>
+    <p class="px-3 pb-2.5 pt-4 text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60">Konfigurasi</p>
+    <% } %>
+
+    <% if (can('merchant-qr')) { %>
+    <a href="<%= url('/merchant-qr') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-store qris-nav-icon"></i>
+        <span>Merchant QR</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (can('clients')) { %>
+    <a href="<%= url('/clients') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-key qris-nav-icon"></i>
+        <span>API Client</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (can('reports')) { %>
+    <a href="<%= url('/reports') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-chart-pie qris-nav-icon"></i>
+        <span>Laporan</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (can('login-logs') || can('postgres') || can('settings') || isMaster || !isAlias) { %>
+    <p class="px-3 pb-2.5 pt-4 text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60">Sistem</p>
+    <% } %>
+
+    <% if (can('login-logs')) { %>
+    <a href="<%= url('/dashboard/login-logs') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-list-check qris-nav-icon"></i>
+        <span>Login Logs</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (can('postgres')) { %>
+    <a href="<%= url('/dashboard/postgres-monitor') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-database qris-nav-icon"></i>
+        <span>PostgreSQL</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (!isAlias) { %>
+    <a href="<%= url('/qris-accounts') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-store qris-nav-icon"></i>
+        <span>Akun QRIS &amp; Site</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (can('settings')) { %>
+    <a href="<%= url('/dashboard/account-settings') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-sliders qris-nav-icon"></i>
+        <span>Pengaturan</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (isMaster) { %>
+    <a href="<%= url('/dashboard/akun-alias') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-user-shield qris-nav-icon"></i>
+        <span>Akun Alias</span>
+      </span>
+    </a>
+    <% } %>
+
+    <% if (!isAlias) { %>
+    <a href="<%= url('/settings/change-password') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-gear qris-nav-icon"></i>
+        <span>Setting</span>
+      </span>
+    </a>
+    <% } %>
+  </nav>
+
+</aside>
+
+<script>
+  (function () {
+    const path = window.location.pathname;
+
+    // Mark active links
+    document.querySelectorAll('.qris-nav-link, .qris-subnav-link').forEach((link) => {
+      const href = link.getAttribute('href');
+      if (!href) return;
+      const cleanHref = href.split('?')[0];
+      const dashboardRoot = '<%= url('/dashboard') %>';
+      const isExact = cleanHref === path;
+      const isPrefix = cleanHref !== dashboardRoot && path.startsWith(cleanHref);
+      if (isExact || isPrefix) {
+        link.classList.add('is-active');
+        link.closest('.qris-nav-group')?.classList.add('is-open');
+      }
+    });
+
+    // Toggle nav groups
+    document.querySelectorAll('[data-toggle-nav]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const group = button.closest('.qris-nav-group');
+        group?.classList.toggle('is-open');
+        const chevron = button.querySelector('.group-chevron');
+        if (chevron) {
+          chevron.style.transform = group?.classList.contains('is-open')
+            ? 'rotate(90deg)' : 'rotate(0deg)';
+        }
+      });
+    });
+
+    // Set chevron rotation for open groups on load
+    document.querySelectorAll('.qris-nav-group.is-open').forEach((group) => {
+      const chevron = group.querySelector('.qris-nav-parent .group-chevron');
+      if (chevron) chevron.style.transform = 'rotate(90deg)';
+    });
+  })();
+</script>

@@ -1,0 +1,698 @@
+<style>
+  /* ── Card (uses qris-card wrapper) ─────────────── */
+  .gq-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--color-line);
+    background: linear-gradient(135deg, rgba(59,130,246,0.04), rgba(16,185,129,0.03));
+  }
+  .gq-label {
+    font-size: 10px; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--color-muted); margin-bottom: 6px;
+  }
+
+  /* ── Tab bar — pill style ──────────────────────── */
+  .gq-tab-bar { overflow-x: auto; scrollbar-width: none; padding: 0 36px; }
+  .gq-tab-bar::-webkit-scrollbar { display: none; }
+  .gq-tab-pills {
+    display: flex;
+    gap: 6px;
+    min-width: max-content;
+    padding: 4px 0;
+  }
+  .gq-tab {
+    display: flex; flex-direction: column; align-items: center; gap: 1px;
+    padding: 8px 16px; border-radius: 10px;
+    border: 1px solid var(--color-line);
+    background: transparent; cursor: pointer; white-space: nowrap;
+    transition: all .2s;
+  }
+  .gq-tab .t-num  { font-size: 10px; font-weight: 600; color: var(--color-muted); transition: color .2s; }
+  .gq-tab .t-name { font-size: 12px; font-weight: 700; color: var(--color-ink); transition: color .2s; }
+  .gq-tab:hover { border-color: rgba(99,130,255,0.35); }
+  .gq-tab.active {
+    background: rgba(99,130,255,0.12);
+    border-color: rgba(99,130,255,0.40);
+  }
+  .gq-tab.active .t-num  { color: #93b4ff; }
+  .gq-tab.active .t-name { color: #93b4ff; }
+
+  .gq-scroll-btn {
+    position: absolute; top: 50%; transform: translateY(-50%); z-index: 10;
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--color-card-hi); border: 1px solid var(--color-line);
+    color: var(--color-muted); display: flex; align-items: center;
+    justify-content: center; cursor: pointer; font-size: 11px;
+    transition: border-color .2s, color .2s;
+  }
+  .gq-scroll-btn:hover { border-color: rgba(99,130,255,0.35); color: var(--color-ink); }
+
+  /* ── Amount input ──────────────────────────────── */
+  .gq-amount-wrap {
+    display: flex; align-items: center;
+    background: var(--color-bg); border: 1.5px solid var(--color-line);
+    border-radius: 10px; overflow: hidden;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .gq-amount-wrap:focus-within {
+    border-color: rgba(99,130,255,0.5);
+    box-shadow: 0 0 0 3px rgba(99,130,255,0.08), 0 0 16px rgba(99,130,255,0.06);
+  }
+  .gq-amount-prefix {
+    padding: 0 14px; font-size: 15px; font-weight: 700; color: var(--color-muted);
+    background: var(--color-card-hi); border-right: 1px solid var(--color-line);
+    height: 52px; display: flex; align-items: center;
+  }
+  .gq-amount-input {
+    flex: 1; border: none; background: transparent; outline: none;
+    font-size: 22px; font-weight: 800; color: var(--color-ink);
+    padding: 0 16px; height: 52px; font-family: monospace;
+  }
+  .gq-amount-input::placeholder { color: var(--color-muted); font-weight: 400; font-size: 16px; font-family: sans-serif; }
+
+  /* ── Quick-amount pills ────────────────────────── */
+  .gq-quick-amounts {
+    display: flex; gap: 6px; margin-bottom: 16px; flex-wrap: wrap;
+  }
+  .gq-quick-pill {
+    padding: 6px 12px;
+    border: 1px solid var(--color-line);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--color-muted);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .18s;
+    white-space: nowrap;
+  }
+  .gq-quick-pill:hover {
+    border-color: rgba(99,130,255,0.35);
+    color: var(--color-ink);
+    background: rgba(99,130,255,0.06);
+  }
+
+  /* ── Generate button with glow ─────────────────── */
+  .gq-generate-btn {
+    width: 100%; padding: 14px; border-radius: 10px; font-size: 14px;
+    font-weight: 700; cursor: pointer; border: none;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: #fff; transition: opacity .2s, box-shadow .3s; display: flex;
+    align-items: center; justify-content: center; gap: 8px;
+  }
+  .gq-generate-btn:hover:not(:disabled) {
+    opacity: .92;
+    box-shadow: 0 0 20px rgba(59,130,246,0.35), 0 0 40px rgba(59,130,246,0.15);
+  }
+  .gq-generate-btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* ── QR output area ────────────────────────────── */
+  .gq-qr-area {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 16px; padding: 32px 20px; text-align: center;
+    background: linear-gradient(180deg, rgba(59,130,246,0.03) 0%, transparent 60%);
+  }
+  .gq-qr-box {
+    background: #fff; border-radius: 16px; padding: 16px;
+    display: inline-flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 32px rgba(0,0,0,.3), 0 0 0 1px rgba(255,255,255,0.06);
+  }
+  #qr-canvas { display: block; }
+  .gq-merchant-badge {
+    font-size: 11px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--color-muted);
+    background: var(--color-card-hi); border: 1px solid var(--color-line);
+    border-radius: 8px; padding: 6px 14px; display: inline-block;
+  }
+  .gq-amount-badge {
+    font-size: 28px; font-weight: 800; color: var(--color-ink); font-family: monospace;
+  }
+  .gq-payment-box {
+    text-align: center;
+    background: rgba(250,204,21,0.06);
+    border: 1px solid rgba(250,204,21,0.18);
+    border-radius: 12px;
+    padding: 14px 20px;
+    width: 100%;
+    max-width: 300px;
+  }
+  .gq-payment-label {
+    font-size: 10px; font-weight: 700; letter-spacing: .12em;
+    text-transform: uppercase; color: #fbbf24; margin-bottom: 6px;
+  }
+  .gq-payment-note {
+    font-size: 11px; color: var(--color-muted); margin-top: 6px;
+  }
+  .gq-expired-bar {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--color-muted);
+  }
+  .gq-expired-dot { width: 8px; height: 8px; border-radius: 50%; background: #4ade80; animation: pulse 1.5s infinite; }
+  @keyframes pulse { 0%,100%{ opacity:1 } 50%{ opacity:.4 } }
+  .gq-expired-dot.warn { background: #facc15; }
+  .gq-expired-dot.dead { background: #f87171; animation: none; }
+  .gq-action-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 700;
+    cursor: pointer; background: rgba(99,130,255,0.08);
+    border: 1px solid rgba(99,130,255,0.2); color: #93b4ff;
+    transition: all .18s;
+  }
+  .gq-action-btn:hover { background: rgba(99,130,255,0.15); border-color: rgba(99,130,255,0.35); }
+  .gq-hint { font-size: 11px; color: var(--color-muted); }
+  .gq-empty {
+    text-align: center; padding: 3rem 1rem; color: var(--color-muted);
+  }
+  .gq-empty-icon { font-size: 2.5rem; margin-bottom: .75rem; opacity: .35; }
+  .gq-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    width: 100%;
+    max-width: 440px;
+  }
+  .gq-detail-item {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--color-line);
+    border-radius: 12px;
+    padding: 10px 12px;
+    text-align: left;
+    transition: border-color .2s;
+  }
+  .gq-detail-item:hover { border-color: rgba(99,130,255,0.2); }
+  .gq-detail-value {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-ink);
+    word-break: break-word;
+  }
+  @media (max-width: 768px) {
+    .gq-detail-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<div class="qris-page-header" style="padding-bottom:10px">
+  <h1 class="qris-page-title">Generate <span>QR</span></h1>
+  <p class="qris-section-sub mt-1">Generate barcode QRIS dinamis, simpan transaksi, dan sinkronkan langsung ke menu Transaction.</p>
+</div>
+
+<% if (accounts.length === 0) { %>
+<div class="qris-card overflow-hidden">
+  <div class="gq-empty">
+    <div class="gq-empty-icon"><i class="fa-solid fa-qrcode"></i></div>
+    <p style="font-weight:700;color:var(--color-ink);margin-bottom:4px">Tidak ada akun aktif</p>
+    <p>Tambahkan akun QRIS dengan session token di menu <strong>Akun QRIS</strong>.</p>
+  </div>
+</div>
+<% } else { %>
+
+<div class="qris-card overflow-hidden">
+  <!-- Site selector (Fase 4: WAJIB pilih Site dulu) -->
+  <div class="gq-toolbar">
+    <p class="gq-label" style="margin-bottom:0">Pilih Site <span style="color:#f87171">*</span></p>
+  </div>
+  <div style="padding:12px 20px;border-bottom:1px solid var(--color-line)">
+    <select id="site-select" class="qris-input" style="height:48px;width:100%" onchange="selectSite(this.value)">
+      <option value="">— Pilih Site —</option>
+      <% sites.forEach(function(s){ %>
+        <option value="<%= s.id %>"><%= s.name %></option>
+      <% }); %>
+      <% if (hasUnassigned) { %>
+        <option value="none">Tanpa site</option>
+      <% } %>
+    </select>
+  </div>
+
+  <!-- Account selector toolbar -->
+  <div class="gq-toolbar">
+    <p class="gq-label" style="margin-bottom:0">Pilih Akun <span style="color:#f87171">*</span></p>
+  </div>
+  <div style="padding:12px 20px;border-bottom:1px solid var(--color-line)">
+    <div style="position:relative">
+      <button class="gq-scroll-btn" style="left:0" onclick="scrollTabs(-1)"><i class="fa-solid fa-chevron-left"></i></button>
+      <button class="gq-scroll-btn" style="right:0" onclick="scrollTabs(1)"><i class="fa-solid fa-chevron-right"></i></button>
+      <div class="gq-tab-bar">
+        <div class="gq-tab-pills">
+          <% accounts.forEach((acct, idx) => { %>
+          <button class="gq-tab"
+                  data-id="<%= acct.id %>"
+                  data-site="<%= acct.siteId || 'none' %>"
+                  onclick="selectAccount('<%= acct.id %>', this)">
+            <span class="t-num">Akun <%= idx + 1 %></span>
+            <span class="t-name"><%= acct.merchantName %></span>
+          </button>
+          <% }) %>
+        </div>
+      </div>
+      <p id="account-empty-hint" style="font-size:12px;color:var(--color-muted);padding:8px 2px;margin:0">Pilih site dulu untuk melihat akun.</p>
+    </div>
+  </div>
+
+  <!-- Form body -->
+  <div style="padding:20px 24px">
+    <p class="gq-label">Username</p>
+    <input id="username-input" class="qris-input" type="text" maxlength="100"
+           placeholder="Masukkan username yang mengajukan generate barcode"
+           style="margin-bottom:14px;height:52px" />
+
+    <p class="gq-label">Nominal Pembayaran</p>
+    <div class="gq-amount-wrap" style="margin-bottom:14px">
+      <span class="gq-amount-prefix">Rp</span>
+      <input id="amount-input" class="gq-amount-input" type="text"
+             inputmode="numeric" placeholder="0"
+             oninput="formatAmountInput(this)" />
+    </div>
+    <div class="gq-quick-amounts">
+      <% [1,5,10,100,1000,5000,10000].forEach(n => { %>
+      <button class="gq-quick-pill"
+              onclick="setAmount(<%= n %>)">
+        Rp <%= n.toLocaleString('id-ID') %>
+      </button>
+      <% }) %>
+    </div>
+    <p id="amount-hint" style="font-size:11px;color:var(--color-muted);margin:-4px 0 14px 2px">Batas nominal akun ini: Rp 1 – Rp 10.000.000</p>
+    <button id="generate-btn" class="gq-generate-btn" onclick="generateQr()" disabled>
+      <i class="fa-solid fa-qrcode"></i>
+      <span>Generate Barcode</span>
+    </button>
+    <p id="form-error" style="display:none;margin-top:8px;font-size:12px;color:#f87171;text-align:center"></p>
+  </div>
+</div>
+
+<div class="qris-card overflow-hidden" id="qr-output" style="display:none">
+  <div class="gq-qr-area">
+    <span class="gq-merchant-badge" id="qr-merchant">—</span>
+    <div class="gq-qr-box">
+      <canvas id="qr-canvas" width="300" height="330"></canvas>
+    </div>
+
+    <div class="gq-payment-box">
+      <p class="gq-payment-label">Nominal Yang Harus Dibayar</p>
+      <p class="gq-amount-badge" id="qr-amount" style="font-size:26px">—</p>
+      <p class="gq-payment-note">Transaksi ini otomatis tercatat ke menu Transaction dengan status UNPAID.</p>
+    </div>
+
+    <div class="gq-expired-bar">
+      <span class="gq-expired-dot" id="exp-dot"></span>
+      <span id="exp-text">—</span>
+    </div>
+
+    <div class="gq-detail-grid">
+      <div class="gq-detail-item">
+        <p class="gq-label" style="margin-bottom:4px">QR ID</p>
+        <p id="qr-id" class="gq-detail-value">—</p>
+      </div>
+      <div class="gq-detail-item">
+        <p class="gq-label" style="margin-bottom:4px">Username</p>
+        <p id="qr-username" class="gq-detail-value">—</p>
+      </div>
+      <div class="gq-detail-item">
+        <p class="gq-label" style="margin-bottom:4px">Created</p>
+        <p id="qr-created" class="gq-detail-value">—</p>
+      </div>
+      <div class="gq-detail-item">
+        <p class="gq-label" style="margin-bottom:4px">Expires</p>
+        <p id="qr-expires-at" class="gq-detail-value">—</p>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px">
+      <button class="gq-action-btn" onclick="copyQrisString(this)">
+        <i class="fa-regular fa-copy"></i> Salin QRIS
+      </button>
+      <button class="gq-action-btn" onclick="downloadQr()">
+        <i class="fa-solid fa-download"></i> Unduh QR
+      </button>
+    </div>
+    <p id="qr-note" class="gq-hint">—</p>
+  </div>
+</div>
+
+<% } %>
+
+<script src="<%= url('/js/qrcode.min.js') %>"></script>
+
+<script>
+(function () {
+  const generateUrl = '<%= url('/dashboard/api/generate-qr') %>';
+  const termsUrl = '<%= url('/dashboard/api/qris-template') %>';
+  const statusUrl = '<%= url('/dashboard/api/generate-qr/status') %>';
+  const accounts = <%- JSON.stringify(accounts.map(a => ({ id: a.id, code: a.code, merchantName: a.merchantName, siteId: a.siteId || 'none' }))) %>;
+
+  let currentAccountId = null;
+  let currentSiteId = '';
+  let expiredTimer = null;
+  let expiredAt = null;
+  let statusTimer = null;        // FIX #10: polling status bayar
+  let lastGenerated = null;      // FIX #9: data QR terakhir utk nama file unduh
+  // FIX #7: batas nominal (min/max) per akun dari merchant OrderKuota.
+  const acctTermsCache = {};
+  let acctTerms = { min: 1, max: 10000000 };
+
+  window.selectAccount = function (accountId, el) {
+    currentAccountId = accountId;
+    document.querySelectorAll('.gq-tab').forEach(t => t.classList.remove('active'));
+    el?.classList.add('active');
+    document.getElementById('qr-output').style.display = 'none';
+    stopStatusPolling();
+    loadAccountTerms(accountId);
+    validateForm();
+  };
+
+  // Fase 4: wajib pilih Site dulu -> chip akun difilter ke site itu; auto-pilih akun pertama.
+  window.selectSite = function (siteId) {
+    currentSiteId = siteId;
+    currentAccountId = null;
+    const out = document.getElementById('qr-output'); if (out) out.style.display = 'none';
+    stopStatusPolling();
+    const hint = document.getElementById('account-empty-hint');
+    let firstVisible = null;
+    document.querySelectorAll('.gq-tab').forEach(function (p) {
+      const match = !!siteId && p.dataset.site === siteId;
+      p.style.display = match ? '' : 'none';
+      p.classList.remove('active');
+      if (match && !firstVisible) firstVisible = p;
+    });
+    if (!siteId) {
+      if (hint) { hint.style.display = ''; hint.textContent = 'Pilih site dulu untuk melihat akun.'; }
+      validateForm();
+      return;
+    }
+    if (firstVisible) {
+      if (hint) hint.style.display = 'none';
+      selectAccount(firstVisible.dataset.id, firstVisible);
+    } else {
+      if (hint) { hint.style.display = ''; hint.textContent = 'Belum ada akun di site ini. Assign akun di menu Akun QRIS.'; }
+      validateForm();
+    }
+  };
+
+  // FIX #7: ambil batas min/max merchant (endpoint sudah ada tapi dulu tak dipakai). Cache per akun.
+  async function loadAccountTerms(accountId) {
+    if (!accountId) return;
+    if (acctTermsCache[accountId]) { acctTerms = acctTermsCache[accountId]; updateAmountHint(); validateForm(); return; }
+    acctTerms = { min: 1, max: 10000000 };
+    updateAmountHint();
+    try {
+      const r = await fetch(termsUrl + '?accountId=' + encodeURIComponent(accountId), { cache: 'no-store' });
+      const d = await r.json();
+      if (d && d.ok) {
+        const min = Number(d.min) > 0 ? Math.floor(Number(d.min)) : 1;
+        const max = Number(d.max) > 0 ? Math.floor(Number(d.max)) : 10000000;
+        acctTerms = { min, max: Math.min(max, 10000000) };
+        acctTermsCache[accountId] = acctTerms;
+      }
+    } catch (_) { /* pakai default kalau gagal */ }
+    if (accountId === currentAccountId) { updateAmountHint(); validateForm(); }
+  }
+
+  function updateAmountHint() {
+    const hint = document.getElementById('amount-hint');
+    if (!hint) return;
+    const amt = getRawAmount();
+    const out = amt > 0 && (amt < acctTerms.min || amt > acctTerms.max);
+    hint.textContent = 'Batas nominal akun ini: Rp ' + acctTerms.min.toLocaleString('id-ID') + ' – Rp ' + acctTerms.max.toLocaleString('id-ID');
+    hint.style.color = out ? '#f87171' : 'var(--color-muted)';
+  }
+
+  window.scrollTabs = function (dir) {
+    document.querySelector('.gq-tab-bar').scrollBy({ left: dir * 200, behavior: 'smooth' });
+  };
+
+  window.formatAmountInput = function (input) {
+    const raw = input.value.replace(/\D/g, '');
+    const num = parseInt(raw || '0', 10);
+    input.dataset.raw = raw;
+    input.value = raw === '' || num === 0 ? '' : num.toLocaleString('id-ID');
+    validateForm();
+  };
+
+  window.setAmount = function (n) {
+    const input = document.getElementById('amount-input');
+    input.dataset.raw = String(n);
+    input.value = n.toLocaleString('id-ID');
+    validateForm();
+  };
+
+  function getRawAmount() {
+    const input = document.getElementById('amount-input');
+    return parseInt(input.dataset.raw || '0', 10) || 0;
+  }
+
+  function getUsername() {
+    return document.getElementById('username-input').value.trim();
+  }
+
+  function validateForm() {
+    const btn = document.getElementById('generate-btn');
+    // FIX #4: saat tak ada akun aktif, form (tombol/input) tidak dirender -> jangan crash.
+    if (!btn) return;
+    const amt = getRawAmount();
+    // FIX #7: nonaktifkan tombol jika nominal di luar batas min/max merchant.
+    const withinRange = amt >= Math.max(1, acctTerms.min) && amt <= acctTerms.max;
+    btn.disabled = !currentSiteId || !currentAccountId || !withinRange || !getUsername();
+    updateAmountHint();
+  }
+
+  function formatDateTime(value) {
+    // FIX #8: tampilkan dalam WIB (Asia/Jakarta) konsisten dengan server, bukan zona browser.
+    const date = new Date(value);
+    try {
+      const parts = new Intl.DateTimeFormat('id-ID', {
+        timeZone: 'Asia/Jakarta', day: '2-digit', month: '2-digit', year: 'numeric',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).formatToParts(date);
+      const g = (t) => (parts.find(x => x.type === t) || {}).value || '00';
+      return `${g('day')}-${g('month')}-${g('year')} ${g('hour')}:${g('minute')}:${g('second')} WIB`;
+    } catch (_) {
+      const dd = String(date.getDate()).padStart(2, '0');
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      return `${dd}-${mm}-${String(date.getFullYear())} ${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}:${String(date.getSeconds()).padStart(2,'0')}`;
+    }
+  }
+
+  function startExpiredCountdown(expiresAtIso) {
+    if (expiredTimer) clearInterval(expiredTimer);
+    // Reset gaya inline dari status "paid" QR sebelumnya (biar countdown baru normal).
+    const rd = document.getElementById('exp-dot'); const rt = document.getElementById('exp-text');
+    if (rd) { rd.style.background = ''; rd.className = 'gq-expired-dot'; }
+    if (rt) { rt.style.fontWeight = ''; rt.style.color = ''; }
+    expiredAt = new Date(expiresAtIso).getTime();
+
+    function tick() {
+      const remaining = Math.max(0, Math.round((expiredAt - Date.now()) / 1000));
+      const dot  = document.getElementById('exp-dot');
+      const text = document.getElementById('exp-text');
+
+      if (remaining === 0) {
+        clearInterval(expiredTimer);
+        dot.className = 'gq-expired-dot dead';
+        text.textContent = 'QR sudah kadaluarsa — status menjadi EXPIRED';
+        text.style.color = '#f87171';
+        return;
+      }
+
+      const minutes = Math.floor(remaining / 60);
+      const seconds = remaining % 60;
+      text.textContent = `Hitung mundur ${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+      text.style.color = '';
+      dot.className = remaining <= 60 ? 'gq-expired-dot warn' : 'gq-expired-dot';
+    }
+
+    tick();
+    expiredTimer = setInterval(tick, 1000);
+  }
+
+  // ── FIX #10: polling status pembayaran (paid/expired) ──────────────────────
+  function stopStatusPolling() { if (statusTimer) { clearInterval(statusTimer); statusTimer = null; } }
+
+  function markPaid(paidAtIso) {
+    stopStatusPolling();
+    if (expiredTimer) { clearInterval(expiredTimer); expiredTimer = null; }
+    const dot = document.getElementById('exp-dot');
+    const text = document.getElementById('exp-text');
+    if (dot) { dot.className = 'gq-expired-dot'; dot.style.background = '#22c55e'; }
+    if (text) {
+      let jam = '';
+      try { jam = new Date(paidAtIso).toLocaleTimeString('id-ID', { timeZone: 'Asia/Jakarta', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }); } catch (_) {}
+      text.textContent = '✅ SUDAH DIBAYAR' + (jam ? (' · ' + jam + ' WIB') : '');
+      text.style.color = '#22c55e';
+      text.style.fontWeight = '800';
+    }
+    const note = document.querySelector('#qr-output .gq-payment-note');
+    if (note) { note.textContent = 'Pembayaran diterima — transaksi menjadi PAID di menu Transaction.'; note.style.color = '#86efac'; }
+  }
+
+  function startStatusPolling(transactionId) {
+    stopStatusPolling();
+    if (!transactionId) return;
+    statusTimer = setInterval(async () => {
+      try {
+        const r = await fetch(statusUrl + '?id=' + encodeURIComponent(transactionId), { cache: 'no-store' });
+        const d = await r.json();
+        if (!d || !d.ok) return;
+        if (d.status === 'paid') markPaid(d.paidAt);
+        else if (d.status === 'expired') stopStatusPolling();
+      } catch (_) { /* diam, coba lagi */ }
+    }, 3000);
+  }
+
+  // Gambar QR + teks peringatan "1 kali pembayaran" LANGSUNG ke dalam gambar (ikut saat diunduh/dibagikan).
+  async function renderQrWithNote(canvas, payload, siteLabel) {
+    const QR = 260, W = 300, gapTop = 16;
+    const site = String(siteLabel || '').trim();
+    const siteH = (site && site !== '-') ? 26 : 0;   // ruang header site (watermark)
+    const padTop = 12 + siteH;
+    const tmp = document.createElement('canvas');
+    await QRCode.toCanvas(tmp, payload, { width: QR, margin: 2, errorCorrectionLevel: 'M', color: { dark: '#000000', light: '#ffffff' } });
+    const line1 = 'QR ini hanya untuk 1 kali pembayaran';
+    const line2 = 'Jika terlanjur bayar 2 kali, hubungi CS';
+    const textTop = padTop + QR + gapTop;
+    canvas.width = W;
+    canvas.height = textTop + 44;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    // Bonus: identitas SITE (watermark) di atas QR — ikut saat diunduh/dibagikan.
+    if (siteH) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      let fs = 15;
+      ctx.font = 'bold ' + fs + 'px Arial, sans-serif';
+      while (ctx.measureText(site).width > W - 20 && fs > 10) { fs--; ctx.font = 'bold ' + fs + 'px Arial, sans-serif'; }
+      ctx.fillStyle = '#6d28d9';
+      ctx.fillText(site, W / 2, 12);
+    }
+    ctx.drawImage(tmp, (W - QR) / 2, padTop, QR, QR);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    // Baris 1 (amber tegas), auto-kecilkan font bila kepanjangan.
+    let f1 = 13;
+    ctx.font = 'bold ' + f1 + 'px Arial, sans-serif';
+    while (ctx.measureText(line1).width > W - 16 && f1 > 9) { f1--; ctx.font = 'bold ' + f1 + 'px Arial, sans-serif'; }
+    ctx.fillStyle = '#b45309';
+    ctx.fillText(line1, W / 2, textTop);
+    // Baris 2 (abu gelap).
+    let f2 = 12;
+    ctx.font = f2 + 'px Arial, sans-serif';
+    while (ctx.measureText(line2).width > W - 16 && f2 > 9) { f2--; ctx.font = f2 + 'px Arial, sans-serif'; }
+    ctx.fillStyle = '#374151';
+    ctx.fillText(line2, W / 2, textTop + f1 + 7);
+  }
+
+  window.generateQr = async function () {
+    const amount = getRawAmount();
+    const username = getUsername();
+    const errEl = document.getElementById('form-error');
+    errEl.style.display = 'none';
+
+    if (!username) {
+      errEl.textContent = 'Username wajib diisi';
+      errEl.style.display = '';
+      return;
+    }
+
+    const btn = document.getElementById('generate-btn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> <span>Membuat transaksi...</span>';
+
+    try {
+      const response = await fetch(generateUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          accountId: currentAccountId,
+          amount,
+          username,
+        }),
+      });
+
+      const result = await response.json().catch(() => ({ ok: false, error: 'Respons server tidak valid' }));
+      if (!result.ok) {
+        throw new Error(result.error || 'Gagal membuat transaksi QR');
+      }
+
+      const tx = result.data;
+      await renderQrWithNote(document.getElementById('qr-canvas'), tx.qrPayload, tx.siteLabel);
+
+      document.getElementById('qr-merchant').textContent = `${tx.qrisAccount.code} • ${tx.qrisAccount.merchantName}`;
+      document.getElementById('qr-amount').textContent = 'Rp\u00a0' + Number(tx.amount).toLocaleString('id-ID');
+      document.getElementById('qr-id').textContent = tx.qrId;
+      document.getElementById('qr-username').textContent = tx.username;
+      document.getElementById('qr-created').textContent = formatDateTime(tx.createdAt);
+      document.getElementById('qr-expires-at').textContent = formatDateTime(tx.expiresAt);
+      document.getElementById('qr-note').textContent = tx.note || '-';
+      document.getElementById('qr-canvas').dataset.qrisStr = tx.qrPayload;
+
+      // FIX #9: simpan data QR yang BENAR-BENAR tergenerate utk nama file unduh (bukan input saat ini).
+      lastGenerated = { code: tx.qrisAccount.code, finalAmount: Number(tx.amount), qrId: tx.qrId };
+
+      startExpiredCountdown(tx.expiresAt);
+      // FIX #10: pantau status bayar live -> tampilkan "SUDAH DIBAYAR" otomatis saat lunas.
+      startStatusPolling(tx.transactionId);
+
+      document.getElementById('qr-output').style.display = '';
+      document.getElementById('qr-output').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      errEl.textContent = err.message || 'Terjadi kesalahan';
+      errEl.style.display = '';
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa-solid fa-qrcode"></i> <span>Generate Barcode</span>';
+      validateForm();
+    }
+  };
+
+  window.copyQrisString = function (btn) {
+    const canvas = document.getElementById('qr-canvas');
+    const qrisStr = canvas.dataset.qrisStr;
+    if (!qrisStr) return;
+    // FIX #5: pegang referensi tombol dari argumen (this), bukan event.currentTarget yang
+    // sudah null saat promise clipboard resolve (window.event fragile di Firefox/async).
+    navigator.clipboard.writeText(qrisStr).then(() => {
+      if (!btn) return;
+      const original = btn.innerHTML;
+      btn.innerHTML = '<i class="fa-solid fa-check"></i> Tersalin!';
+      setTimeout(() => { btn.innerHTML = original; }, 1500);
+    }).catch(() => {});
+  };
+
+  window.downloadQr = function () {
+    const canvas = document.getElementById('qr-canvas');
+    // FIX #9: pakai data QR yang tergenerate (kode akun + finalAmount), bukan input yang mungkin sudah diubah.
+    const code = (lastGenerated && lastGenerated.code) || (accounts.find(a => a.id === currentAccountId) || {}).code || 'QR';
+    const amount = (lastGenerated && lastGenerated.finalAmount != null) ? lastGenerated.finalAmount : getRawAmount();
+    const link = document.createElement('a');
+    link.download = `QRIS_${code}_Rp${amount}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
+  const amountInput = document.getElementById('amount-input');
+  if (amountInput) {
+    amountInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') generateQr();
+    });
+  }
+
+  const usernameInput = document.getElementById('username-input');
+  if (usernameInput) {
+    usernameInput.addEventListener('input', validateForm);
+    usernameInput.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') generateQr();
+    });
+  }
+
+  // Fase 4: mulai tanpa site -> chip akun disembunyikan, tombol nonaktif sampai Site+Akun dipilih.
+  selectSite('');
+  validateForm();
+})();
+</script>

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%- typeof title !== 'undefined' ? `${title} | ` : '' %>QRISKITA</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+    rel="stylesheet"
+  />
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    crossorigin="anonymous"
+  />
+  <link rel="stylesheet" href="<%= url('/css/tailwind.css') %>" />
+  <link rel="stylesheet" href="<%= url('/css/app.css') %>" />
+
+  <style>
+    :root {
+      --brand-700: #15803d;
+      --brand-600: #16a34a;
+      --brand-500: #22c55e;
+      --brand-400: #4ade80;
+      --brand-50:  #f0fdf4;
+      --ink:       #0f172a;
+      --ink-muted: #64748b;
+      --line:      #e2e8f0;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body.qris-auth-shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      background: #ffffff;
+      color: var(--ink);
+      font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Left brand panel ─────────────────────────── */
+    .auth-aside {
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 56px 52px;
+      color: #fff;
+      background: linear-gradient(160deg, #166534 0%, #15803d 45%, #16a34a 100%);
+    }
+
+    .auth-aside::after {
+      content: "";
+      position: absolute;
+      right: -140px;
+      bottom: -140px;
+      width: 460px;
+      height: 460px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .auth-aside::before {
+      content: "";
+      position: absolute;
+      right: 40px;
+      top: -120px;
+      width: 320px;
+      height: 320px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .auth-aside-brand {
+      position: relative;
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .auth-aside-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: grid;
+      place-items: center;
+      font-weight: 800;
+      font-size: 1rem;
+      letter-spacing: 0.04em;
+      color: var(--brand-700);
+      background: #fff;
+    }
+
+    .auth-aside-brand strong {
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+    }
+
+    .auth-aside-copy {
+      position: relative;
+      z-index: 1;
+      max-width: 380px;
+    }
+
+    .auth-aside-copy h2 {
+      margin: 0 0 14px;
+      font-size: 2rem;
+      line-height: 1.2;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .auth-aside-copy p {
+      margin: 0;
+      font-size: 0.98rem;
+      line-height: 1.7;
+      color: rgba(255, 255, 255, 0.82);
+    }
+
+    .auth-aside-list {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      gap: 14px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .auth-aside-list li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 0.92rem;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .auth-aside-list i {
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      font-size: 0.72rem;
+      background: rgba(255, 255, 255, 0.14);
+    }
+
+    /* ── Right form panel ─────────────────────────── */
+    .auth-main {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 24px;
+    }
+
+    .auth-card {
+      width: 100%;
+      max-width: 400px;
+    }
+
+    @media (max-width: 900px) {
+      body.qris-auth-shell {
+        grid-template-columns: 1fr;
+      }
+      .auth-aside {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body class="qris-auth-shell">
+  <aside class="auth-aside">
+    <div class="auth-aside-brand">
+      <div class="auth-aside-mark">QK</div>
+      <strong>QRISKITA</strong>
+    </div>
+
+    <div class="auth-aside-copy">
+      <h2>Konsol Admin Merchant</h2>
+      <p>Kelola transaksi, mutasi, dan settlement QRIS dalam satu dasbor yang aman dan terpadu.</p>
+    </div>
+
+    <ul class="auth-aside-list">
+      <li><i class="fa-solid fa-check"></i> Pemantauan transaksi real-time</li>
+      <li><i class="fa-solid fa-check"></i> Rekonsiliasi mutasi otomatis</li>
+      <li><i class="fa-solid fa-check"></i> Akses aman untuk operator internal</li>
+    </ul>
+  </aside>
+
+  <main class="auth-main">
+    <div class="auth-card">
+      <%- body %>
+    </div>
+  </main>
+</body>
+</html>

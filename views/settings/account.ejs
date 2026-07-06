@@ -1,0 +1,1367 @@
+<style>
+/* ── Account Settings Page ───────────────────────────────────────── */
+.acset-tab-bar {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.acset-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+  color: var(--muted);
+}
+
+.acset-tab-btn:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--ink);
+}
+
+.acset-tab-btn.active {
+  background: var(--accent, #e84545);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(232,69,69,0.3);
+}
+
+html.light .acset-tab-btn:hover {
+  background: rgba(0,0,0,0.05);
+}
+
+.acset-tab-content { display: none; }
+.acset-tab-content.active { display: block; }
+
+.acset-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 28px;
+  margin-bottom: 20px;
+}
+
+.acset-card-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.acset-card-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  font-size: 1.2rem;
+}
+
+.acset-card-icon.purple { background: rgba(124,58,237,0.12); color: #a78bfa; }
+.acset-card-icon.red    { background: rgba(232,69,69,0.12);  color: #f87171; }
+.acset-card-icon.blue   { background: rgba(59,130,246,0.12); color: #60a5fa; }
+
+.acset-card-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0 0 3px;
+}
+
+.acset-card-sub {
+  font-size: 0.78rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.acset-label {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+.acset-input {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: var(--ink);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.acset-input::placeholder { color: rgba(154,144,133,0.4); }
+
+.acset-input:focus {
+  border-color: rgba(232,69,69,0.45);
+  box-shadow: 0 0 0 3px rgba(232,69,69,0.1);
+}
+
+.acset-info-box {
+  border-radius: 12px;
+  padding: 16px 18px;
+  margin-top: 8px;
+}
+
+.acset-info-box.purple {
+  background: rgba(124,58,237,0.07);
+  border: 1px solid rgba(124,58,237,0.18);
+}
+
+.acset-info-box.blue {
+  background: rgba(59,130,246,0.07);
+  border: 1px solid rgba(59,130,246,0.18);
+}
+
+.acset-info-box.yellow {
+  background: rgba(245,158,11,0.07);
+  border: 1px solid rgba(245,158,11,0.18);
+}
+
+.acset-info-box-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.acset-info-box.purple .acset-info-box-title { color: #c4b5fd; }
+.acset-info-box.blue .acset-info-box-title   { color: #93c5fd; }
+.acset-info-box.yellow .acset-info-box-title { color: #fcd34d; }
+
+.acset-info-box.purple p, .acset-info-box.purple li,
+.acset-info-box.purple div { color: #c4b5fd; font-size: 0.82rem; }
+.acset-info-box.blue p, .acset-info-box.blue li,
+.acset-info-box.blue div   { color: #93c5fd; font-size: 0.82rem; }
+.acset-info-box.yellow p, .acset-info-box.yellow li,
+.acset-info-box.yellow div { color: #fcd34d; font-size: 0.82rem; }
+
+.acset-code-block {
+  background: #0d1117;
+  border-radius: 10px;
+  padding: 16px;
+  overflow-x: auto;
+  font-size: 0.75rem;
+  color: #7ee787;
+  font-family: 'Fira Code', 'Cascadia Code', monospace;
+  line-height: 1.6;
+}
+
+.acset-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background: var(--accent, #e84545);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  justify-content: center;
+  box-shadow: 0 4px 14px rgba(232,69,69,0.25);
+}
+
+.acset-btn-primary:hover {
+  filter: brightness(1.1);
+  transform: translateY(-1px);
+}
+
+.acset-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.acset-btn-secondary:hover {
+  background: rgba(255,255,255,0.05);
+  color: var(--ink);
+  border-color: rgba(255,255,255,0.15);
+}
+
+html.light .acset-btn-secondary:hover {
+  background: rgba(0,0,0,0.04);
+  border-color: var(--line);
+}
+
+/* WG Site Cards */
+.acset-site-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.acset-site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  background: var(--card-hi, #1e2129);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.acset-site-header:hover {
+  background: rgba(255,255,255,0.04);
+}
+
+html.light .acset-site-header {
+  background: var(--panel-2);
+}
+
+html.light .acset-site-header:hover {
+  background: rgba(0,0,0,0.04);
+}
+
+.acset-site-body {
+  display: none;
+  border-top: 1px solid var(--line);
+  padding: 20px;
+  background: var(--card);
+}
+
+.acset-site-body.open { display: block; }
+
+.acset-site-input {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--ink);
+  font-size: 0.83rem;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.acset-site-input::placeholder { color: rgba(154,144,133,0.4); }
+.acset-site-input:focus { border-color: rgba(232,69,69,0.4); }
+
+.acset-site-select {
+  width: 100%;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: var(--ink);
+  font-size: 0.83rem;
+  outline: none;
+}
+
+/* Toggle switch */
+.acset-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+/* QRIS account card */
+.qris-acc-card {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px;
+  transition: all 0.2s;
+}
+
+.qris-acc-card.is-active {
+  border-color: rgba(52,211,153,0.3);
+  background: rgba(52,211,153,0.04);
+}
+
+.qris-acc-card.is-inactive {
+  opacity: 0.6;
+}
+</style>
+
+<!-- Page header -->
+<div class="qris-page-header">
+  <h1 class="qris-page-title">Pengaturan <span>Akun</span></h1>
+  <p class="qris-section-sub mt-1">Konfigurasi webhook, web game, dan akun QRIS Anda</p>
+</div>
+
+<!-- Tab Bar -->
+<div class="acset-tab-bar mb-6">
+  <button id="tab-btn-webhook" onclick="acsetTab('webhook')" class="acset-tab-btn active">
+    <i class="fa-solid fa-link"></i> Webhook
+  </button>
+  <button id="tab-btn-webgame" onclick="acsetTab('webgame')" class="acset-tab-btn">
+    <i class="fa-solid fa-gamepad"></i> Web Game
+  </button>
+  <button id="tab-btn-qris-accounts" onclick="acsetTab('qris-accounts')" class="acset-tab-btn">
+    <i class="fa-solid fa-qrcode"></i> Akun QRIS
+  </button>
+</div>
+
+<!-- ==================== TAB: WEBHOOK ==================== -->
+<div id="acset-content-webhook" class="acset-tab-content active">
+  <div class="acset-card">
+    <div class="acset-card-header">
+      <div class="acset-card-icon purple"><i class="fa-solid fa-link"></i></div>
+      <div>
+        <p class="acset-card-title">Konfigurasi Webhook</p>
+        <p class="acset-card-sub">Terima notifikasi pembayaran secara programmatic</p>
+      </div>
+    </div>
+
+    <form method="POST" class="space-y-5">
+      <div>
+        <label class="acset-label"><i class="fa-solid fa-link mr-1"></i> Webhook URL</label>
+        <input type="url" name="webhook_url" value="" class="acset-input" placeholder="https://yourdomain.com/webhook">
+        <p class="mt-1" style="font-size:0.75rem;color:var(--muted)"><i class="fa-solid fa-circle-info mr-1"></i>Kami akan mengirim HTTP POST ke URL ini ketika status pembayaran berubah</p>
+      </div>
+
+      <div class="acset-info-box purple">
+        <p class="acset-info-box-title"><i class="fa-solid fa-code"></i> Contoh Payload Webhook</p>
+        <pre class="acset-code-block"><code>{
+  "event": "payment.paid",
+  "transaction_id": "TRX-123ABC",
+  "order_id": "ORD-12345",
+  "amount": 50000,
+  "customer_name": "John Doe",
+  "status": "paid",
+  "paid_at": "2025-11-18 15:30:45"
+}</code></pre>
+      </div>
+
+      <div class="acset-info-box blue">
+        <p class="acset-info-box-title"><i class="fa-solid fa-bell"></i> Event Webhook</p>
+        <div class="space-y-2">
+          <div style="display:flex;align-items:flex-start;gap:8px"><i class="fa-solid fa-circle-check" style="color:#4ade80;margin-top:2px"></i><div><strong>payment.paid</strong> — Dikirim ketika pembayaran berhasil</div></div>
+          <div style="display:flex;align-items:flex-start;gap:8px"><i class="fa-solid fa-clock" style="color:#fbbf24;margin-top:2px"></i><div><strong>payment.pending</strong> — Dikirim ketika QRIS baru dibuat</div></div>
+          <div style="display:flex;align-items:flex-start;gap:8px"><i class="fa-solid fa-circle-xmark" style="color:#f87171;margin-top:2px"></i><div><strong>payment.expired</strong> — Dikirim ketika pembayaran kadaluarsa</div></div>
+        </div>
+      </div>
+
+      <div class="acset-info-box yellow">
+        <p class="acset-info-box-title"><i class="fa-solid fa-shield-halved"></i> Tips Keamanan</p>
+        <ul style="list-style:none;padding:0;margin:0;display:grid;gap:6px">
+          <li>• Selalu gunakan HTTPS untuk webhook URL Anda</li>
+          <li>• Validasi data payload di server Anda</li>
+          <li>• Verifikasi transaksi menggunakan API untuk mencegah penipuan</li>
+          <li>• Log semua panggilan webhook untuk debugging</li>
+          <li>• Return HTTP 200 status code untuk acknowledge receipt</li>
+        </ul>
+      </div>
+
+      <button type="submit" name="update_webhook" class="acset-btn-primary">
+        <i class="fa-solid fa-circle-check"></i> Simpan Webhook URL
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ==================== TAB: WEB GAME ==================== -->
+<div id="acset-content-webgame" class="acset-tab-content">
+
+  <!-- Sites Management -->
+  <div class="acset-card" style="padding:0;overflow:hidden">
+    <div style="padding:18px 22px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line)">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="acset-card-icon red"><i class="fa-solid fa-globe"></i></div>
+        <div>
+          <p class="acset-card-title" style="margin:0">Daftar Site</p>
+          <p class="acset-card-sub" id="wg-site-count">0 site terdaftar</p>
+        </div>
+      </div>
+      <button onclick="apAddSite()" class="acset-btn-primary" style="width:auto;padding:9px 18px;font-size:0.82rem">
+        <i class="fa-solid fa-plus"></i> Tambah Site
+      </button>
+    </div>
+    <div style="padding:16px" id="ap-sites-list">
+      <div id="wg-empty-state" style="padding:40px 0;text-align:center;color:var(--muted)">
+        <i class="fa-solid fa-earth-asia" style="font-size:2.5rem;opacity:0.25;display:block;margin-bottom:10px"></i>
+        <p style="font-size:0.85rem">Belum ada site. Klik <strong>Tambah Site</strong> untuk menambahkan.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- QuickPay Settings -->
+  <div class="acset-card">
+    <div class="acset-card-header">
+      <div class="acset-card-icon purple"><i class="fa-solid fa-gear"></i></div>
+      <div>
+        <p class="acset-card-title">Pengaturan QuickPay</p>
+        <p class="acset-card-sub">Konfigurasi embed widget pembayaran</p>
+      </div>
+    </div>
+    <form method="POST" class="space-y-4">
+      <input type="hidden" name="update_webgame" value="1">
+      <div class="acset-toggle-row">
+        <div>
+          <p style="font-weight:600;color:var(--ink);margin:0">Aktifkan QuickPay</p>
+          <p style="font-size:0.78rem;color:var(--muted);margin:3px 0 0">Terima pembayaran via embed widget</p>
+        </div>
+        <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer">
+          <input type="checkbox" name="embed_enabled" value="1" class="sr-only peer">
+          <div style="width:44px;height:24px;background:#374151;border-radius:999px;position:relative;transition:background 0.2s" class="peer peer-checked:bg-purple-600">
+            <div style="position:absolute;top:3px;left:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform 0.2s" class="peer-checked:translate-x-5"></div>
+          </div>
+        </label>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label class="acset-label">Min Amount (Rp)</label>
+          <input type="number" name="embed_min_amount" value="10000" min="1000" step="1000" class="acset-input">
+        </div>
+        <div>
+          <label class="acset-label">Max Amount (Rp)</label>
+          <input type="number" name="embed_max_amount" value="10000000" min="10000" step="1000" class="acset-input">
+        </div>
+      </div>
+      <div>
+        <label class="acset-label">Whitelist Users</label>
+        <input type="text" name="embed_whitelist_users" value="" placeholder="user1, user2 (kosongkan = semua)" class="acset-input">
+        <p style="font-size:0.73rem;color:var(--muted);margin-top:5px">Pisahkan dengan koma. Kosongkan untuk menerima dari semua user.</p>
+      </div>
+      <div class="acset-info-box purple">
+        <p class="acset-info-box-title"><i class="fa-solid fa-percent"></i> Fee Info</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>Fee Persen: <strong>0.0%</strong> <span style="font-size:0.72rem;opacity:0.6">(Global)</span></div>
+          <div>Fee Tetap: <strong>Rp0</strong></div>
+          <div style="grid-column:1/-1">Dibebankan ke: <strong>Merchant (dipotong saldo)</strong></div>
+        </div>
+        <p style="margin-top:8px;font-size:0.73rem;opacity:0.7"><i class="fa-solid fa-circle-info mr-1"></i>Fee diatur oleh admin.</p>
+      </div>
+      <button type="submit" class="acset-btn-primary">
+        <i class="fa-solid fa-circle-check"></i> Simpan Pengaturan
+      </button>
+    </form>
+  </div>
+</div>
+
+<!-- ==================== TAB: AKUN QRIS ==================== -->
+<div id="acset-content-qris-accounts" class="acset-tab-content">
+  <div class="acset-card">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:14px;margin-bottom:22px">
+      <div>
+        <h2 style="font-size:1rem;font-weight:700;color:var(--ink);display:flex;align-items:center;gap:8px;margin:0">
+          <i class="fa-solid fa-qrcode" style="color:var(--accent,#e84545)"></i> Akun QRIS
+        </h2>
+        <p style="font-size:0.8rem;color:var(--muted);margin:5px 0 0">
+          <span id="qris-active-count"><%= qrisAccounts.filter(function(a){return a.status==='active';}).length %></span>
+          aktif dari <%= qrisAccounts.length %> akun &mdash; Nonaktifkan untuk menghentikan penerimaan transaksi
+        </p>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a href="<%= url('/merchant-qr') %>" class="acset-btn-secondary">
+          <i class="fa-solid fa-pen-to-square"></i> Kelola Merchant QR
+        </a>
+        <button onclick="toggleAllAccounts(true)" class="acset-btn-secondary" style="color:#4ade80;border-color:rgba(74,222,128,0.3)">
+          <i class="fa-solid fa-check-double"></i> Aktifkan Semua
+        </button>
+        <button onclick="toggleAllAccounts(false)" class="acset-btn-secondary" style="color:#f87171;border-color:rgba(248,113,113,0.3)">
+          <i class="fa-solid fa-xmark"></i> Nonaktifkan Semua
+        </button>
+      </div>
+    </div>
+
+    <% if (qrisAccounts.length === 0) { %>
+    <div style="padding:48px 0;text-align:center;color:var(--muted)">
+      <i class="fa-solid fa-qrcode" style="font-size:2.5rem;opacity:0.25;display:block;margin-bottom:10px"></i>
+      <p style="font-size:0.85rem">Belum ada akun QRIS.
+        <a href="<%= url('/merchant-qr/new') %>" style="color:var(--accent,#e84545)">Tambah sekarang</a>.
+      </p>
+    </div>
+    <% } else { %>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px" id="qrisAccountGrid">
+      <% qrisAccounts.forEach(function(acc, idx) { %>
+      <div class="qris-acc-card <%= acc.status === 'active' ? 'is-active' : 'is-inactive' %>" id="qris-card-<%= acc.id %>">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="width:26px;height:26px;border-radius:8px;background:rgba(52,211,153,0.12);color:#34d399;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:800"><%= idx + 1 %></span>
+            <div>
+              <div style="font-size:0.85rem;font-weight:700;color:var(--ink)"><%= acc.merchantName %></div>
+              <div style="font-size:0.7rem;color:var(--muted);font-family:monospace"><%= acc.code %></div>
+            </div>
+          </div>
+          <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer">
+            <input type="checkbox" class="sr-only qris-toggle" data-account-id="<%= acc.id %>" <%= acc.status === 'active' ? 'checked' : '' %> onchange="toggleAccount('<%= acc.id %>', this.checked)">
+            <div style="width:36px;height:20px;background:<%= acc.status === 'active' ? '#34d399' : '#374151' %>;border-radius:999px;position:relative;transition:background 0.2s" id="qris-toggle-track-<%= acc.id %>">
+              <div style="position:absolute;top:2px;left:<%= acc.status === 'active' ? '18px' : '2px' %>;width:16px;height:16px;background:#fff;border-radius:50%;transition:left 0.2s" id="qris-toggle-thumb-<%= acc.id %>"></div>
+            </div>
+          </label>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:0.72rem;padding-top:10px;border-top:1px solid var(--line)">
+          <span id="qris-status-label-<%= acc.id %>" style="color:<%= acc.status === 'active' ? '#34d399' : 'var(--muted)' %>">
+            <i class="fa-solid fa-circle" style="font-size:6px;margin-right:4px"></i><%= acc.status === 'active' ? 'Aktif' : 'Nonaktif' %>
+          </span>
+          <a href="<%= url('/merchant-qr/' + acc.id + '/edit') %>" style="color:#60a5fa;font-size:0.72rem">
+            <i class="fa-solid fa-pencil mr-1"></i>Edit
+          </a>
+        </div>
+      </div>
+      <% }); %>
+    </div>
+    <% } %>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+/* ── Tab Switching ─────────────────────────────────────────────── */
+function acsetTab(name) {
+  document.querySelectorAll('.acset-tab-content').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll('.acset-tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('acset-content-' + name).classList.add('active');
+  document.getElementById('tab-btn-' + name).classList.add('active');
+  history.replaceState(null, '', '?tab=' + name);
+}
+
+/* ── QRIS Account Toggle ───────────────────────────────────────── */
+const ACCT_SYNC_KEY = 'qris:acct-status-sync';
+
+// Update tampilan 1 kartu akun (tanpa memanggil server)
+function applySettingsToggle(accountId, active) {
+  const card   = document.getElementById('qris-card-' + accountId);
+  const toggle = card ? card.querySelector('.qris-toggle') : null;
+  if (toggle) toggle.checked = active;
+  if (card) card.className = 'qris-acc-card ' + (active ? 'is-active' : 'is-inactive');
+  const track = document.getElementById('qris-toggle-track-' + accountId);
+  const thumb = document.getElementById('qris-toggle-thumb-' + accountId);
+  if (track) track.style.background = active ? '#34d399' : '#374151';
+  if (thumb) thumb.style.left = active ? '18px' : '2px';
+  const label = document.getElementById('qris-status-label-' + accountId);
+  if (label) {
+    label.style.color = active ? '#34d399' : 'var(--muted)';
+    label.innerHTML = '<i class="fa-solid fa-circle" style="font-size:6px;margin-right:4px"></i>' + (active ? 'Aktif' : 'Nonaktif');
+  }
+  const activeCount = document.querySelectorAll('.qris-toggle:checked').length;
+  const countEl = document.getElementById('qris-active-count');
+  if (countEl) countEl.textContent = activeCount;
+}
+
+// Siarkan perubahan status ke tab/halaman lain (mis. menu Kirim Uang)
+function broadcastAcctStatus(id, status) {
+  try { localStorage.setItem(ACCT_SYNC_KEY, JSON.stringify({ id: id, status: status, ts: Date.now() })); } catch (e) {}
+}
+
+async function toggleAccount(accountId, enabled) {
+  const card   = document.getElementById('qris-card-' + accountId);
+  const toggle = card ? card.querySelector('.qris-toggle') : null;
+  try {
+    const resp = await fetch('<%= url('/merchant-qr') %>/' + accountId + '/toggle-status', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+    });
+    const data = await resp.json();
+    if (data.success) {
+      const active = data.status === 'active';
+      applySettingsToggle(accountId, active);
+      broadcastAcctStatus(accountId, active ? 'active' : 'inactive');
+    } else {
+      if (toggle) toggle.checked = !enabled;
+      Swal.fire({ icon: 'error', title: 'Gagal', text: data.error || 'Gagal mengubah status', background: 'var(--card)', color: 'var(--ink)' });
+    }
+  } catch (err) {
+    if (toggle) toggle.checked = !enabled;
+    Swal.fire({ icon: 'error', title: 'Error', text: err.message, background: 'var(--card)', color: 'var(--ink)' });
+  }
+}
+
+// Sinkron lintas-tab: dengar perubahan status dari tab/halaman lain
+window.addEventListener('storage', function (ev) {
+  if (ev.key !== ACCT_SYNC_KEY || !ev.newValue) return;
+  try {
+    const msg = JSON.parse(ev.newValue);
+    if (msg && msg.id) applySettingsToggle(msg.id, msg.status === 'active');
+  } catch (e) {}
+});
+
+async function toggleAllAccounts(enabled) {
+  const toggles = document.querySelectorAll('.qris-toggle');
+  for (const toggle of toggles) {
+    const id = toggle.dataset.accountId;
+    if (!id || toggle.checked === enabled) continue;
+    toggle.checked = enabled;
+    await toggleAccount(id, enabled);
+  }
+}
+
+/* ── Web Game: localStorage-based Site CRUD ────────────────────── */
+const WG_KEY = 'hw_wg_sites';
+
+function wgLoadSites() {
+  try { return JSON.parse(localStorage.getItem(WG_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function wgSaveSites(sites) { localStorage.setItem(WG_KEY, JSON.stringify(sites)); }
+function wgGenKey() { return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2,'0')).join(''); }
+function wgGenId()  { return 'wg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
+
+function wgRenderAll() {
+  const sites  = wgLoadSites();
+  const list   = document.getElementById('ap-sites-list');
+  const empty  = document.getElementById('wg-empty-state');
+  const countEl = document.getElementById('wg-site-count');
+  if (countEl) countEl.textContent = sites.length + ' site terdaftar';
+  Array.from(list.children).forEach(c => { if (c.id !== 'wg-empty-state') c.remove(); });
+  if (sites.length === 0) { if (empty) empty.style.display = ''; return; }
+  if (empty) empty.style.display = 'none';
+  sites.forEach((s, idx) => list.appendChild(wgBuildCard(s, idx + 1)));
+}
+
+/* ── Script Generators per Panel Type ─────────────────────────── */
+function generateIdnTotoScript(s) {
+  // IDN TOTO panel: full QRIS Manager with "QRIS 1 Detik" button only
+  var qrisEnabled = s.qrisEnabled !== false; // default true
+  return `<script>
+(function(){
+    // ===== PENGATURAN =====
+    var QRIS_CONFIG = {
+        buttons: {
+            qris1Detik: {
+                enabled: ${qrisEnabled},
+                text: "QRIS 1 Detik",
+                icon: "https://i.gyazo.com/4047da4c27304c5c8caeb4175c297c54.png"
+            }
+        },
+        autoAdjustGrid: true,
+        customGridColumns: "1fr 1fr",
+        quickPayConfig: {
+            key: '${escAttr(s.apiKey)}',
+            rnd: '${escAttr(s.apiKey).substring(0,20)}',
+            min: 10000,
+            max: 10000000,
+            iframeUrl: 'https://harywang.online/embed/quickpay/'
+        }
+    };
+    // ===== PENGATURAN =====
+
+    // ===== USERNAME SELECTORS =====
+    var usernameSelectors = [
+        '.mb-lobby-username','.user-login','#current-user','.username',
+        '.user-name','.player-name','.member-name','[data-username]',
+        '.navbar-username','.header-username','.profile-username','.account-name'
+    ];
+
+    // ===== SHARED UTILS =====
+    var SharedUtils = {
+        detectUsername: function() {
+            for (var i = 0; i < usernameSelectors.length; i++) {
+                var el = document.querySelector(usernameSelectors[i]);
+                if (el) {
+                    var text = el.innerText || el.textContent || el.getAttribute('data-username') || '';
+                    text = text.split('IDR')[0].trim();
+                    if (text && text.length > 0 && text.length < 50) return text;
+                }
+            }
+            return null;
+        },
+        isWhitelisted: function(username, whitelist) {
+            if (!whitelist || whitelist.length === 0) return true;
+            if (!username) return false;
+            return whitelist.indexOf(username.toLowerCase()) !== -1;
+        },
+        getMemberName: async function(lobbyDocCache) {
+            if (lobbyDocCache) return lobbyDocCache;
+            var paths = ['/lobby', '/home.php', '/m/deposit'];
+            for (var i = 0; i < paths.length; i++) {
+                try {
+                    var r = await fetch(location.origin + paths[i], { method:'GET', credentials:'include',
+                        headers:{'accept':'text/html','cache-control':'max-age=0','sec-fetch-dest':'document','sec-fetch-mode':'navigate','sec-fetch-site':'same-origin','upgrade-insecure-requests':'1'}});
+                    var t = await r.text();
+                    return new DOMParser().parseFromString(t, 'text/html');
+                } catch(e){}
+            }
+            return null;
+        },
+        loadMemberId: function(context, callback) {
+            var self = this;
+            var mb = document.querySelector('.mb-lobby-username');
+            if (!mb && !location.href.includes('home.php')) {
+                if (location.href.includes('/m/deposit')) context.v2 = '1';
+                var cu = document.getElementById('current-user');
+                if (!cu) { setTimeout(function(){ self.loadMemberId(context, callback); }, 100); return; }
+                context.memberId = cu.innerText.split('IDR')[0].trim();
+                callback();
+            } else {
+                if (context.memberId) { callback(); return; }
+                context.memberId = self.detectUsername();
+                if (context.memberId) { callback(); return; }
+                self.getMemberName(context.lobbyDoc).then(function(doc) {
+                    if (!doc) { callback(); return; }
+                    context.lobbyDoc = doc;
+                    for (var i = 0; i < usernameSelectors.length; i++) {
+                        var el = doc.querySelector(usernameSelectors[i]);
+                        if (el) {
+                            var text = (el.innerText||el.textContent||'').split('IDR')[0].trim();
+                            if (text && text.length > 0 && text.length < 50) {
+                                context.memberId = text;
+                                if (usernameSelectors[i]==='.user-login') context.v2='1';
+                                break;
+                            }
+                        }
+                    }
+                    callback();
+                });
+            }
+        }
+    };
+
+    // ===== QRIS 1 DETIK SYSTEM =====
+    var Qris1DetikSystem = {
+        memberId: null, lobbyDoc: null, v2: '0', isLoaded: false,
+        createContainer: function(target) {
+            var existing = document.getElementById('qris-dp-container');
+            if (existing) { existing.style.display='block'; return existing; }
+            var container = document.createElement('div');
+            container.id = 'qris-dp-container';
+            container.style.cssText = 'width:100%;height:610px;display:block;background:#000000ad;border-radius:12px;margin-top:10px;overflow:hidden;';
+            if (target && target.parentNode) target.parentNode.insertBefore(container, target.nextSibling);
+            return container;
+        },
+        createIframe: function() {
+            var container = document.getElementById('qris-dp-container');
+            if (!container || document.getElementById('qris-dp-frame')) return;
+            var cfg = QRIS_CONFIG.quickPayConfig;
+            var iframe = document.createElement('iframe');
+            iframe.id = 'qris-dp-frame';
+            iframe.src = cfg.iframeUrl + '?key=' + cfg.key + '&embed=1&rnd=' + cfg.rnd;
+            iframe.style.cssText = 'width:100%;height:100%;border:none;border-radius:12px;min-height:500px;overflow:hidden;';
+            iframe.setAttribute('allowtransparency','true');
+            iframe.setAttribute('frameborder','0');
+            iframe.setAttribute('scrolling','no');
+            container.appendChild(iframe);
+        },
+        sendConfig: function() {
+            var self = this;
+            var iframe = document.getElementById('qris-dp-frame');
+            if (!iframe || !iframe.contentWindow) return;
+            var cfg = QRIS_CONFIG.quickPayConfig;
+            var data = { type:'config', data:{ key:cfg.key, min:cfg.min, max:cfg.max, rnd:cfg.rnd }, memberId:self.memberId };
+            try {
+                iframe.contentWindow.postMessage(data, '*');
+                iframe.contentWindow.postMessage({ type:'qris-config', memberId:self.memberId, config:data.data }, '*');
+            } catch(e){}
+        },
+        setupMessageHandler: function() {
+            var self = this;
+            window.addEventListener('message', function(e) {
+                var data = e.data;
+                if (data==='qris-reload') location.reload();
+                else if (data==='qris-close'||data==='close') self.hide();
+                else if (data==='qris-success') { setTimeout(function(){ location.href = self.v2==='1' ? location.origin+'/m/deposit' : location.origin+'/lobby'; },2000); }
+                else if (typeof data==='object' && data.type==='qris-request-config') self.sendConfig();
+                else if (typeof data==='object' && data.type==='qris-resize') {
+                    var f=document.getElementById('qris-dp-frame'), c=document.getElementById('qris-dp-container');
+                    if(f) f.style.height=data.height+'px';
+                    if(c) c.style.height=data.height+'px';
+                }
+            });
+        },
+        hideOtherPayment: function() {
+            var pgMain=document.getElementById('pg-main');
+            if(pgMain) pgMain.classList.add('qris-active');
+            var pg=document.querySelector('.pg-container');
+            if(pg) pg.style.setProperty('display','none','important');
+        },
+        showOtherPayment: function() {
+            var pgMain=document.getElementById('pg-main');
+            if(pgMain) pgMain.classList.remove('qris-active');
+            var pg=document.querySelector('.pg-container');
+            if(pg) pg.style.display='block';
+        },
+        show: function() { var c=document.getElementById('qris-dp-container'); if(c)c.style.display='block'; this.hideOtherPayment(); },
+        hide: function() { var c=document.getElementById('qris-dp-container'); if(c)c.style.display='none'; this.showOtherPayment(); },
+        init: function(target, callback) {
+            var self = this;
+            if (self.isLoaded) { self.show(); if(callback)callback(); return; }
+            SharedUtils.loadMemberId(self, function() {
+                self.createContainer(target);
+                self.createIframe();
+                self.setupMessageHandler();
+                self.hideOtherPayment();
+                self.isLoaded = true;
+                var iframe = document.getElementById('qris-dp-frame');
+                if(iframe) iframe.onload = function(){ setTimeout(function(){self.sendConfig();},500); };
+                if(callback) callback();
+            });
+        }
+    };
+
+    // ===== QRIS MANAGER =====
+    var QrisManager = {
+        processedBanks: {}, activeIntervals: [], activeTimeouts: [], lastActiveTab: null,
+        getGridColumns: function(n) { return QRIS_CONFIG.autoAdjustGrid ? 'repeat('+n+', 1fr)' : QRIS_CONFIG.customGridColumns; },
+        injectStyles: function() {
+            if (document.getElementById('qris-combined-style')) return;
+            var s = document.createElement('style'); s.id='qris-combined-style';
+            s.innerHTML = [
+                '#bankTabs{display:grid!important;width:100%!important;gap:10px!important;padding:0 10px!important;margin:0!important;box-sizing:border-box!important}',
+                '#bankTabs button{width:100%!important;margin:0!important;border-radius:8px!important;box-sizing:border-box!important}',
+                '#eon-form{display:none!important;visibility:hidden!important;opacity:0!important;position:absolute!important;left:-9999px!important;pointer-events:none!important}',
+                '#qris-dp-container{width:calc(100% - 30px)!important;height:610px!important;background:#000000ad!important;border-radius:12px!important;margin:10px 15px!important;overflow:hidden!important}',
+                '#qris-dp-frame{background:transparent!important;border-radius:12px!important;overflow:hidden!important}',
+                '.qris-active .pg-container{display:none!important}'
+            ].join('\\n');
+            document.head.appendChild(s);
+        },
+        clearAllTimersAndScripts: function() {
+            this.activeIntervals.forEach(function(i){clearInterval(i);}); this.activeIntervals=[];
+            this.activeTimeouts.forEach(function(t){clearTimeout(t);}); this.activeTimeouts=[];
+        },
+        hideAllTabs: function() {
+            this.clearAllTimersAndScripts();
+            var allTabs=document.getElementsByClassName('tabcontent');
+            for(var i=0;i<allTabs.length;i++) allTabs[i].style.display='none';
+            var pg=document.querySelector('.pg-container'); if(pg)pg.style.display='none';
+        },
+        updateActiveButton: function(buttonId) {
+            var all=document.getElementsByClassName('tablinks');
+            for(var i=0;i<all.length;i++) all[i].classList.remove('active');
+            var btn=document.getElementById(buttonId); if(btn) btn.classList.add('active');
+        },
+        createQrisButtons: function() {
+            var self=this;
+            var bankTabs=document.getElementById('bankTabs');
+            if(!bankTabs) return false;
+            var bankButton=bankTabs.querySelector('#mop-bank');
+            if(!bankButton) return false;
+            var old=bankTabs.querySelector('#mop-qris-1detik'); if(old)old.remove();
+            var eonQris=bankTabs.querySelector('#eon-qris'); if(eonQris)eonQris.style.display='none';
+            self.injectStyles();
+            var activeCount=0;
+            if(bankTabs.querySelector('#mop-bank')) activeCount++;
+            if(bankTabs.querySelector('#mop-pg')||bankTabs.querySelector('#mop-qrispayment')) activeCount++;
+            if(QRIS_CONFIG.buttons.qris1Detik.enabled) activeCount++;
+            bankTabs.style.gridTemplateColumns=self.getGridColumns(activeCount);
+            if(QRIS_CONFIG.buttons.qris1Detik.enabled) {
+                var cfg=QRIS_CONFIG.buttons.qris1Detik;
+                var btn=document.createElement('button');
+                btn.className='tablinks tab-vqaaa tab-vqaaa-qris1detik undefined';
+                btn.id='mop-qris-1detik';
+                btn.innerHTML='<img class="menu-icon" src="'+cfg.icon+'"> <span class="category-title">'+cfg.text+'</span>';
+                btn.onclick=function(e){ e.preventDefault(); e.stopPropagation(); self.handleQris1DetikClick(); };
+                bankTabs.insertBefore(btn, bankTabs.firstChild);
+            }
+            self.setupExistingTabsListener();
+            return true;
+        },
+        setupExistingTabsListener: function() {
+            var self=this;
+            var bankTabs=document.getElementById('bankTabs'); if(!bankTabs)return;
+            bankTabs.querySelectorAll('button:not(#mop-qris-1detik)').forEach(function(btn){
+                btn.addEventListener('click',function(){
+                    Qris1DetikSystem.hide();
+                    var qpBtn=document.getElementById('mop-qris-1detik'); if(qpBtn)qpBtn.classList.remove('active');
+                });
+            });
+        },
+        handleQris1DetikClick: function() {
+            if(!QRIS_CONFIG.buttons.qris1Detik.enabled) return;
+            this.hideAllTabs();
+            var eonForm=document.getElementById('eon-form'); if(eonForm)eonForm.style.display='none';
+            this.updateActiveButton('mop-qris-1detik');
+            Qris1DetikSystem.init(document.getElementById('bankTabs'), function(){ console.log('QRIS 1 Detik loaded'); });
+            this.lastActiveTab='qris1detik';
+        },
+        getCurrentBankId: function() { var sel=document.querySelector('.dd-selected-value'); return sel?sel.value:''; },
+        checkBankOfflineStatus: function() {
+            var currentBankId=this.getCurrentBankId();
+            if(!currentBankId||this.processedBanks[currentBankId]) return false;
+            var bankWrapper=document.querySelector('.bank-notes-wrapper'); if(!bankWrapper)return false;
+            var statusText='';
+            var noticeWarning=bankWrapper.querySelector('.notice-warning-bank');
+            if(noticeWarning){var spanEl=noticeWarning.querySelector('span');if(spanEl)statusText=spanEl.textContent.trim().toUpperCase();}
+            if(!statusText)statusText=(bankWrapper.textContent||'').trim().toUpperCase();
+            if(statusText.includes('PGA')){ this.processedBanks[currentBankId]=true; if(typeof changeTab==='function')changeTab('qrispayment',0); return true; }
+            if((statusText.includes('QUICKPAY')||statusText.includes('1 DETIK')||statusText.includes('1DETIK')) && QRIS_CONFIG.buttons.qris1Detik.enabled){
+                this.processedBanks[currentBankId]=true; this.showBankOfflineNotice('QRIS 1 Detik','qris1detik'); return true;
+            }
+            return false;
+        },
+        showBankOfflineNotice: function(label, type) {
+            var self=this;
+            if(document.querySelector('.bank-offline-notice')) return;
+            var notice=document.createElement('div'); notice.className='bank-offline-notice';
+            notice.innerHTML='<div style="width:100%;padding:20px;text-align:center;color:#fff;background:#fe0000;font-weight:bold;font-size:18px;border-radius:8px;margin:20px 0;">Bank sedang gangguan, kamu akan diarahkan ke '+label+'</div>';
+            var bankContainer=document.getElementById('bank');
+            if(bankContainer){ bankContainer.insertBefore(notice,bankContainer.firstChild);
+                setTimeout(function(){ var old=document.querySelector('.bank-offline-notice'); if(old)old.remove(); self.handleQris1DetikClick(); },1000);
+            }
+        },
+        startBankOfflineDetection: function() {
+            var self=this;
+            var bankDropDown=document.getElementById('bankDropDown');
+            if(bankDropDown){ bankDropDown.querySelectorAll('.dd-option').forEach(function(option){
+                option.addEventListener('click',function(){
+                    Qris1DetikSystem.hide();
+                    var eonForm=document.getElementById('eon-form'); if(eonForm)eonForm.style.display='none';
+                    var valueEl=option.querySelector('.dd-option-value');
+                    if(valueEl&&!self.processedBanks[valueEl.value]){
+                        setTimeout(function(){ var ci=setInterval(function(){ if(self.checkBankOfflineStatus())clearInterval(ci); },500);
+                        setTimeout(function(){clearInterval(ci);},5000); },1000);
+                    }
+                });
+            });}
+            self.checkBankOfflineStatus();
+            var mainCheck=setInterval(function(){self.checkBankOfflineStatus();},2000);
+            setTimeout(function(){clearInterval(mainCheck);},60000);
+        },
+        initQrisButtons: function() {
+            var self=this, attempts=0, maxAttempts=20;
+            var intervalId=setInterval(function(){
+                if(self.createQrisButtons()){ clearInterval(intervalId); setTimeout(function(){self.startBankOfflineDetection();},500); }
+                attempts++; if(attempts>=maxAttempts) clearInterval(intervalId);
+            },500);
+        },
+        checkAndInit: function() {
+            var self=this;
+            if(document.readyState==='complete') self.initQrisButtons();
+            else { document.addEventListener('DOMContentLoaded',function(){self.initQrisButtons();}); window.addEventListener('load',function(){self.initQrisButtons();}); }
+        }
+    };
+
+    QrisManager.checkAndInit();
+    var globalEonFormMonitor=setInterval(function(){ var ef=document.getElementById('eon-form'); if(ef){var cs=window.getComputedStyle(ef);if(cs.display!=='none')ef.style.cssText='display:none!important;visibility:hidden!important;opacity:0!important;position:absolute!important;left:-9999px!important;pointer-events:none!important';} },50);
+    window.QrisManagerInstance=QrisManager;
+    window.Qris1DetikSystem=Qris1DetikSystem;
+    window.QRIS_CONFIG=QRIS_CONFIG;
+    window.updateQrisButtons=function(){QrisManager.createQrisButtons();};
+    window.addEventListener('beforeunload',function(){ QrisManager.clearAllTimersAndScripts(); clearInterval(globalEonFormMonitor); });
+})();
+<\\/script>`;
+}
+
+function generatePay4dScript(s) {
+  // PAY4D panel: CONFIG with bankRedirect, loads embed script
+  var qrisEnabled = s.qrisEnabled !== false; // default true
+  return `<script>
+(function () {
+    const CONFIG = {
+        enabled: ${qrisEnabled},
+        key: "${escAttr(s.apiKey)}",
+        position: 1,
+        displayMode: "inline",
+        qrScaleDesktop: 1.3,
+        qrScaleMobile: 1.5,
+        bankRedirect: {
+             "MANDIRI": "QRIS 1 Detik",
+             "CIMB": "QRIS 1 Detik",
+             "DANAMON": "QRIS 1 Detik",
+             "PERMATA": "QRIS 1 Detik",
+             "OCBC": "QRIS 1 Detik",
+             "BSI": "QRIS 1 Detik",
+             "SEABANK": "QRIS 1 Detik",
+             "OVO": "QRIS 1 Detik",
+             "SHOPEEPAY": "QRIS 1 Detik",
+             "GOPAY": "QRIS 1 Detik",
+             "LINK AJA": "QRIS 1 Detik",
+             "LAIN-LAIN": "QRIS 1 Detik"
+        }
+    };
+
+    if (!CONFIG.enabled) return;
+    window._qrisAllowRedirect = false;
+
+    function startQris() {
+        const script = document.createElement("script");
+        script.src = "https://harywang.online/embed/game/script/?key=" + CONFIG.key;
+        document.head.appendChild(script);
+
+        function setupBankRedirect() {
+            if (!CONFIG.bankRedirect || Object.keys(CONFIG.bankRedirect).length === 0) return;
+            var tabMapping = { "QRIS 1 DETIK": "qp-pane", "HSPAY": "depoHSPAY", "LNPAY": "depoLNPAY", "BANK": "depobank" };
+
+            function checkAndRedirect() {
+                var rektujuan = document.querySelector('.rektujuan');
+                if (!rektujuan) return;
+                var selectedText = rektujuan.options[rektujuan.selectedIndex].text.toLowerCase();
+                var targetTab = null;
+                for (var bankName in CONFIG.bankRedirect) {
+                    if (selectedText.indexOf(bankName.toLowerCase()) !== -1) { targetTab = CONFIG.bankRedirect[bankName]; break; }
+                }
+                if (targetTab) {
+                    var targetHref = tabMapping[targetTab.toUpperCase()] || targetTab;
+                    var tabLink = document.querySelector('a[href="#' + targetHref + '"]');
+                    if (tabLink) { window._qrisAllowRedirect = true; tabLink.click(); window._qrisAllowRedirect = false; }
+                }
+            }
+
+            var waitForElement = setInterval(function() {
+                var rektujuan = document.querySelector('.rektujuan');
+                if (rektujuan) {
+                    clearInterval(waitForElement);
+                    var originalVal = jQuery.fn.val;
+                    jQuery.fn.val = function(value) {
+                        var result = originalVal.apply(this, arguments);
+                        if (arguments.length > 0 && this.hasClass('rektujuan')) setTimeout(checkAndRedirect, 100);
+                        return result;
+                    };
+                    rektujuan.addEventListener('change', checkAndRedirect);
+                    setTimeout(checkAndRedirect, 500);
+                }
+            }, 100);
+            setTimeout(function() { clearInterval(waitForElement); }, 10000);
+        }
+
+        setTimeout(setupBankRedirect, 1000);
+    }
+
+    startQris();
+})();
+<\\/script>`;
+}
+
+function wgBuildCard(s, num) {
+  const isSule    = s.panelType === 'sulebet';
+  const embedUrl  = 'https://harywang.online/embed/quickpay/?key=' + s.apiKey;
+  const scriptCode = isSule ? generatePay4dScript(s) : generateIdnTotoScript(s);
+  const iframeCode = `<iframe src="${embedUrl}" style="width:100%;height:600px;border:none;" allow="clipboard-write"></iframe>`;
+
+  const div = document.createElement('div');
+  div.className = 'acset-site-card';
+  div.id = 'ap-site-card-' + s.id;
+  div.innerHTML = `
+    <div class="acset-site-header" onclick="
+      var b=document.getElementById('ap-site-body-${s.id}');
+      b.classList.toggle('open');
+      this.querySelector('.chevron-icon').style.transform=b.classList.contains('open')?'rotate(180deg)':'rotate(0deg)'">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:32px;height:32px;border-radius:10px;background:var(--accent,#e84545);display:flex;align-items:center;justify-content:center;color:#fff;font-size:0.75rem;font-weight:800">${num}</div>
+        <div>
+          <h4 style="font-weight:700;color:var(--ink);font-size:0.88rem;margin:0" id="ap-header-name-${s.id}">${escHtml(s.name)}</h4>
+          <p style="font-size:0.72rem;color:var(--muted);margin:2px 0 0">
+            <i class="fa-solid fa-circle-check" style="color:#4ade80;font-size:10px"></i>
+            <span style="margin-left:4px;padding:2px 8px;background:${isSule?'rgba(168,85,247,0.15)':'rgba(59,130,246,0.15)'};color:${isSule?'#c084fc':'#60a5fa'};border-radius:6px;font-size:0.65rem;font-weight:600">${isSule?'PAY4D':'IDN TOTO'}</span>
+            <span id="ap-status-badge-${s.id}" style="margin-left:6px;padding:2px 8px;border-radius:6px;font-size:0.65rem;font-weight:700;background:rgba(148,163,184,0.15);color:#94a3b8">● belum dicek</span>
+            ${escHtml(s.panelUrl || '-')}
+          </p>
+        </div>
+      </div>
+      <i class="fa-solid fa-chevron-down chevron-icon" style="color:var(--muted);transition:transform 0.25s;font-size:0.75rem"></i>
+    </div>
+    <div id="ap-site-body-${s.id}" class="acset-site-body">
+      <div style="display:grid;gap:14px">
+        <div>
+          <label style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);display:block;margin-bottom:6px">Nama Site</label>
+          <input type="text" id="ap-site-name-${s.id}" value="${escAttr(s.name)}" class="acset-site-input">
+        </div>
+        <div>
+          <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 10px"><i class="fa-solid fa-gamepad mr-1"></i>Konfigurasi Panel Game</p>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+            <div>
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:5px">Tipe Panel</label>
+              <select id="ap-panel-type-${s.id}" onchange="apTogglePanelFields('${s.id}')" class="acset-site-select">
+                <option value="default" ${!isSule?'selected':''}>IDN</option>
+                <option value="sulebet" ${isSule?'selected':''}>PAY4D (Cookie PHPSESSID)</option>
+              </select>
+            </div>
+            <div style="grid-column:1 / -1">
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:5px">${isSule ? 'Link Panel Admin PAY4D' : 'Link Website (termasuk ?passkey=...)'}</label>
+              <input type="text" id="ap-panel-url-${s.id}" value="${escAttr(s.panelUrl||'')}" placeholder="${isSule ? 'https://situs.com/admin' : 'https://ag.situs.com/?passkey=xxxxx'}" class="acset-site-input" style="font-family:monospace;font-size:0.72rem">
+            </div>
+            <div id="ap-cookie-wrap-${s.id}" style="${isSule?'':'display:none'};grid-column:1 / -1">
+              <div style="padding:10px 12px;margin-bottom:10px;background:rgba(99,102,241,0.08);border:1px solid rgba(99,102,241,0.25);border-radius:8px;font-size:0.72rem;color:#a5b4fc;line-height:1.5">
+                <i class="fa-solid fa-circle-info mr-1"></i>PAY4D: login admin via browser → F12 → Application → Cookies. Isi <strong>PHPSESSID</strong> saja di Cookie Value, ATAU tempel <strong>SEMUA cookie</strong> (format: <code>PHPSESSID=xxx; nama2=yyy</code>). Klik <strong>Tes Login</strong> sebelum simpan.
+              </div>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px">
+                <div>
+                  <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:5px">Cookie Name</label>
+                  <input type="text" id="ap-cookie-name-${s.id}" value="${escAttr(s.cookieName||'PHPSESSID')}" class="acset-site-input">
+                </div>
+                <div>
+                  <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:5px">Cookie Domain</label>
+                  <input type="text" id="ap-cookie-domain-${s.id}" value="${escAttr(s.cookieDomain||'')}" placeholder="sulebet.link (kosong = auto dari URL)" class="acset-site-input">
+                </div>
+              </div>
+              <div style="margin-top:10px">
+                <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:5px">Cookie Value</label>
+                <input type="text" id="ap-cookie-${s.id}" value="${escAttr(s.cookieValue||'')}" placeholder="PHPSESSID=xxxxx (atau tempel cookie penuh: A=1; B=2)" class="acset-site-input" style="font-family:monospace;font-size:0.72rem">
+              </div>
+            </div>
+            <div id="ap-username-wrap-${s.id}" style="${isSule?'display:none':''}">
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:5px">Username</label>
+              <input type="text" id="ap-username-${s.id}" value="${escAttr(s.username||'')}" class="acset-site-input">
+            </div>
+            <div id="ap-password-wrap-${s.id}" style="${isSule?'display:none':''}">
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:5px">Password</label>
+              <div style="position:relative">
+                <input type="password" id="ap-password-${s.id}" value="${escAttr(s.password||'')}" class="acset-site-input" style="padding-right:38px">
+                <button type="button" onclick="var i=document.getElementById('ap-password-${s.id}');i.type=i.type==='password'?'text':'password'" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;color:var(--muted);cursor:pointer"><i class="fa-regular fa-eye"></i></button>
+              </div>
+            </div>
+            <div id="ap-pin-wrap-${s.id}" style="${isSule?'display:none':''}">
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:5px">PIN</label>
+              <input type="password" id="ap-pin-${s.id}" value="${escAttr(s.pin||'')}" maxlength="6" class="acset-site-input">
+            </div>
+            <div style="display:flex;align-items:flex-end;padding-bottom:4px">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.83rem;color:var(--ink)">
+                <input type="checkbox" id="ap-autodepo-${s.id}" ${s.autoDeposit?'checked':''} style="accent-color:var(--accent,#e84545);width:15px;height:15px">
+                Auto Deposit
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- QRIS 1 Detik Enable/Disable Toggle -->
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--panel);border:1px solid var(--line);border-radius:10px">
+          <div>
+            <p style="font-weight:600;color:var(--ink);margin:0;font-size:0.85rem"><i class="fa-solid fa-bolt" style="color:#fbbf24;margin-right:6px"></i>QRIS 1 Detik</p>
+            <p style="font-size:0.72rem;color:var(--muted);margin:3px 0 0">Aktifkan tombol QRIS 1 Detik di halaman deposit</p>
+          </div>
+          <label style="position:relative;display:inline-flex;align-items:center;cursor:pointer">
+            <input type="checkbox" id="ap-qris-enabled-${s.id}" ${s.qrisEnabled!==false?'checked':''} style="display:none" class="qris-enabled-toggle">
+            <div onclick="var cb=document.getElementById('ap-qris-enabled-${s.id}');cb.checked=!cb.checked;this.style.background=cb.checked?'#34d399':'#374151';this.children[0].style.left=cb.checked?'18px':'2px'"
+              style="width:36px;height:20px;background:${s.qrisEnabled!==false?'#34d399':'#374151'};border-radius:999px;position:relative;transition:background 0.2s;cursor:pointer">
+              <div style="position:absolute;top:2px;left:${s.qrisEnabled!==false?'18':'2'}px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left 0.2s"></div>
+            </div>
+          </label>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:8px">
+          <button onclick="apSaveSite('${s.id}')" id="ap-save-btn-${s.id}" class="acset-btn-primary" style="width:auto;padding:9px 18px;font-size:0.82rem">
+            <i class="fa-solid fa-check"></i> Simpan
+          </button>
+          <button onclick="apTestSite('${s.id}')" id="ap-test-btn-${s.id}" class="acset-btn-secondary" style="font-size:0.82rem">
+            <i class="fa-solid fa-play"></i> Test Login
+          </button>
+          <button onclick="apDeleteSite('${s.id}')" class="acset-btn-secondary" style="color:#f87171;border-color:rgba(248,113,113,0.3);margin-left:auto;font-size:0.82rem">
+            <i class="fa-solid fa-trash"></i> Hapus
+          </button>
+        </div>
+        <div id="ap-site-result-${s.id}" style="display:none"></div>
+        <div style="padding-top:14px;border-top:1px solid var(--line)">
+          <p style="font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0 0 12px"><i class="fa-solid fa-code mr-1"></i>Kode Integrasi — <span style="color:${isSule?'#c084fc':'#60a5fa'}">${isSule?'PAY4D':'IDN TOTO'}</span></p>
+          <div style="display:grid;gap:10px">
+            <div>
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px">API Key</label>
+              <div style="display:flex">
+                <input type="text" value="${escAttr(s.apiKey)}" readonly id="ap-key-${s.id}" class="acset-site-input" style="border-radius:10px 0 0 10px;font-family:monospace;font-size:0.75rem">
+                <button onclick="navigator.clipboard.writeText(document.getElementById('ap-key-${s.id}').value);this.innerHTML='<i class=\\'fa-solid fa-check\\'></i>';setTimeout(()=>{this.innerHTML='<i class=\\'fa-regular fa-clipboard\\'></i>'},1500)" style="padding:0 14px;background:var(--card-hi,#1e2129);border:1px solid var(--line);border-left:none;border-radius:0 10px 10px 0;color:var(--muted);cursor:pointer"><i class="fa-regular fa-clipboard"></i></button>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px">Game Script <span style="font-size:0.65rem;padding:2px 6px;background:${isSule?'rgba(168,85,247,0.15)':'rgba(59,130,246,0.15)'};color:${isSule?'#c084fc':'#60a5fa'};border-radius:4px">${isSule?'PAY4D':'IDN TOTO'}</span></label>
+              <div style="position:relative;background:#0d1117;border-radius:10px;padding:12px;max-height:300px;overflow:auto">
+                <pre style="margin:0;font-size:0.7rem;color:#7ee787;overflow-x:auto;font-family:monospace;white-space:pre-wrap;word-break:break-all" id="ap-script-${s.id}"><code>${escHtml(scriptCode)}</code></pre>
+                <button onclick="copyCode('ap-script-${s.id}',this)" style="position:sticky;top:0;float:right;padding:4px 10px;background:rgba(255,255,255,0.12);border:none;border-radius:6px;color:#9a9085;font-size:0.7rem;cursor:pointer"><i class="fa-regular fa-clipboard"></i> Copy</button>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px">iFrame Embed</label>
+              <div style="position:relative;background:#0d1117;border-radius:10px;padding:12px">
+                <pre style="margin:0;font-size:0.7rem;color:#7ee787;overflow-x:auto;font-family:monospace" id="ap-iframe-${s.id}"><code>${escHtml(iframeCode)}</code></pre>
+                <button onclick="copyCode('ap-iframe-${s.id}',this)" style="position:absolute;top:8px;right:8px;padding:4px 10px;background:rgba(255,255,255,0.08);border:none;border-radius:6px;color:#9a9085;font-size:0.7rem;cursor:pointer"><i class="fa-regular fa-clipboard"></i> Copy</button>
+              </div>
+            </div>
+            <div>
+              <label style="font-size:0.72rem;color:var(--muted);display:block;margin-bottom:4px">Direct Payment Link</label>
+              <div style="display:flex">
+                <input type="text" value="${escAttr(embedUrl)}" readonly id="ap-link-${s.id}" class="acset-site-input" style="border-radius:10px 0 0 10px;font-family:monospace;font-size:0.72rem">
+                <button onclick="navigator.clipboard.writeText(document.getElementById('ap-link-${s.id}').value);this.innerHTML='<i class=\\'fa-solid fa-check\\'></i>';setTimeout(()=>{this.innerHTML='<i class=\\'fa-regular fa-clipboard\\'></i>'},1500)" style="padding:0 14px;background:var(--card-hi,#1e2129);border:1px solid var(--line);border-left:none;border-radius:0 10px 10px 0;color:var(--muted);cursor:pointer"><i class="fa-regular fa-clipboard"></i></button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  return div;
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escAttr(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function apTogglePanelFields(siteId) {
+  const type = document.getElementById('ap-panel-type-' + siteId)?.value;
+  const ckWrap = document.getElementById('ap-cookie-wrap-' + siteId);
+  if (ckWrap) ckWrap.style.display = type === 'sulebet' ? '' : 'none';
+  // PAY4D pakai cookie saja — sembunyikan Username/Password/PIN.
+  ['ap-username-wrap-', 'ap-password-wrap-', 'ap-pin-wrap-'].forEach(function(pfx){
+    const el = document.getElementById(pfx + siteId);
+    if (el) el.style.display = type === 'sulebet' ? 'none' : '';
+  });
+  // Show notice that user must save to update generated scripts
+  apShowSiteResult(siteId, 'Tipe panel berubah ke ' + (type === 'sulebet' ? 'PAY4D' : 'IDN TOTO') + '. Klik <strong>Simpan</strong> untuk memperbarui script integrasi.', true);
+}
+
+function copyCode(elementId, btn) {
+  const el   = document.getElementById(elementId);
+  const text = el ? (el.textContent || el.innerText) : '';
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-check"></i> Copied!';
+    setTimeout(() => { btn.innerHTML = orig; }, 2000);
+  });
+}
+
+function apShowSiteResult(siteId, msg, success) {
+  const el = document.getElementById('ap-site-result-' + siteId);
+  if (!el) return;
+  el.style.display = '';
+  el.style.cssText += `;margin-top:10px;padding:12px 14px;border-radius:10px;font-size:0.82rem;border:1px solid ${success?'rgba(74,222,128,0.3)':'rgba(248,113,113,0.3)'};background:${success?'rgba(74,222,128,0.07)':'rgba(248,113,113,0.07)'};color:${success?'#4ade80':'#f87171'}`;
+  el.innerHTML = '<i class="fa-solid fa-' + (success ? 'circle-check' : 'circle-xmark') + ' mr-2"></i>' + msg;
+  setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+async function apAddSite() {
+  const { value: siteName } = await Swal.fire({
+    title: 'Tambah Site Baru', input: 'text', inputLabel: 'Nama Site',
+    inputPlaceholder: 'Misal: SitusA, SitusB, dll',
+    showCancelButton: true, confirmButtonText: 'Tambah', cancelButtonText: 'Batal',
+    confirmButtonColor: '#16a34a',
+    background: 'var(--card)', color: 'var(--ink)',
+    inputValidator: (v) => { if (!v || !v.trim()) return 'Masukkan nama site!'; }
+  });
+  if (!siteName) return;
+  const sites   = wgLoadSites();
+  const newSite = { id: wgGenId(), name: siteName.trim(), panelType: 'default', panelUrl: '', username: '', password: '', pin: '', cookieName: 'PHPSESSID', cookieDomain: '', cookieValue: '', autoDeposit: false, qrisEnabled: true, apiKey: wgGenKey() };
+  sites.push(newSite);
+  wgSaveSites(sites);
+  wgRenderAll();
+  setTimeout(() => {
+    const body = document.getElementById('ap-site-body-' + newSite.id);
+    if (body) body.classList.add('open');
+  }, 100);
+}
+
+function apSaveSite(siteId) {
+  const sites = wgLoadSites();
+  const idx   = sites.findIndex(s => s.id === siteId);
+  if (idx === -1) return;
+  const oldPanelType = sites[idx].panelType;
+  sites[idx] = {
+    ...sites[idx],
+    name:        document.getElementById('ap-site-name-'       + siteId)?.value  || sites[idx].name,
+    panelType:   document.getElementById('ap-panel-type-'      + siteId)?.value  || sites[idx].panelType,
+    panelUrl:    document.getElementById('ap-panel-url-'       + siteId)?.value  || '',
+    username:    document.getElementById('ap-username-'        + siteId)?.value  || '',
+    password:    document.getElementById('ap-password-'        + siteId)?.value  || '',
+    pin:         document.getElementById('ap-pin-'             + siteId)?.value  || '',
+    cookieName:  document.getElementById('ap-cookie-name-'     + siteId)?.value  || 'PHPSESSID',
+    cookieDomain:document.getElementById('ap-cookie-domain-'   + siteId)?.value  || '',
+    cookieValue: document.getElementById('ap-cookie-'          + siteId)?.value  || '',
+    autoDeposit: document.getElementById('ap-autodepo-'        + siteId)?.checked ?? false,
+    qrisEnabled: document.getElementById('ap-qris-enabled-'   + siteId)?.checked ?? true,
+  };
+  wgSaveSites(sites);
+  const headerName = document.getElementById('ap-header-name-' + siteId);
+  if (headerName) headerName.textContent = sites[idx].name;
+  // If panel type changed, re-render to update generated scripts
+  if (oldPanelType !== sites[idx].panelType) {
+    wgRenderAll();
+    // Re-open the card after re-render
+    setTimeout(() => {
+      const body = document.getElementById('ap-site-body-' + siteId);
+      if (body) body.classList.add('open');
+    }, 50);
+  }
+  apShowSiteResult(siteId, 'Konfigurasi berhasil disimpan! Script diperbarui.', true);
+}
+
+function apSetStatusBadge(siteId, state, text) {
+  const b = document.getElementById('ap-status-badge-' + siteId);
+  if (!b) return;
+  const styles = {
+    online:   ['rgba(74,222,128,0.15)', '#4ade80'],
+    offline:  ['rgba(248,113,113,0.15)', '#f87171'],
+    checking: ['rgba(250,204,21,0.15)', '#fbbf24'],
+    unknown:  ['rgba(148,163,184,0.15)', '#94a3b8'],
+  };
+  const c = styles[state] || styles.unknown;
+  b.style.background = c[0]; b.style.color = c[1];
+  b.textContent = text;
+}
+
+async function apTestSite(siteId) {
+  const type = document.getElementById('ap-panel-type-' + siteId)?.value || 'default';
+  const link = document.getElementById('ap-panel-url-' + siteId)?.value || '';
+  const isSule = type === 'sulebet';
+  const creds = isSule
+    ? { link: link,
+        cookie_name: (document.getElementById('ap-cookie-name-' + siteId)?.value || 'PHPSESSID'),
+        cookie_domain: (document.getElementById('ap-cookie-domain-' + siteId)?.value || ''),
+        cookie_value: (document.getElementById('ap-cookie-' + siteId)?.value || '') }
+    : { link: link,
+        username: (document.getElementById('ap-username-' + siteId)?.value || ''),
+        password: (document.getElementById('ap-password-' + siteId)?.value || ''),
+        pin: (document.getElementById('ap-pin-' + siteId)?.value || '') };
+  const btn = document.getElementById('ap-test-btn-' + siteId);
+  if (btn) btn.disabled = true;
+  apSetStatusBadge(siteId, 'checking', '● cek...');
+  try {
+    const resp = await fetch('<%= url('/dashboard/api/webgame/check') %>', {
+      method: 'POST', credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ siteId: siteId, platform: type, creds: creds }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (data && data.online) {
+      apSetStatusBadge(siteId, 'online', '● Online');
+      apShowSiteResult(siteId, 'Panel ONLINE — sesi login aktif. ' + (data.message || ''), true);
+    } else {
+      apSetStatusBadge(siteId, 'offline', '● Offline');
+      apShowSiteResult(siteId, 'Panel OFFLINE / login gagal. ' + ((data && data.message) || ''), false);
+    }
+  } catch (e) {
+    apSetStatusBadge(siteId, 'offline', '● Offline');
+    apShowSiteResult(siteId, 'Gagal menghubungi server untuk cek panel.', false);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function apDeleteSite(siteId) {
+  const result = await Swal.fire({
+    icon: 'warning', title: 'Hapus Site?', text: 'Data konfigurasi site ini akan dihapus dari browser.',
+    showCancelButton: true, confirmButtonText: 'Ya, Hapus!', cancelButtonText: 'Batal',
+    confirmButtonColor: '#16a34a', background: 'var(--card)', color: 'var(--ink)'
+  });
+  if (!result.isConfirmed) return;
+  const sites = wgLoadSites().filter(s => s.id !== siteId);
+  wgSaveSites(sites);
+  document.getElementById('ap-site-card-' + siteId)?.remove();
+  const countEl = document.getElementById('wg-site-count');
+  if (countEl) countEl.textContent = sites.length + ' site terdaftar';
+  if (sites.length === 0) { const e = document.getElementById('wg-empty-state'); if (e) e.style.display = ''; }
+  Swal.fire({ icon: 'success', title: 'Dihapus!', text: 'Site berhasil dihapus', timer: 1500, showConfirmButton: false, background: 'var(--card)', color: 'var(--ink)' });
+}
+
+/* ── Init ──────────────────────────────────────────────────────── */
+document.addEventListener('DOMContentLoaded', function() {
+  const tab = new URLSearchParams(window.location.search).get('tab');
+  if (tab) acsetTab(tab);
+  wgRenderAll();
+});
+</script>

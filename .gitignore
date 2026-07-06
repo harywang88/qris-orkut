@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+
+# Build output (generated from src/ via tsc)
+dist/
+
+# Secrets & environment
+.env
+.env.*
+!.env.example
+
+# Backups
+*.bak
+*.bak-*
+*-pre-egress
+*_backup-*
+**/_backup-*/
+
+# Databases
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/
+prisma/data/
+prisma/prisma/data/
+sulebet-autodepo/data/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+logs/
+npm-debug.log*
+
+# OS / editor
+.DS_Store
+*.swp
+.vscode/
+.idea/
+
+# PM2
+.pm2/

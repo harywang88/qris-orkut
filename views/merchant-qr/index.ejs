@@ -1,0 +1,593 @@
+<%
+/* ───── Merchant QR Index ───── */
+%>
+<%
+function fmtMiniTime(value) {
+  if (!value) return 'Belum ada';
+  return new Date(value).toLocaleString('id-ID', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Asia/Jakarta',
+  });
+}
+%>
+
+<style>
+  .mqi-hero { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:24px; flex-wrap:wrap; }
+  .mqi-hero-left {}
+  .mqi-hero-title { font-size:22px; font-weight:800; color:var(--color-ink); letter-spacing:-.3px; margin:0 0 4px; }
+  .mqi-hero-title span { color:#ff9b90; }
+  .mqi-hero-sub { font-size:12px; color:var(--color-muted); margin:0; }
+
+  .mqi-info-bar { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:20px; }
+  @media(max-width:640px){ .mqi-info-bar { grid-template-columns:1fr; } }
+  .mqi-info-card {
+    border-radius:16px; padding:14px 16px;
+    background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+  }
+  .mqi-info-card-hdr { display:flex; align-items:center; gap:8px; margin-bottom:10px; }
+  .mqi-info-card-icon {
+    width:28px; height:28px; border-radius:8px;
+    display:flex; align-items:center; justify-content:center; font-size:12px; flex-shrink:0;
+  }
+  .mqi-info-card-title { font-size:11px; font-weight:700; color:var(--color-ink); text-transform:uppercase; letter-spacing:.05em; }
+  .mqi-info-card-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:4px; }
+  .mqi-info-card-list li { font-size:11px; color:var(--color-muted); display:flex; align-items:center; gap:6px; }
+  .mqi-info-card-list li::before { content:''; width:4px; height:4px; border-radius:50%; background:currentColor; opacity:.4; flex-shrink:0; }
+
+  .mqi-table-wrap { border-radius:18px; border:1px solid var(--color-line); overflow:hidden; background:var(--color-card); }
+  .mqi-table { width:100%; border-collapse:collapse; font-size:13px; }
+  .mqi-table thead tr { background:rgba(255,255,255,0.03); border-bottom:1px solid var(--color-line); }
+  .mqi-table th { padding:11px 14px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--color-muted); white-space:nowrap; }
+  .mqi-table th.center { text-align:center; }
+  .mqi-table td { padding:13px 14px; border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:middle; }
+  .mqi-table tbody tr:last-child td { border-bottom:none; }
+  .mqi-table tbody tr { transition:background .15s; }
+  .mqi-table tbody tr:hover { background:rgba(255,255,255,0.025); }
+
+  .mqi-badge {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 9px; border-radius:999px; font-size:10px; font-weight:700;
+    border:1px solid transparent;
+  }
+  .mqi-badge-green  { background:rgba(34,197,94,0.1);  color:#86efac; border-color:rgba(34,197,94,0.22); }
+  .mqi-badge-red    { background:rgba(239,68,68,0.1);  color:#fca5a5; border-color:rgba(239,68,68,0.22); }
+  .mqi-badge-amber  { background:rgba(245,158,11,0.1); color:#fcd34d; border-color:rgba(245,158,11,0.22); }
+  .mqi-badge-blue   { background:rgba(99,102,241,0.1); color:#a5b4fc; border-color:rgba(99,102,241,0.22); }
+  .mqi-badge-gray   { background:rgba(255,255,255,0.05); color:var(--color-muted); border-color:rgba(255,255,255,0.1); }
+  .mqi-badge-dot { width:5px; height:5px; border-radius:50%; background:currentColor; }
+
+  .mqi-code { font-family:monospace; font-size:12px; color:#93c5fd; background:rgba(147,197,253,0.08); padding:2px 7px; border-radius:6px; }
+  .mqi-mono { font-family:monospace; font-size:11px; color:var(--color-muted); }
+
+  .mqi-action-btn {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:30px; height:30px; border-radius:9px; border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04); color:var(--color-muted);
+    cursor:pointer; transition:all .15s; text-decoration:none; font-size:12px;
+  }
+  .mqi-action-btn:hover { background:rgba(255,255,255,0.09); color:var(--color-ink); }
+  .mqi-action-btn.red:hover { background:rgba(239,68,68,0.14); border-color:rgba(239,68,68,0.3); color:#fca5a5; }
+  .mqi-action-btn.amber:hover { background:rgba(245,158,11,0.14); border-color:rgba(245,158,11,0.3); color:#fcd34d; }
+  .mqi-action-btn.blue:hover { background:rgba(59,130,246,0.14); border-color:rgba(59,130,246,0.3); color:#93c5fd; }
+  .mqi-action-btn.green:hover { background:rgba(34,197,94,0.14); border-color:rgba(34,197,94,0.3); color:#86efac; }
+
+  .mqi-add-btn {
+    display:inline-flex; align-items:center; gap:7px;
+    padding:9px 18px; border-radius:12px; border:none;
+    background:linear-gradient(135deg,#ff9b90,#e0635a); color:#fff;
+    font-size:12px; font-weight:700; cursor:pointer; text-decoration:none;
+    transition:opacity .15s; box-shadow:0 4px 14px rgba(239,68,68,0.2);
+  }
+  .mqi-add-btn:hover { opacity:.88; }
+
+  .mqi-empty { text-align:center; padding:48px 24px; }
+  .mqi-empty-icon { font-size:36px; color:rgba(255,255,255,0.1); margin-bottom:12px; }
+  .mqi-empty-title { font-size:14px; font-weight:600; color:var(--color-muted); margin-bottom:4px; }
+  .mqi-empty-link { font-size:12px; color:#ff9b90; text-decoration:none; }
+  .mqi-empty-link:hover { text-decoration:underline; }
+
+  .mqi-intg-tags { display:flex; align-items:center; gap:4px; flex-wrap:wrap; justify-content:center; }
+  .mqi-inline-meta { display:flex; flex-wrap:wrap; gap:6px; margin-top:7px; }
+  .mqi-inline-chip {
+    display:inline-flex; align-items:center; gap:5px;
+    padding:3px 8px; border-radius:999px; font-size:10px;
+    color:var(--color-muted); background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.07);
+  }
+  .mqi-inline-chip.ok { color:#86efac; border-color:rgba(34,197,94,0.18); background:rgba(34,197,94,0.06); }
+  .mqi-inline-chip.warn { color:#fcd34d; border-color:rgba(245,158,11,0.18); background:rgba(245,158,11,0.06); }
+  .mqi-inline-chip.bad { color:#fca5a5; border-color:rgba(239,68,68,0.18); background:rgba(239,68,68,0.06); }
+  .mqi-tool-row { display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:6px; }
+  .mqi-modal {
+    position:fixed; inset:0; background:rgba(4,7,17,0.68); z-index:80;
+    display:none; align-items:center; justify-content:center; padding:20px;
+    backdrop-filter:blur(8px);
+  }
+  .mqi-modal.open { display:flex; }
+  .mqi-modal-card {
+    width:min(760px,100%); max-height:min(88vh,860px); overflow:auto;
+    border-radius:24px; border:1px solid rgba(255,255,255,0.09);
+    background:linear-gradient(180deg,rgba(20,24,38,0.98),rgba(12,15,26,0.98));
+    box-shadow:0 28px 70px rgba(0,0,0,0.45);
+  }
+  .mqi-modal-head {
+    display:flex; align-items:flex-start; justify-content:space-between; gap:16px;
+    padding:20px 22px; border-bottom:1px solid rgba(255,255,255,0.06);
+    position:sticky; top:0; backdrop-filter:blur(8px); background:rgba(12,15,26,0.92);
+  }
+  .mqi-modal-title { font-size:18px; font-weight:800; color:var(--color-ink); margin:0 0 4px; }
+  .mqi-modal-sub { font-size:12px; color:var(--color-muted); margin:0; }
+  .mqi-modal-body { padding:22px; }
+  .mqi-modal-close {
+    width:34px; height:34px; border-radius:11px; border:1px solid rgba(255,255,255,0.09);
+    background:rgba(255,255,255,0.04); color:var(--color-muted); cursor:pointer;
+  }
+  .mqi-report-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-bottom:16px; }
+  @media(max-width:760px){ .mqi-report-grid { grid-template-columns:repeat(2,1fr); } }
+  @media(max-width:480px){ .mqi-report-grid { grid-template-columns:1fr; } }
+  .mqi-report-card {
+    padding:14px 15px; border-radius:16px; background:rgba(255,255,255,0.03);
+    border:1px solid rgba(255,255,255,0.07);
+  }
+  .mqi-report-k { font-size:10px; color:var(--color-muted); text-transform:uppercase; letter-spacing:.08em; margin-bottom:5px; }
+  .mqi-report-v { font-size:18px; font-weight:800; color:var(--color-ink); }
+  .mqi-checks { display:flex; flex-direction:column; gap:10px; }
+  .mqi-check {
+    display:flex; gap:12px; align-items:flex-start; padding:12px 14px; border-radius:14px;
+    border:1px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.025);
+  }
+  .mqi-check.ok { border-color:rgba(34,197,94,0.18); background:rgba(34,197,94,0.06); }
+  .mqi-check.bad { border-color:rgba(239,68,68,0.2); background:rgba(239,68,68,0.06); }
+  .mqi-check-icon {
+    width:28px; height:28px; border-radius:9px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:12px;
+  }
+  .mqi-check.ok .mqi-check-icon { background:rgba(34,197,94,0.14); color:#86efac; }
+  .mqi-check.bad .mqi-check-icon { background:rgba(239,68,68,0.14); color:#fca5a5; }
+  .mqi-check-title { font-size:13px; font-weight:700; color:var(--color-ink); margin-bottom:2px; }
+  .mqi-check-detail { font-size:12px; color:var(--color-muted); line-height:1.55; }
+  .mqi-modal-summary {
+    margin-bottom:16px; padding:14px 16px; border-radius:16px;
+    background:linear-gradient(135deg,rgba(255,124,108,0.08),rgba(99,102,241,0.08));
+    border:1px solid rgba(255,255,255,0.08); font-size:13px; color:var(--color-ink); line-height:1.65;
+  }
+</style>
+
+<!-- Header -->
+<div class="mqi-hero">
+  <div class="mqi-hero-left">
+    <h1 class="mqi-hero-title">Merchant <span>QR</span></h1>
+    <p class="mqi-hero-sub">Kelola akun merchant QRIS — sumber data Generate QR, Mutasi, dan Settlement</p>
+  </div>
+  <a href="<%= url('/merchant-qr/new') %>" class="mqi-add-btn">
+    <i class="fa-solid fa-plus" style="font-size:11px"></i>
+    Tambah Merchant
+  </a>
+</div>
+
+<!-- Info bar -->
+<div class="mqi-info-bar">
+  <div class="mqi-info-card">
+    <div class="mqi-info-card-hdr">
+      <div class="mqi-info-card-icon" style="background:rgba(99,102,241,0.14);color:#a5b4fc">
+        <i class="fa-solid fa-bolt"></i>
+      </div>
+      <span class="mqi-info-card-title">Agar Mutasi Jalan</span>
+    </div>
+    <ul class="mqi-info-card-list">
+      <li>Kode &amp; Nama Merchant</li>
+      <li>Nomor Akun / ID Merchant</li>
+      <li>Session Token</li>
+      <li>Device ID</li>
+    </ul>
+  </div>
+  <div class="mqi-info-card">
+    <div class="mqi-info-card-hdr">
+      <div class="mqi-info-card-icon" style="background:rgba(16,185,129,0.14);color:#6ee7b7">
+        <i class="fa-solid fa-qrcode"></i>
+      </div>
+      <span class="mqi-info-card-title">Agar Generate QR Jalan</span>
+    </div>
+    <ul class="mqi-info-card-list">
+      <li>Session Token</li>
+      <li>QRIS Payload</li>
+      <li>Nama Merchant aktif</li>
+    </ul>
+  </div>
+  <div class="mqi-info-card">
+    <div class="mqi-info-card-hdr">
+      <div class="mqi-info-card-icon" style="background:rgba(245,158,11,0.14);color:#fcd34d">
+        <i class="fa-solid fa-circle-info"></i>
+      </div>
+      <span class="mqi-info-card-title">Opsional</span>
+    </div>
+    <ul class="mqi-info-card-list">
+      <li>Cookies / app_reg_id</li>
+      <li>Index Settlement Orkut</li>
+      <li>Batas Harian</li>
+    </ul>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="mqi-table-wrap">
+  <div style="overflow-x:auto">
+    <table class="mqi-table">
+      <thead>
+        <tr>
+          <th>Kode</th>
+          <th>Merchant</th>
+          <th class="hidden md:table-cell">Nomor Akun</th>
+          <th class="center hidden lg:table-cell">Integrasi</th>
+          <th class="center">Status</th>
+          <th class="center">Generate QR</th>
+          <th class="center">Mutasi</th>
+          <th class="center">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (accounts.length === 0) { %>
+          <tr>
+            <td colspan="8">
+              <div class="mqi-empty">
+                <div class="mqi-empty-icon"><i class="fa-solid fa-store"></i></div>
+                <p class="mqi-empty-title">Belum ada Merchant QR</p>
+                <a href="<%= url('/merchant-qr/new') %>" class="mqi-empty-link">Tambah merchant pertama →</a>
+              </div>
+            </td>
+          </tr>
+        <% } %>
+
+        <% accounts.forEach(acc => { %>
+          <%
+            const isActive = acc.status === 'active';
+            const hasSession = !!acc.sessionTokenEncrypted;
+            const hasCookies = !!acc.cookiesEncrypted;
+            const hasWebCookies = !!acc.webCookiesEncrypted;
+            const hasPayload = !!acc.qrisPayload;
+            const generateReady = isActive && (hasSession || hasPayload);
+            const mutationReady = isActive && (hasSession || hasCookies || hasWebCookies);
+            const testChipClass = acc.lastConnectionTestStatus === 'success'
+              ? 'ok'
+              : acc.lastConnectionTestStatus === 'partial'
+                ? 'warn'
+                : acc.lastConnectionTestStatus === 'failed'
+                  ? 'bad'
+                  : '';
+            const syncChipClass = acc.lastBalanceSyncStatus === 'synced'
+              ? 'ok'
+              : acc.lastBalanceSyncStatus === 'partial' || acc.lastBalanceSyncStatus === 'rate_limited'
+                ? 'warn'
+                : acc.lastBalanceSyncStatus === 'error'
+                  ? 'bad'
+                  : '';
+            const probeChipClass = (acc.lastWatchProbeStatus === 'ok' || acc.lastWatchProbeStatus === 'changed' || acc.lastWatchProbeStatus === 'steady')
+              ? 'ok'
+              : acc.lastWatchProbeStatus === 'rate_limited'
+                ? 'warn'
+                : acc.lastWatchProbeStatus === 'error'
+                  ? 'bad'
+                  : '';
+            const probeAgeMs = acc.lastWatchProbeAt ? (Date.now() - new Date(acc.lastWatchProbeAt).getTime()) : null;
+            const watcherChipClass = probeAgeMs !== null && probeAgeMs < 10000 ? 'ok' : '';
+            const rrnChipClass = hasSession ? 'ok' : '';
+            const integrationBadges = [];
+            if (hasSession) integrationBadges.push({ label: 'App API', cls: 'mqi-badge-blue' });
+            if (hasCookies) integrationBadges.push({ label: 'App Reg', cls: 'mqi-badge-amber' });
+            if (hasWebCookies) integrationBadges.push({ label: 'Web Cookie', cls: 'mqi-badge-blue' });
+            if (hasPayload) integrationBadges.push({ label: 'Payload', cls: 'mqi-badge-green' });
+            const watcherLabel = 'Python Standby';
+          %>
+          <tr data-id="<%= acc.id %>">
+            <td>
+              <span class="mqi-code"><%= acc.code %></span>
+            </td>
+            <td>
+              <div style="font-weight:600;color:var(--color-ink);font-size:13px"><%= acc.merchantName %></div>
+              <div style="font-size:10px;color:var(--color-muted);margin-top:2px">Idx settlement: <%= acc.orkutAccountIndex ?? '-' %></div>
+              <div class="mqi-inline-meta">
+                <span class="mqi-inline-chip ok"><i class="fa-solid fa-robot"></i> <%= watcherLabel %></span>
+                <span class="mqi-inline-chip <%= watcherChipClass %>" data-chip="watcher" data-id="<%= acc.id %>"><i class="fa-solid fa-heart-pulse"></i> watcher <%= acc.balanceWatchActiveSeconds ?? 2 %> dtk</span>
+                <span class="mqi-inline-chip <%= rrnChipClass %>" data-chip="rrn" data-id="<%= acc.id %>"><i class="fa-solid fa-fingerprint"></i> rrn <%= acc.detailPollSeconds ?? 20 %> dtk</span>
+                <span class="mqi-inline-chip <%= probeChipClass %>" data-chip="probe" data-id="<%= acc.id %>"><i class="fa-solid fa-satellite-dish"></i> probe <span class="probe-time-val"><%= fmtMiniTime(acc.lastWatchProbeAt) %></span></span>
+                <span class="mqi-inline-chip <%= testChipClass %>" data-chip="test" data-id="<%= acc.id %>"><i class="fa-solid fa-plug-circle-check"></i> test <span class="test-time-val"><%= fmtMiniTime(acc.lastConnectionTestAt) %></span></span>
+                <span class="mqi-inline-chip <%= syncChipClass %>" data-chip="sync" data-id="<%= acc.id %>"><i class="fa-solid fa-arrows-rotate"></i> sync <span class="sync-time-val"><%= fmtMiniTime(acc.lastBalanceSyncAt) %></span></span>
+              </div>
+            </td>
+            <td class="hidden md:table-cell">
+              <span class="mqi-mono"><%= acc.accountNumber %></span>
+            </td>
+            <td class="hidden lg:table-cell" style="text-align:center">
+              <div class="mqi-intg-tags">
+                <% if (integrationBadges.length === 0) { %>
+                  <span class="mqi-badge mqi-badge-gray">Belum diisi</span>
+                <% } else { %>
+                  <span class="mqi-badge mqi-badge-green"><%= watcherLabel %></span>
+                  <% integrationBadges.forEach(b => { %>
+                    <span class="mqi-badge <%= b.cls %>"><%= b.label %></span>
+                  <% }) %>
+                <% } %>
+              </div>
+            </td>
+            <td style="text-align:center">
+              <button onclick="toggleMerchantStatus('<%= acc.id %>', this)"
+                      class="mqi-badge <%= isActive ? 'mqi-badge-green' : 'mqi-badge-red' %>"
+                      style="cursor:pointer;border:none;font-family:inherit">
+                <span class="mqi-badge-dot"></span>
+                <%= isActive ? 'Aktif' : 'Nonaktif' %>
+              </button>
+            </td>
+            <td style="text-align:center">
+              <span class="mqi-badge <%= generateReady ? 'mqi-badge-green' : 'mqi-badge-amber' %>">
+                <%= generateReady ? (hasSession ? 'Siap' : 'Siap via Payload') : 'Butuh Token/Payload' %>
+              </span>
+            </td>
+            <td style="text-align:center">
+              <span class="mqi-badge <%= mutationReady ? 'mqi-badge-blue' : (isActive ? 'mqi-badge-amber' : 'mqi-badge-gray') %>">
+                <%= mutationReady ? (hasWebCookies ? 'Hybrid Web' : 'Otomatis') : (isActive ? 'Butuh Token/Cookie' : 'Nonaktif') %>
+              </span>
+            </td>
+            <td style="text-align:center">
+              <div class="mqi-tool-row">
+                <button type="button" class="mqi-action-btn blue" title="Test Koneksi" onclick="runMerchantAction('<%= acc.id %>', 'test')">
+                  <i class="fa-solid fa-plug-circle-check"></i>
+                </button>
+                <button type="button" class="mqi-action-btn green" title="Sinkronkan Sekarang" onclick="runMerchantAction('<%= acc.id %>', 'sync')">
+                  <i class="fa-solid fa-arrows-rotate"></i>
+                </button>
+              </div>
+              <div style="display:flex;align-items:center;justify-content:center;gap:6px">
+                <a href="<%= url(`/merchant-qr/${acc.id}/edit`) %>" class="mqi-action-btn" title="Edit">
+                  <i class="fa-solid fa-pen-to-square"></i>
+                </a>
+                <form action="<%= url(`/merchant-qr/${acc.id}/reset-daily`) %>" method="POST"
+                      onsubmit="return confirm('Reset penggunaan harian merchant ini?')" style="margin:0">
+                  <button type="submit" class="mqi-action-btn amber" title="Reset Harian">
+                    <i class="fa-solid fa-rotate"></i>
+                  </button>
+                </form>
+                <form action="<%= url(`/merchant-qr/${acc.id}/delete`) %>" method="POST"
+                      onsubmit="return confirm('Hapus Merchant QR ini? Tidak dapat dibatalkan.')" style="margin:0">
+                  <button type="submit" class="mqi-action-btn red" title="Hapus">
+                    <i class="fa-solid fa-trash"></i>
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="merchant-action-modal" class="mqi-modal" aria-hidden="true">
+  <div class="mqi-modal-card">
+    <div class="mqi-modal-head">
+      <div>
+        <h3 id="merchant-action-title" class="mqi-modal-title">Merchant QR</h3>
+        <p id="merchant-action-sub" class="mqi-modal-sub">Memproses permintaan...</p>
+      </div>
+      <button type="button" class="mqi-modal-close" onclick="closeMerchantActionModal()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div id="merchant-action-body" class="mqi-modal-body">
+      <div class="mqi-modal-summary">Menyiapkan hasil...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+async function toggleMerchantStatus(id, btn) {
+  if (!confirm('Ubah status merchant ini?')) return;
+  try {
+    const res = await fetch(`<%= url('/merchant-qr') %>/${id}/toggle-status`, { method: 'POST' });
+    const data = await res.json();
+    if (!data.success) { alert('Gagal: ' + data.error); return; }
+    const isActive = data.status === 'active';
+    btn.className = 'mqi-badge ' + (isActive ? 'mqi-badge-green' : 'mqi-badge-red');
+    btn.innerHTML = '<span class="mqi-badge-dot"></span>' + (isActive ? 'Aktif' : 'Nonaktif');
+  } catch (_) {
+    alert('Terjadi kesalahan jaringan.');
+  }
+}
+
+function openMerchantActionModal(title, subtitle, bodyHtml) {
+  document.getElementById('merchant-action-title').textContent = title;
+  document.getElementById('merchant-action-sub').textContent = subtitle;
+  document.getElementById('merchant-action-body').innerHTML = bodyHtml;
+  document.getElementById('merchant-action-modal').classList.add('open');
+}
+
+function closeMerchantActionModal() {
+  document.getElementById('merchant-action-modal').classList.remove('open');
+}
+
+function renderMerchantReport(report, modeLabel) {
+  const readiness = report.readiness || {};
+  const stats = report.stats || {};
+  const checks = Array.isArray(report.checks) ? report.checks : [];
+
+  const cards = [
+    { key: 'Generate', value: readiness.generateReady ? 'Siap' : 'Belum', color: readiness.generateReady ? '#86efac' : '#fcd34d' },
+    { key: 'Mutasi', value: readiness.mutationReady ? 'Siap' : 'Belum', color: readiness.mutationReady ? '#86efac' : '#fcd34d' },
+    { key: 'Mode', value: modeLabel, color: '#93c5fd' },
+    { key: 'Mutasi Baru', value: String((stats.newQrisMutations ?? 0) + (stats.newUtamaMutations ?? 0)), color: '#ffb4a8' },
+  ];
+
+  return `
+    <div class="mqi-modal-summary">
+      <strong>${report.account.code} · ${report.account.merchantName}</strong><br>
+      ${report.message || 'Tidak ada pesan tambahan.'}
+    </div>
+    <div class="mqi-report-grid">
+      ${cards.map((card) => `
+        <div class="mqi-report-card">
+          <div class="mqi-report-k">${card.key}</div>
+          <div class="mqi-report-v" style="color:${card.color}">${card.value}</div>
+        </div>
+      `).join('')}
+    </div>
+    ${stats.mainBalance != null || stats.qrisBalance != null || stats.maderaBalance != null ? `
+      <div class="mqi-report-grid" style="margin-top:-2px">
+        <div class="mqi-report-card"><div class="mqi-report-k">Saldo Utama</div><div class="mqi-report-v">Rp ${(stats.mainBalance ?? 0).toLocaleString('id-ID')}</div></div>
+        <div class="mqi-report-card"><div class="mqi-report-k">Saldo QRIS</div><div class="mqi-report-v">Rp ${(stats.qrisBalance ?? 0).toLocaleString('id-ID')}</div></div>
+        <div class="mqi-report-card"><div class="mqi-report-k">Saldo Madera</div><div class="mqi-report-v">Rp ${(stats.maderaBalance ?? 0).toLocaleString('id-ID')}</div></div>
+        <div class="mqi-report-card"><div class="mqi-report-k">Match Transaksi</div><div class="mqi-report-v">${stats.matchedTransactions ?? 0}</div></div>
+      </div>
+    ` : ''}
+    <div class="mqi-checks">
+      ${checks.map((check) => `
+        <div class="mqi-check ${check.ok ? 'ok' : 'bad'}">
+          <div class="mqi-check-icon"><i class="fa-solid ${check.ok ? 'fa-check' : 'fa-triangle-exclamation'}"></i></div>
+          <div>
+            <div class="mqi-check-title">${check.label}</div>
+            <div class="mqi-check-detail">${check.detail}</div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
+// ── Live status chip refresh ──────────────────────────────────────────────
+(function () {
+  const statusApiUrl = '<%= url('/merchant-qr/api/status') %>';
+
+  function fmtMiniTimeJs(isoStr) {
+    if (!isoStr) return 'Belum ada';
+    return new Date(isoStr).toLocaleString('id-ID', {
+      day: '2-digit', month: '2-digit', year: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+      timeZone: 'Asia/Jakarta',
+    });
+  }
+
+  function resolveChipClass(status, type) {
+    if (type === 'watcher') {
+      // green if probe happened within last 10 seconds
+      return status !== null && status < 10000 ? 'ok' : '';
+    }
+    if (type === 'rrn') {
+      return status ? 'ok' : '';
+    }
+    if (type === 'probe') {
+      return (status === 'ok' || status === 'changed' || status === 'steady') ? 'ok'
+        : status === 'rate_limited' ? 'warn'
+        : status === 'error' ? 'bad'
+        : '';
+    }
+    if (type === 'test') {
+      return status === 'success' ? 'ok'
+        : status === 'partial' ? 'warn'
+        : status === 'failed' ? 'bad'
+        : '';
+    }
+    if (type === 'sync') {
+      return status === 'synced' ? 'ok'
+        : (status === 'partial' || status === 'rate_limited') ? 'warn'
+        : status === 'error' ? 'bad'
+        : '';
+    }
+    return '';
+  }
+
+  function updateChip(el, cls) {
+    if (!el) return;
+    el.className = 'mqi-inline-chip' + (cls ? ' ' + cls : '');
+  }
+
+  function updateMerchantChips(accounts) {
+    accounts.forEach(function (acc) {
+      const watcherEl = document.querySelector('[data-chip="watcher"][data-id="' + acc.id + '"]');
+      const rrnEl    = document.querySelector('[data-chip="rrn"][data-id="' + acc.id + '"]');
+      const probeEl  = document.querySelector('[data-chip="probe"][data-id="' + acc.id + '"]');
+      const testEl   = document.querySelector('[data-chip="test"][data-id="' + acc.id + '"]');
+      const syncEl   = document.querySelector('[data-chip="sync"][data-id="' + acc.id + '"]');
+
+      updateChip(watcherEl, resolveChipClass(acc.probeAgeMs, 'watcher'));
+      updateChip(rrnEl,     resolveChipClass(acc.hasSession, 'rrn'));
+      updateChip(probeEl,   resolveChipClass(acc.lastWatchProbeStatus, 'probe'));
+      updateChip(testEl,    resolveChipClass(acc.lastConnectionTestStatus, 'test'));
+      updateChip(syncEl,    resolveChipClass(acc.lastBalanceSyncStatus, 'sync'));
+
+      // Update time labels
+      if (probeEl) {
+        const t = probeEl.querySelector('.probe-time-val');
+        if (t) t.textContent = fmtMiniTimeJs(acc.lastWatchProbeAt);
+      }
+      if (testEl) {
+        const t = testEl.querySelector('.test-time-val');
+        if (t) t.textContent = fmtMiniTimeJs(acc.lastConnectionTestAt);
+      }
+      if (syncEl) {
+        const t = syncEl.querySelector('.sync-time-val');
+        if (t) t.textContent = fmtMiniTimeJs(acc.lastBalanceSyncAt);
+      }
+    });
+  }
+
+  async function refreshMerchantStatus() {
+    try {
+      const res = await fetch(statusApiUrl, { cache: 'no-store' });
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.accounts)) {
+        updateMerchantChips(data.accounts);
+      }
+    } catch (_) { /* silently ignore */ }
+  }
+
+  // Initial refresh + poll every 5 seconds
+  refreshMerchantStatus();
+  setInterval(refreshMerchantStatus, 5000);
+})();
+
+async function runMerchantAction(id, action) {
+  const isSync = action === 'sync';
+  openMerchantActionModal(
+    isSync ? 'Sinkronkan Merchant' : 'Test Koneksi Merchant',
+    isSync ? 'Menarik data terbaru dari OrderKuota...' : 'Mengecek token, payload, dan jalur mutasi...',
+    '<div class="mqi-modal-summary">Sedang memproses. Mohon tunggu sebentar...</div>'
+  );
+
+  try {
+    const res = await fetch(`<%= url('/merchant-qr') %>/${id}/${isSync ? 'sync-now' : 'test-connection'}`, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' }
+    });
+    const data = await res.json();
+    if (!res.ok || !data.success) {
+      openMerchantActionModal(
+        isSync ? 'Sinkron Gagal' : 'Test Gagal',
+        'Permintaan belum berhasil dijalankan',
+        `<div class="mqi-modal-summary">${data.error || 'Terjadi kesalahan yang tidak diketahui.'}</div>`
+      );
+      return;
+    }
+
+    const report = data.report;
+    const modeMap = {
+      app: 'App API',
+      web: 'Cookie/Web',
+      'payload-only': 'Payload Only',
+      unconfigured: 'Belum Lengkap',
+    };
+
+    openMerchantActionModal(
+      isSync ? 'Sinkron Selesai' : 'Test Koneksi Selesai',
+      'Hasil pemeriksaan merchant terbaru',
+      renderMerchantReport(report, modeMap[report.mode] || report.mode)
+    );
+  } catch (err) {
+    openMerchantActionModal(
+      isSync ? 'Sinkron Gagal' : 'Test Gagal',
+      'Permintaan belum berhasil dijalankan',
+      `<div class="mqi-modal-summary">${err?.message || 'Terjadi kesalahan jaringan.'}</div>`
+    );
+  }
+}
+</script>

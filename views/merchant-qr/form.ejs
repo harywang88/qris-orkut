@@ -1,0 +1,1532 @@
+<%
+  const isEdit = account !== null;
+  const formAction = isEdit ? url(`/merchant-qr/${account.id}`) : url('/merchant-qr');
+  function val(field, fallback) {
+    return isEdit && account[field] != null ? account[field] : (fallback ?? '');
+  }
+  function hasErr(field) {
+    return errors && errors[field] && errors[field].length > 0;
+  }
+%>
+
+<style>
+  .mq-back {
+    display:inline-flex;align-items:center;gap:6px;
+    font-size:12px;color:var(--color-muted);text-decoration:none;
+    padding:5px 0;transition:color .15s;
+  }
+  .mq-back:hover { color:var(--color-ink); }
+
+  /* Section card */
+  .mq-section {
+    border-radius:16px;
+    border:1px solid rgba(255,255,255,0.07);
+    background:var(--color-card);
+    overflow:hidden;
+    margin-bottom:16px;
+  }
+  .mq-section-hdr {
+    display:flex;align-items:center;gap:12px;
+    padding:14px 20px;
+    border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  .mq-section-icon {
+    width:34px;height:34px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;font-size:14px;
+  }
+  .mq-section-body { padding:20px; }
+
+  /* Field */
+  .mq-field { margin-bottom:0; }
+  .mq-label {
+    display:flex;align-items:center;gap:6px;
+    font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--color-muted);margin-bottom:6px;
+  }
+  .mq-label .req { color:#f87171;margin-left:2px; }
+  .mq-label .badge {
+    font-size:9px;font-weight:600;letter-spacing:.03em;text-transform:none;
+    padding:1px 7px;border-radius:999px;
+    background:rgba(99,179,237,0.12);color:#93c5fd;border:1px solid rgba(99,179,237,0.2);
+    margin-left:auto;
+  }
+  .mq-label .badge.must {
+    background:rgba(34,197,94,0.12);
+    color:#86efac;
+    border-color:rgba(34,197,94,0.24);
+  }
+  .mq-label .badge.opt {
+    background:rgba(100,116,139,0.12);color:#94a3b8;border-color:rgba(100,116,139,0.2);
+  }
+  .mq-label .badge.tip {
+    background:rgba(245,158,11,0.12);color:#fcd34d;border-color:rgba(245,158,11,0.24);
+  }
+  .mq-input {
+    width:100%;background:rgba(255,255,255,0.04);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:10px;padding:10px 14px;
+    color:var(--color-ink);font-size:13px;outline:none;
+    transition:border-color .2s,background .2s;
+    box-sizing:border-box;
+  }
+  .mq-input:focus { border-color:rgba(99,179,237,0.45);background:rgba(99,179,237,0.04); }
+  .mq-input::placeholder { color:var(--color-muted); }
+  .mq-input.is-error { border-color:rgba(239,68,68,0.5); }
+  .mq-input.mono { font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px; }
+  .mq-input[readonly] { opacity:.55;cursor:not-allowed; }
+  .mq-hint {
+    margin-top:5px;font-size:11px;color:var(--color-muted);
+    display:flex;align-items:flex-start;gap:5px;line-height:1.5;
+  }
+  .mq-hint i { margin-top:1px;flex-shrink:0;font-size:10px; }
+  .mq-err { margin-top:4px;font-size:11px;color:#fca5a5; }
+
+  /* Input with suffix */
+  .mq-input-wrap { position:relative; }
+  .mq-input-wrap .mq-input { padding-right:48px; }
+  .mq-input-wrap .mq-suffix {
+    position:absolute;right:12px;top:50%;transform:translateY(-50%);
+    font-size:11px;font-weight:700;color:var(--color-muted);
+  }
+
+  /* Password toggle */
+  .mq-pwd-wrap { position:relative; }
+  .mq-pwd-wrap .mq-input { padding-right:42px; }
+  .mq-pwd-toggle {
+    position:absolute;right:12px;top:50%;transform:translateY(-50%);
+    background:none;border:none;cursor:pointer;color:var(--color-muted);
+    font-size:13px;padding:2px;transition:color .15s;
+  }
+  .mq-pwd-toggle:hover { color:var(--color-ink); }
+
+  /* Poll row */
+  .mq-poll-card {
+    padding:14px 16px;
+    background:rgba(255,255,255,0.02);
+    border:1px solid rgba(255,255,255,0.06);
+    border-radius:12px;
+  }
+  .mq-poll-title { font-size:12px;font-weight:700;color:var(--color-ink);margin-bottom:2px; }
+  .mq-poll-sub { font-size:11px;color:var(--color-muted);margin-bottom:10px;line-height:1.45; }
+
+  /* Balance mini cards */
+  .mq-bal-card {
+    padding:12px 14px;border-radius:12px;
+    border:1px solid rgba(255,255,255,0.07);
+    background:rgba(255,255,255,0.03);
+    text-align:center;
+  }
+  .mq-bal-label { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--color-muted);margin-bottom:4px; }
+  .mq-bal-val { font-size:16px;font-weight:800;color:var(--color-ink); }
+
+  /* Sticky page top bar */
+  .mq-topbar {
+    display:flex;align-items:center;justify-content:space-between;
+    flex-wrap:wrap;gap:12px;margin-bottom:20px;
+  }
+  .mq-topbar-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .mq-toolbar-btn {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 14px; border-radius:12px; text-decoration:none;
+    border:1px solid rgba(255,255,255,0.1); background:rgba(255,255,255,0.04);
+    color:var(--color-ink); font-size:12px; font-weight:700; cursor:pointer;
+    transition:all .15s;
+  }
+  .mq-toolbar-btn:hover { background:rgba(255,255,255,0.08); }
+  .mq-toolbar-btn.blue { border-color:rgba(59,130,246,0.22); color:#93c5fd; }
+  .mq-toolbar-btn.green { border-color:rgba(34,197,94,0.22); color:#86efac; }
+  .mq-page-grid { display:grid; grid-template-columns:minmax(0,1.7fr) minmax(300px,.85fr); gap:20px; align-items:start; }
+  .mq-main { min-width:0; }
+  .mq-side { min-width:0; position:sticky; top:18px; }
+  @media(max-width:1100px){ .mq-page-grid { grid-template-columns:1fr; } .mq-side { position:static; } }
+  .mq-side-card {
+    border-radius:18px; padding:18px; margin-bottom:16px;
+    border:1px solid rgba(255,255,255,0.08);
+    background:linear-gradient(180deg,rgba(255,255,255,0.035),rgba(255,255,255,0.02));
+  }
+  .mq-side-title { font-size:12px; font-weight:800; color:var(--color-ink); letter-spacing:.04em; text-transform:uppercase; margin-bottom:12px; }
+  .mq-stat-list { display:flex; flex-direction:column; gap:10px; }
+  .mq-stat {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:10px 12px; border-radius:12px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06);
+  }
+  .mq-stat-label { font-size:12px; color:var(--color-muted); }
+  .mq-stat-val { font-size:12px; font-weight:800; color:var(--color-ink); }
+  .mq-quick-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .mq-preset-row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px; }
+  .mq-preset-btn {
+    display:inline-flex; align-items:center; gap:7px; padding:8px 12px; border-radius:999px;
+    border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.04);
+    color:var(--color-ink); font-size:11px; font-weight:700; cursor:pointer;
+  }
+  .mq-preset-btn:hover { background:rgba(255,255,255,0.08); }
+  .mq-note-list { list-style:none; margin:0; padding:0; display:flex; flex-direction:column; gap:10px; }
+  .mq-note-list li { display:flex; gap:10px; font-size:12px; color:var(--color-muted); line-height:1.55; }
+  .mq-note-list i { margin-top:2px; color:#93c5fd; flex-shrink:0; }
+  .mq-steps { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin:0 0 18px; }
+  @media(max-width:900px){ .mq-steps { grid-template-columns:repeat(2,1fr); } }
+  @media(max-width:520px){ .mq-steps { grid-template-columns:1fr; } }
+  .mq-step {
+    padding:14px 15px; border-radius:16px;
+    border:1px solid rgba(255,255,255,0.07);
+    background:rgba(255,255,255,0.03);
+  }
+  .mq-step-no {
+    width:28px;height:28px;border-radius:10px;
+    display:flex;align-items:center;justify-content:center;
+    background:rgba(34,197,94,0.12);color:#86efac;
+    font-size:12px;font-weight:800;margin-bottom:10px;
+  }
+  .mq-step-title { font-size:12px;font-weight:800;color:var(--color-ink);margin-bottom:4px; }
+  .mq-step-sub { font-size:11px;color:var(--color-muted);line-height:1.5; }
+  .mq-subpanel {
+    margin-top:14px;padding:14px 16px;border-radius:14px;
+    background:rgba(255,255,255,0.02);border:1px dashed rgba(255,255,255,0.12);
+  }
+  .mq-subpanel-title {
+    font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;
+    color:var(--color-muted);margin-bottom:12px;
+  }
+  .mq-toggle-wrap { border-top:1px dashed rgba(255,255,255,0.09); margin-top:16px; padding-top:16px; }
+  .mq-toggle-btn {
+    display:inline-flex;align-items:center;gap:8px;
+    padding:9px 12px;border-radius:12px;cursor:pointer;user-select:none;
+    border:1px solid rgba(255,255,255,0.08);background:rgba(255,255,255,0.04);
+    color:var(--color-ink);font-size:12px;font-weight:700;
+  }
+  .mq-toggle-btn:hover { background:rgba(255,255,255,0.07); }
+  .mq-toggle-box { display:none; }
+  .mq-toggle-box.open { display:block; }
+  .mq-action-modal {
+    position:fixed; inset:0; z-index:80; display:none; align-items:center; justify-content:center; padding:20px;
+    background:rgba(4,7,17,0.72); backdrop-filter:blur(8px);
+  }
+  .mq-action-modal.open { display:flex; }
+  .mq-action-card {
+    width:min(760px,100%); max-height:88vh; overflow:auto;
+    border-radius:24px; border:1px solid rgba(255,255,255,0.08);
+    background:linear-gradient(180deg,rgba(20,24,38,0.98),rgba(12,15,26,0.98));
+    box-shadow:0 26px 70px rgba(0,0,0,0.46);
+  }
+  .mq-action-head {
+    display:flex; align-items:flex-start; justify-content:space-between; gap:12px;
+    padding:20px 22px; border-bottom:1px solid rgba(255,255,255,0.06);
+  }
+  .mq-action-title { margin:0 0 4px; font-size:18px; font-weight:800; color:var(--color-ink); }
+  .mq-action-sub { margin:0; font-size:12px; color:var(--color-muted); }
+  .mq-action-body { padding:22px; }
+  .mq-close-btn {
+    width:34px; height:34px; border-radius:11px; border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04); color:var(--color-muted); cursor:pointer;
+  }
+  .mq-result-hero {
+    margin-bottom:16px; padding:14px 16px; border-radius:16px;
+    background:linear-gradient(135deg,rgba(255,124,108,0.08),rgba(59,130,246,0.08));
+    border:1px solid rgba(255,255,255,0.08); color:var(--color-ink); font-size:13px; line-height:1.65;
+  }
+  .mq-result-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px; }
+  @media(max-width:760px){ .mq-result-grid { grid-template-columns:repeat(2,1fr); } }
+  @media(max-width:480px){ .mq-result-grid { grid-template-columns:1fr; } }
+  .mq-result-card { padding:13px 14px; border-radius:14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07); }
+  .mq-result-k { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--color-muted); margin-bottom:5px; }
+  .mq-result-v { font-size:17px; font-weight:800; color:var(--color-ink); }
+  .mq-result-checks { display:flex; flex-direction:column; gap:10px; }
+  .mq-result-check { display:flex; gap:12px; align-items:flex-start; padding:12px 14px; border-radius:14px; border:1px solid rgba(255,255,255,0.07); background:rgba(255,255,255,0.025); }
+  .mq-result-check.ok { background:rgba(34,197,94,0.06); border-color:rgba(34,197,94,0.18); }
+  .mq-result-check.bad { background:rgba(239,68,68,0.06); border-color:rgba(239,68,68,0.18); }
+  .mq-result-icon { width:28px; height:28px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .mq-result-check.ok .mq-result-icon { background:rgba(34,197,94,0.14); color:#86efac; }
+  .mq-result-check.bad .mq-result-icon { background:rgba(239,68,68,0.14); color:#fca5a5; }
+  .mq-result-check-title { font-size:13px; font-weight:700; color:var(--color-ink); margin-bottom:2px; }
+  .mq-result-check-detail { font-size:12px; color:var(--color-muted); line-height:1.55; }
+  .mq-inline-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .mq-mini-btn {
+    display:inline-flex; align-items:center; gap:8px;
+    padding:9px 12px; border-radius:10px; cursor:pointer;
+    border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.04);
+    color:var(--color-ink); font-size:12px; font-weight:700;
+  }
+  .mq-mini-btn:hover { background:rgba(255,255,255,0.08); }
+  .mq-mini-btn.blue { border-color:rgba(59,130,246,0.22); color:#93c5fd; }
+  .mq-mini-btn.green { border-color:rgba(34,197,94,0.22); color:#86efac; }
+  .mq-mini-btn.orange { border-color:rgba(245,158,11,0.22); color:#fcd34d; }
+  .mq-report-test {
+    margin-top:12px; padding:14px 16px; border-radius:14px;
+    background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+    display:none;
+  }
+  .mq-report-test.open { display:block; }
+  .mq-badge-row { display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 12px; }
+  .mq-test-badge {
+    display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px;
+    font-size:11px; font-weight:700; border:1px solid rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.04); color:var(--color-muted);
+  }
+  .mq-test-badge.ok { color:#86efac; border-color:rgba(34,197,94,0.24); background:rgba(34,197,94,0.08); }
+  .mq-test-badge.bad { color:#fca5a5; border-color:rgba(239,68,68,0.24); background:rgba(239,68,68,0.08); }
+  .mq-test-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:10px; margin-top:10px; }
+  @media(max-width:720px){ .mq-test-grid { grid-template-columns:1fr; } }
+  .mq-test-card {
+    padding:12px 13px; border-radius:12px; background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.06);
+  }
+  .mq-test-k { font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--color-muted); margin-bottom:5px; }
+  .mq-test-v { font-size:14px; font-weight:800; color:var(--color-ink); }
+  .mq-source-preset {
+    margin-top:14px; padding:14px 16px; border-radius:14px;
+    background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.07);
+  }
+  .mq-source-preset-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--color-muted); margin-bottom:10px; }
+  .mq-source-preset-sub { font-size:12px; color:var(--color-muted); line-height:1.55; margin-top:10px; }
+  .mq-lock-note { margin-top:6px; font-size:11px; color:#fcd34d; display:none; }
+  .mq-lock-note.show { display:flex; align-items:flex-start; gap:6px; }
+  .mq-reco-box {
+    margin-top:10px; padding:12px 13px; border-radius:12px;
+    border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.03);
+  }
+  .mq-reco-title { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--color-muted); margin-bottom:4px; }
+  .mq-reco-value { font-size:14px; font-weight:800; color:var(--color-ink); }
+  .mq-reco-note { font-size:12px; color:var(--color-muted); line-height:1.55; margin-top:6px; }
+  .mq-warning-box {
+    margin-top:12px; padding:12px 13px; border-radius:12px;
+    border:1px solid rgba(245,158,11,0.24); background:rgba(245,158,11,0.08); color:#fcd34d;
+    font-size:12px; line-height:1.6;
+  }
+</style>
+
+<!-- Back + Title -->
+<div class="mq-topbar">
+  <div>
+    <a href="<%= url('/merchant-qr') %>" class="mq-back">
+      <i class="fa-solid fa-arrow-left" style="font-size:11px"></i>
+      Kembali ke Merchant QR
+    </a>
+    <h1 style="font-size:20px;font-weight:800;color:var(--color-ink);margin:6px 0 2px">
+      <% if (isEdit) { %>
+        Edit <span style="color:#ff7c6c"><%= account.merchantName %></span>
+      <% } else { %>
+        Tambah <span style="color:#ff7c6c">Merchant QR</span>
+      <% } %>
+    </h1>
+    <p style="font-size:12px;color:var(--color-muted)">
+      Merchant aktif otomatis dipakai di Generate QR, Mutasi QRIS, Utama, dan Madera
+    </p>
+  </div>
+
+  <% if (isEdit) { %>
+    <div class="mq-topbar-actions">
+      <button type="button" class="mq-toolbar-btn blue" onclick="runMerchantAction('<%= account.id %>', 'test')">
+        <i class="fa-solid fa-plug-circle-check"></i>
+        Test Koneksi
+      </button>
+      <button type="button" class="mq-toolbar-btn green" onclick="runMerchantAction('<%= account.id %>', 'sync')">
+        <i class="fa-solid fa-arrows-rotate"></i>
+        Sinkronkan Sekarang
+      </button>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="text-align:right">
+          <p style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--color-muted);margin-bottom:1px">Kode</p>
+          <p style="font-size:18px;font-weight:900;color:var(--color-ink);font-family:monospace"><%= account.code %></p>
+        </div>
+        <div style="
+        width:42px;height:42px;border-radius:12px;
+        background:linear-gradient(135deg,rgba(255,124,108,0.2),rgba(255,124,108,0.06));
+        border:1px solid rgba(255,124,108,0.25);
+        display:flex;align-items:center;justify-content:center;
+        ">
+          <i class="fa-solid fa-store" style="color:#ffb4a8;font-size:17px"></i>
+        </div>
+      </div>
+    </div>
+  <% } %>
+</div>
+
+<% if (errors && errors._form) { %>
+  <div style="padding:12px 16px;border-radius:12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);color:#fca5a5;font-size:13px;margin-bottom:16px;display:flex;align-items:center;gap:10px">
+    <i class="fa-solid fa-circle-xmark"></i>
+    <span><%= errors._form[0] %></span>
+  </div>
+<% } %>
+
+<% if (!isEdit) { %>
+  <div class="mq-steps">
+    <div class="mq-step">
+      <div class="mq-step-no">1</div>
+      <div class="mq-step-title">Isi Identitas</div>
+      <div class="mq-step-sub">Masukkan kode, nama merchant, dan nomor akun lebih dulu.</div>
+    </div>
+    <div class="mq-step">
+      <div class="mq-step-no">2</div>
+      <div class="mq-step-title">Isi Yang Wajib</div>
+      <div class="mq-step-sub">Fokus dulu ke field berlabel hijau <strong>WAJIB</strong>.</div>
+    </div>
+    <div class="mq-step">
+      <div class="mq-step-no">3</div>
+      <div class="mq-step-title">Opsional Belakangan</div>
+      <div class="mq-step-sub">Field tambahan saya pindahkan belakangan supaya tidak bikin pusing.</div>
+    </div>
+    <div class="mq-step">
+      <div class="mq-step-no">4</div>
+      <div class="mq-step-title">Simpan Lalu Tes</div>
+      <div class="mq-step-sub">Setelah simpan, lanjut <strong>Test Koneksi</strong> dan <strong>Sinkronkan Sekarang</strong>.</div>
+    </div>
+  </div>
+<% } %>
+
+<div class="mq-page-grid">
+<div class="mq-main">
+<form action="<%= formAction %>" method="POST">
+
+  <!-- ══ 1. IDENTITAS MERCHANT ══════════════════════════════════════════════ -->
+  <div class="mq-section">
+    <div class="mq-section-hdr">
+      <div class="mq-section-icon" style="background:rgba(255,124,108,0.12);color:#ffb4a8">
+        <i class="fa-solid fa-store"></i>
+      </div>
+      <div>
+        <p style="font-size:13px;font-weight:800;color:var(--color-ink);margin:0">Identitas Merchant</p>
+        <p style="font-size:11px;color:var(--color-muted);margin:1px 0 0">Informasi dasar yang wajib diisi</p>
+      </div>
+    </div>
+    <div class="mq-section-body">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        <!-- Kode Merchant -->
+        <div class="mq-field">
+          <label class="mq-label">
+            <i class="fa-solid fa-hashtag" style="font-size:10px"></i>
+            Kode Merchant <span class="req">*</span>
+            <span class="badge must">WAJIB</span>
+          </label>
+          <input type="text" name="code"
+                 value="<%= isEdit ? account.code : '' %>"
+                 <%= isEdit ? 'readonly' : '' %>
+                 required maxlength="10" pattern="[A-Za-z0-9]+"
+                 class="mq-input mono <%= isEdit ? '' : '' %> <%= hasErr('code') ? 'is-error' : '' %>"
+                 placeholder="Contoh: 01WR" />
+          <% if (isEdit) { %>
+            <p class="mq-hint"><i class="fa-solid fa-lock"></i> Kode tidak bisa diubah setelah disimpan</p>
+          <% } else { %>
+            <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Huruf & angka saja, unik per merchant</p>
+          <% } %>
+          <% if (hasErr('code')) { %><p class="mq-err"><%= errors.code[0] %></p><% } %>
+        </div>
+
+        <!-- Nama Merchant -->
+        <div class="mq-field">
+          <label class="mq-label">
+            <i class="fa-solid fa-tag" style="font-size:10px"></i>
+            Nama Merchant <span class="req">*</span>
+            <span class="badge must">WAJIB</span>
+          </label>
+          <input type="text" name="merchantName"
+                 value="<%= val('merchantName') %>"
+                 required maxlength="100"
+                 class="mq-input <%= hasErr('merchantName') ? 'is-error' : '' %>"
+                 placeholder="Contoh: SOSIS BAKAR DEWI" />
+          <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Tampil di halaman mutasi dan Generate QR</p>
+          <% if (hasErr('merchantName')) { %><p class="mq-err"><%= errors.merchantName[0] %></p><% } %>
+        </div>
+
+        <!-- Nomor Akun -->
+        <div class="mq-field">
+          <label class="mq-label">
+            <i class="fa-solid fa-mobile-screen" style="font-size:10px"></i>
+            Nomor HP / ID Merchant <span class="req">*</span>
+            <span class="badge must">WAJIB</span>
+          </label>
+          <input type="text" name="accountNumber"
+                 value="<%= val('accountNumber') %>"
+                 required maxlength="50"
+                 class="mq-input <%= hasErr('accountNumber') ? 'is-error' : '' %>"
+                 placeholder="Contoh: 081779015187" />
+          <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Nomor HP atau ID akun OrderKuota</p>
+          <% if (hasErr('accountNumber')) { %><p class="mq-err"><%= errors.accountNumber[0] %></p><% } %>
+        </div>
+
+      </div>
+      <div class="mq-subpanel">
+        <div class="mq-subpanel-title">Tambahan Opsional</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="mq-field">
+            <label class="mq-label">
+              <i class="fa-solid fa-gauge" style="font-size:10px"></i>
+              Limit Harian (Rp)
+              <span class="badge opt">opsional</span>
+            </label>
+            <div class="mq-input-wrap">
+              <input type="number" name="dailyLimit"
+                     value="<%= val('dailyLimit', 30000000) %>"
+                     min="0" step="1000"
+                     class="mq-input <%= hasErr('dailyLimit') ? 'is-error' : '' %>"
+                     placeholder="30000000" />
+              <span class="mq-suffix">Rp</span>
+            </div>
+            <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Batas total transaksi per hari untuk akun ini.</p>
+            <% if (hasErr('dailyLimit')) { %><p class="mq-err"><%= errors.dailyLimit[0] %></p><% } %>
+          </div>
+
+          <div class="mq-field">
+            <label class="mq-label">
+              <i class="fa-solid fa-arrow-down-1-9" style="font-size:10px"></i>
+              Index Settlement Orkut
+              <span class="badge opt">opsional</span>
+            </label>
+            <input type="number" name="orkutAccountIndex"
+                   value="<%= isEdit && account.orkutAccountIndex ? account.orkutAccountIndex : '' %>"
+                   min="1" max="999"
+                   class="mq-input"
+                   placeholder="Contoh: 2" />
+            <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Isi hanya jika merchant punya urutan khusus di settlement Orkut.</p>
+            <% if (hasErr('orkutAccountIndex')) { %><p class="mq-err"><%= errors.orkutAccountIndex[0] %></p><% } %>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 2. KREDENSIAL API ══════════════════════════════════════════════════ -->
+  <div class="mq-section">
+    <div class="mq-section-hdr">
+      <div class="mq-section-icon" style="background:rgba(245,158,11,0.12);color:#fcd34d">
+        <i class="fa-solid fa-shield-halved"></i>
+      </div>
+      <div>
+        <p style="font-size:13px;font-weight:800;color:var(--color-ink);margin:0">Kredensial API</p>
+        <p style="font-size:11px;color:var(--color-muted);margin:1px 0 0">Token & device untuk koneksi ke OrderKuota</p>
+      </div>
+      <div style="margin-left:auto">
+        <span style="font-size:10px;padding:3px 10px;border-radius:999px;background:rgba(245,158,11,0.1);color:#fcd34d;border:1px solid rgba(245,158,11,0.25);font-weight:700">
+          <i class="fa-solid fa-lock" style="font-size:9px;margin-right:3px"></i>Terenkripsi
+        </span>
+      </div>
+    </div>
+    <div class="mq-section-body space-y-4">
+      <div class="mq-source-preset">
+        <div class="mq-source-preset-title">Preset Sumber</div>
+        <div class="mq-preset-row" style="margin-bottom:0">
+          <button type="button" class="mq-preset-btn" id="preset-app-btn" onclick="applySourcePreset('app')">
+            <i class="fa-solid fa-mobile-screen-button"></i>
+            App Only
+          </button>
+          <button type="button" class="mq-preset-btn" id="preset-web-btn" onclick="applySourcePreset('web')">
+            <i class="fa-solid fa-globe"></i>
+            Web Report Only
+          </button>
+          <button type="button" class="mq-preset-btn" id="preset-hybrid-btn" onclick="applySourcePreset('hybrid')">
+            <i class="fa-solid fa-layer-group"></i>
+            Hybrid
+          </button>
+        </div>
+        <div id="source-recommend-box" class="mq-reco-box">
+          <div class="mq-reco-title">Auto Recommend</div>
+          <div id="source-recommend-value" class="mq-reco-value">Hybrid</div>
+          <div id="source-recommend-note" class="mq-reco-note">Mode hybrid direkomendasikan jika field report web dan app live sama-sama tersedia.</div>
+        </div>
+        <p id="source-preset-sub" class="mq-source-preset-sub">Mode hybrid menyalakan report scraper dan live app API sekaligus supaya bisa dibandingkan.</p>
+      </div>
+
+      <!-- Session Token -->
+      <div class="mq-field">
+        <label class="mq-label">
+          <i class="fa-solid fa-key" style="font-size:10px"></i>
+          Session Token
+          <span class="badge tip">opsional untuk app</span>
+        </label>
+        <div class="mq-pwd-wrap">
+          <input type="password" name="sessionToken" id="fld-session" maxlength="1000"
+                 class="mq-input mono"
+                 placeholder="<%= isEdit ? '(kosongkan jika tidak diubah)' : 'username:accountId:tokenSecret' %>" />
+          <button type="button" class="mq-pwd-toggle" onclick="togglePwd('fld-session',this)" title="Tampilkan">
+            <i class="fa-solid fa-eye"></i>
+          </button>
+        </div>
+        <div style="margin-top:6px;padding:8px 12px;border-radius:8px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06)">
+          <p style="font-size:11px;color:var(--color-muted);margin:0 0 3px">
+            <i class="fa-solid fa-circle-info" style="color:#93c5fd;margin-right:4px"></i>
+            Format: <code style="background:rgba(255,255,255,0.08);padding:1px 6px;border-radius:4px;font-size:11px">username:accountId:tokenSecret</code>
+          </p>
+          <p style="font-size:11px;color:var(--color-muted);margin:0">
+            Diperlukan untuk jalur app seperti generate QR live dan sebagian fitur app OrderKuota.
+          </p>
+        </div>
+        <p id="session-lock-note" class="mq-lock-note"><i class="fa-solid fa-lock"></i><span>Field ini dikunci karena mode sekarang tidak memakai live app API.</span></p>
+      </div>
+
+      <div class="mq-subpanel" style="margin-top:16px">
+        <div class="mq-subpanel-title">Field Disarankan</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <!-- Device ID -->
+        <div class="mq-field">
+          <label class="mq-label">
+            <i class="fa-solid fa-mobile" style="font-size:10px"></i>
+            Device ID
+            <span class="badge tip">disarankan</span>
+          </label>
+          <input type="text" name="deviceId"
+                 value="<%= val('deviceId') %>"
+                 maxlength="100"
+                 class="mq-input mono"
+                 placeholder="dgxxwBi9SaSl4LrCzNbNLu" />
+          <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> UUID perangkat dari header request app OrderKuota</p>
+          <p id="device-lock-note" class="mq-lock-note"><i class="fa-solid fa-lock"></i><span>Field ini dikunci karena mode sekarang tidak memakai live app API.</span></p>
+        </div>
+
+        <!-- App Reg ID -->
+        <div class="mq-field">
+          <label class="mq-label">
+            <i class="fa-solid fa-cookie-bite" style="font-size:10px"></i>
+            App Reg ID
+            <span class="badge tip">disarankan</span>
+          </label>
+          <div class="mq-pwd-wrap">
+            <input type="password" name="cookies" id="fld-cookies" maxlength="5000"
+                   class="mq-input mono"
+                   placeholder="<%= isEdit ? '(kosongkan jika tidak diubah)' : 'app_reg_id dari app OrderKuota' %>" />
+            <button type="button" class="mq-pwd-toggle" onclick="togglePwd('fld-cookies',this)" title="Tampilkan">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+          </div>
+          <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Dipakai khusus untuk app API. Jangan campur dengan cookie login web.</p>
+          <p id="app-cookie-lock-note" class="mq-lock-note"><i class="fa-solid fa-lock"></i><span>Field ini dikunci karena mode sekarang tidak memakai live app API.</span></p>
+        </div>
+
+        <div class="mq-field">
+          <label class="mq-label">
+            <i class="fa-solid fa-lock" style="font-size:10px"></i>
+            PIN Merchant
+            <span class="badge must">WAJIB utk Kirim Uang</span>
+          </label>
+          <div class="mq-pwd-wrap">
+            <input type="password" name="transferPin" id="fld-pin" maxlength="20"
+                   class="mq-input mono"
+                   value="<%= isEdit ? (val('transferPin') || '') : '' %>"
+                   placeholder="<%= isEdit ? '(kosongkan jika tidak diubah)' : 'PIN Nobu / Madera merchant' %>" />
+            <button type="button" class="mq-pwd-toggle" onclick="togglePwd('fld-pin',this)" title="Tampilkan">
+              <i class="fa-solid fa-eye"></i>
+            </button>
+          </div>
+          <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Dipakai otomatis saat Kirim Uang dari saldo Madera, jadi kamu tidak perlu mengetik PIN lagi di halaman settlement.</p>
+        </div>
+        </div>
+      </div>
+
+      <div class="mq-toggle-wrap">
+        <button type="button" class="mq-toggle-btn" onclick="toggleOptionalBox('hybrid-box', this)">
+          <i class="fa-solid fa-layer-group"></i>
+          Opsi Hybrid Web dan Lanjutan
+        </button>
+        <div id="hybrid-box" class="mq-toggle-box">
+          <div class="mq-subpanel">
+            <div class="mq-subpanel-title">Opsional Hybrid Web</div>
+            <div class="grid grid-cols-1 gap-4">
+              <div class="mq-field sm:col-span-2">
+                <label class="mq-label">
+                  <i class="fa-solid fa-paste" style="font-size:10px"></i>
+                  Paste Header Mentah
+                  <span class="badge tip">tempel sekali</span>
+                </label>
+                <textarea id="fld-raw-report-headers" rows="6" class="mq-input mono" style="resize:vertical;line-height:1.55"
+                          placeholder="Paste blok mentah dari browser / HTTP Toolkit, misalnya:
+Cookie: csrf_cookie_name=...; ci_session=...
+Set-Cookie: csrf_cookie_name=...
+User-Agent: Mozilla/5.0 ..."></textarea>
+                <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Tombol di bawah akan memecah header mentah ke <code>Web Session Cookie</code> dan <code>Web User-Agent</code>, lalu bisa langsung dites sebelum simpan.</p>
+                <div class="mq-inline-actions">
+                  <button type="button" class="mq-mini-btn blue" onclick="applyRawReportHeaders()">
+                    <i class="fa-solid fa-wand-magic-sparkles"></i>
+                    Pecah ke Field
+                  </button>
+                  <button type="button" class="mq-mini-btn green" onclick="runReportLoginTest()">
+                    <i class="fa-solid fa-plug-circle-check"></i>
+                    Test Report Login
+                  </button>
+                  <button type="button" class="mq-mini-btn orange" onclick="compareSourceInputs()">
+                    <i class="fa-solid fa-scale-balanced"></i>
+                    Bandingkan Sumber
+                  </button>
+                </div>
+                <p id="raw-header-lock-note" class="mq-lock-note"><i class="fa-solid fa-lock"></i><span>Field ini dikunci karena mode sekarang tidak memakai report web.</span></p>
+                <div id="report-login-test-box" class="mq-report-test" aria-live="polite"></div>
+                <div id="source-compare-box" class="mq-report-test" aria-live="polite"></div>
+              </div>
+
+              <div class="mq-field sm:col-span-2">
+                <label class="mq-label">
+                  <i class="fa-solid fa-globe" style="font-size:10px"></i>
+                  Web Session Cookie
+                  <span class="badge must">utama untuk report</span>
+                </label>
+                <div class="mq-pwd-wrap">
+                  <input type="password" name="webCookies" id="fld-web-cookies" maxlength="12000"
+                         class="mq-input mono <%= hasErr('webCookies') ? 'is-error' : '' %>"
+                         placeholder="<%= isEdit ? '(kosongkan jika tidak diubah)' : 'boleh paste raw Cookie: / Set-Cookie: dari report.orderkuota.com' %>" />
+                  <button type="button" class="mq-pwd-toggle" onclick="togglePwd('fld-web-cookies',this)" title="Tampilkan">
+                    <i class="fa-solid fa-eye"></i>
+                  </button>
+                </div>
+                <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Dipakai Python scraper untuk <strong>https://report.orderkuota.com/mutasi_qris</strong> dan <strong>https://report.orderkuota.com/mutasi</strong>. Boleh paste header mentah <code>Cookie:</code> dan <code>Set-Cookie:</code> dari browser / HTTP Toolkit; sistem akan rapikan otomatis.</p>
+                <p id="web-cookie-lock-note" class="mq-lock-note"><i class="fa-solid fa-lock"></i><span>Field ini dikunci karena mode sekarang tidak memakai report web.</span></p>
+                <% if (hasErr('webCookies')) { %><p class="mq-err"><%= errors.webCookies[0] %></p><% } %>
+              </div>
+
+              <div class="mq-field sm:col-span-2">
+                <label class="mq-label">
+                  <i class="fa-solid fa-desktop" style="font-size:10px"></i>
+                  Web User-Agent
+                  <span class="badge opt">opsional hybrid</span>
+                </label>
+                <input type="text" name="webUserAgent"
+                       value="<%= val('webUserAgent') %>"
+                       maxlength="500"
+                       class="mq-input mono <%= hasErr('webUserAgent') ? 'is-error' : '' %>"
+                       placeholder="Mozilla/5.0 ... atau User-Agent: harywang8" />
+                <p class="mq-hint"><i class="fa-solid fa-circle-info"></i> Bisa isi nilai langsung atau format <code>User-Agent: ...</code>. Jika kosong, sistem pakai User-Agent Chrome Windows default.</p>
+                <p id="web-ua-lock-note" class="mq-lock-note"><i class="fa-solid fa-lock"></i><span>Field ini dikunci karena mode sekarang tidak memakai report web.</span></p>
+                <% if (hasErr('webUserAgent')) { %><p class="mq-err"><%= errors.webUserAgent[0] %></p><% } %>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ 3. QRIS PAYLOAD ════════════════════════════════════════════════════ -->
+  <div class="mq-section">
+    <div class="mq-section-hdr">
+      <div class="mq-section-icon" style="background:rgba(34,197,94,0.12);color:#86efac">
+        <i class="fa-solid fa-qrcode"></i>
+      </div>
+      <div>
+        <p style="font-size:13px;font-weight:800;color:var(--color-ink);margin:0">QRIS Payload</p>
+        <p style="font-size:11px;color:var(--color-muted);margin:1px 0 0">String QRIS statis NOBU bank dari OrderKuota</p>
+      </div>
+      <span style="margin-left:auto;font-size:10px;padding:3px 10px;border-radius:999px;background:rgba(100,116,139,0.12);color:#94a3b8;border:1px solid rgba(100,116,139,0.2);font-weight:700">
+        Opsional
+      </span>
+    </div>
+    <div class="mq-section-body">
+      <textarea name="qrisPayload" rows="4" maxlength="2000"
+                class="mq-input mono"
+                style="resize:vertical;line-height:1.6"
+                placeholder="00020101021226670016COM.NOBUBANK.WWW..."><%= isEdit && account.qrisPayload ? account.qrisPayload : '' %></textarea>
+      <p class="mq-hint" style="margin-top:6px">
+        <i class="fa-solid fa-circle-info"></i>
+        Diisi otomatis saat Generate QR berhasil. Isi manual hanya jika perlu override fallback — format harus berupa string QR NOBU (<code style="font-size:10px">COM.NOBUBANK.WWW</code>).
+      </p>
+    </div>
+  </div>
+
+  <!-- ══ 4. SCHEDULER SINKRONISASI ════════════════════════════════════════ -->
+  <div class="mq-section">
+    <div class="mq-section-hdr" style="cursor:pointer" onclick="toggleScheduler()">
+      <div class="mq-section-icon" style="background:rgba(99,179,237,0.12);color:#93c5fd">
+        <i class="fa-solid fa-clock"></i>
+      </div>
+      <div>
+        <p style="font-size:13px;font-weight:800;color:var(--color-ink);margin:0">Scheduler Sinkronisasi</p>
+        <p style="font-size:11px;color:var(--color-muted);margin:1px 0 0"><%= isEdit ? 'Interval polling data per tipe — klik untuk buka/tutup' : 'Opsional lanjutan — kalau belum paham, biarkan default saja' %></p>
+      </div>
+      <i class="fa-solid fa-chevron-down" id="sched-chev" style="margin-left:auto;font-size:11px;color:var(--color-muted);transition:transform .25s"></i>
+    </div>
+
+    <div id="sched-body" style="display:none">
+      <div style="padding:12px 20px 0;font-size:11px;color:var(--color-muted);display:flex;align-items:flex-start;gap:6px;border-bottom:1px solid rgba(255,255,255,0.05)">
+        <i class="fa-solid fa-circle-info" style="color:#93c5fd;margin-top:1px;flex-shrink:0"></i>
+        <span>Interval dalam <strong>detik</strong>. Yang aktif sekarang hanya watcher saldo QRIS, fallback sinkron mutasi, dan RRN detail. Polling mutasi penuh/idle lama sudah dimatikan.</span>
+      </div>
+      <div class="mq-section-body">
+        <div class="mq-preset-row">
+          <button type="button" class="mq-preset-btn" onclick="applySchedulerPreset('standby-safe')">
+            <i class="fa-solid fa-robot"></i>
+            Standby Aman
+          </button>
+          <button type="button" class="mq-preset-btn" onclick="applySchedulerPreset('standby-normal')">
+            <i class="fa-solid fa-sliders"></i>
+            Standby Normal
+          </button>
+          <button type="button" class="mq-preset-btn" onclick="applySchedulerPreset('standby-relaxed')">
+            <i class="fa-solid fa-bolt"></i>
+            Standby Santai
+          </button>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4" style="margin-bottom:16px">
+          <div class="mq-poll-card" style="grid-column:1 / -1">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+              <span style="width:30px;height:30px;border-radius:10px;background:rgba(16,185,129,0.14);color:#86efac;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">
+                <i class="fa-solid fa-robot"></i>
+              </span>
+              <div>
+                <p class="mq-poll-title">Python Balance Standby</p>
+                <p class="mq-poll-sub" style="margin-bottom:0">Mode ini aktif otomatis untuk semua merchant. Sistem cek saldo QRIS ringan, lalu hanya menarik mutasi baru setelah mutasi terakhir yang sudah tersimpan.</p>
+              </div>
+            </div>
+            <p class="mq-hint">
+              <i class="fa-solid fa-circle-info"></i>
+              Refresh saldo sekarang dipisah per menu: QRIS saat buka <strong>Mutasi QRIS</strong>, saldo utama saat buka <strong>Mutasi Utama</strong>, dan saldo Madera saat buka <strong>Mutasi Madera</strong> atau klik akun di <strong>Settlement</strong>. Tidak ada lagi fallback sync mutasi berkala.
+            </p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+          <div class="mq-poll-card">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="width:28px;height:28px;border-radius:8px;background:rgba(16,185,129,0.12);color:#6ee7b7;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">
+                <i class="fa-solid fa-heart-pulse"></i>
+              </span>
+              <div>
+                <p class="mq-poll-title">Watcher Saldo Aktif</p>
+                <p class="mq-poll-sub" style="margin-bottom:0">Cek saldo QRIS ringan setiap 1-2 detik</p>
+              </div>
+            </div>
+            <div class="mq-input-wrap">
+              <input type="number" name="balanceWatchActiveSeconds"
+                     value="<%= val('balanceWatchActiveSeconds', 2) %>"
+                     min="1" max="10"
+                     class="mq-input" placeholder="2" />
+              <span class="mq-suffix">dtk</span>
+            </div>
+            <p class="mq-hint"><i class="fa-solid fa-satellite-dish"></i> Begitu saldo berubah, Python mengejar mutasi baru saja dari mutasi terakhir, bukan menarik sejarah penuh.</p>
+            <% if (hasErr('balanceWatchActiveSeconds')) { %><p class="mq-err"><%= errors.balanceWatchActiveSeconds[0] %></p><% } %>
+          </div>
+
+          <div class="mq-poll-card">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+              <span style="width:28px;height:28px;border-radius:8px;background:rgba(168,85,247,0.12);color:#d8b4fe;display:flex;align-items:center;justify-content:center;font-size:11px;flex-shrink:0">
+                <i class="fa-solid fa-fingerprint"></i>
+              </span>
+              <div>
+                <p class="mq-poll-title">RRN Detail</p>
+                <p class="mq-poll-sub" style="margin-bottom:0">Enrichment detail QRIS di background</p>
+              </div>
+            </div>
+            <div class="mq-input-wrap">
+              <input type="number" name="detailPollSeconds"
+                     value="<%= val('detailPollSeconds', 20) %>"
+                     min="15" max="120"
+                     class="mq-input" placeholder="20" />
+              <span class="mq-suffix">dtk</span>
+            </div>
+            <% if (hasErr('detailPollSeconds')) { %><p class="mq-err"><%= errors.detailPollSeconds[0] %></p><% } %>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ 5. SALDO TERAKHIR (edit only) ══════════════════════════════════════ -->
+  <% if (isEdit && (account.lastBalanceSyncAt || account.lastMainBalance != null || account.lastQrisBalance != null || account.lastMaderaBalance != null)) { %>
+  <div class="mq-section">
+    <div class="mq-section-hdr">
+      <div class="mq-section-icon" style="background:rgba(16,185,129,0.1);color:#6ee7b7">
+        <i class="fa-solid fa-wave-square"></i>
+      </div>
+      <div>
+        <p style="font-size:13px;font-weight:800;color:var(--color-ink);margin:0">Saldo Terakhir</p>
+        <p style="font-size:11px;color:var(--color-muted);margin:1px 0 0">
+          Sync:
+          <%= account.lastBalanceSyncAt ? new Date(account.lastBalanceSyncAt).toLocaleString('id-ID', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', timeZone:'Asia/Jakarta' }) : '—' %>
+          <% if (account.lastBalanceSyncStatus) { %>
+            · <span style="color:<%= account.lastBalanceSyncStatus === 'synced' ? '#86efac' : '#fcd34d' %>">
+              <%= account.lastBalanceSyncStatus %>
+            </span>
+          <% } %>
+        </p>
+      </div>
+    </div>
+    <div class="mq-section-body">
+      <div class="grid grid-cols-3 gap-3">
+        <div class="mq-bal-card">
+          <p class="mq-bal-label">Saldo Utama</p>
+          <p class="mq-bal-val" style="color:#60a5fa">Rp <%= (account.lastMainBalance ?? 0).toLocaleString('id-ID') %></p>
+        </div>
+        <div class="mq-bal-card">
+          <p class="mq-bal-label">Saldo QRIS</p>
+          <p class="mq-bal-val" style="color:#4ade80">Rp <%= (account.lastQrisBalance ?? 0).toLocaleString('id-ID') %></p>
+        </div>
+        <div class="mq-bal-card">
+          <p class="mq-bal-label">Saldo Madera</p>
+          <p class="mq-bal-val" style="color:#fb923c">Rp <%= (account.lastMaderaBalance ?? 0).toLocaleString('id-ID') %></p>
+        </div>
+      </div>
+      <% if (account.lastBalanceSyncError) { %>
+        <p style="margin-top:8px;font-size:11px;color:#fca5a5;display:flex;align-items:center;gap:5px">
+          <i class="fa-solid fa-triangle-exclamation"></i> <%= account.lastBalanceSyncError %>
+        </p>
+      <% } %>
+    </div>
+  </div>
+  <% } %>
+
+  <!-- ══ Submit Bar ════════════════════════════════════════════════════════ -->
+  <div style="
+    position:sticky;bottom:16px;z-index:10;
+    padding:14px 20px;border-radius:14px;
+    background:rgba(15,17,25,0.9);
+    border:1px solid rgba(255,255,255,0.1);
+    backdrop-filter:blur(12px);
+    display:flex;align-items:center;gap:12px;
+    box-shadow:0 8px 32px rgba(0,0,0,0.4);
+  ">
+    <button type="submit" style="
+      display:inline-flex;align-items:center;gap:8px;
+      padding:10px 24px;border-radius:10px;border:none;cursor:pointer;
+      background:linear-gradient(135deg,#ff7c6c,#e05a4a);
+      color:#fff;font-size:13px;font-weight:800;
+      box-shadow:0 4px 14px rgba(255,124,108,0.35);
+      transition:opacity .15s;
+    " onmouseover="this.style.opacity='.88'" onmouseout="this.style.opacity='1'">
+      <i class="fa-solid fa-floppy-disk"></i>
+      <%= isEdit ? 'Simpan Perubahan' : 'Tambah Merchant' %>
+    </button>
+    <a href="<%= url('/merchant-qr') %>" style="
+      display:inline-flex;align-items:center;gap:6px;
+      padding:10px 18px;border-radius:10px;
+      background:transparent;border:1px solid rgba(255,255,255,0.12);
+      color:var(--color-muted);font-size:13px;font-weight:600;text-decoration:none;
+      transition:border-color .15s,color .15s;
+    " onmouseover="this.style.color='var(--color-ink)';this.style.borderColor='rgba(255,255,255,0.25)'"
+       onmouseout="this.style.color='var(--color-muted)';this.style.borderColor='rgba(255,255,255,0.12)'">
+      Batal
+    </a>
+    <span style="margin-left:auto;font-size:11px;color:var(--color-muted)">
+      <i class="fa-solid fa-asterisk" style="font-size:9px;color:#f87171;margin-right:3px"></i>Wajib diisi
+    </span>
+  </div>
+
+</form>
+</div>
+
+<% if (isEdit) { %>
+<aside class="mq-side">
+  <div class="mq-side-card">
+    <div class="mq-side-title">Ringkasan Merchant</div>
+    <div class="mq-stat-list">
+      <div class="mq-stat">
+        <span class="mq-stat-label">Status</span>
+        <span class="mq-stat-val" style="color:<%= account.status === 'active' ? '#86efac' : '#fca5a5' %>"><%= account.status === 'active' ? 'Aktif' : 'Nonaktif' %></span>
+      </div>
+      <div class="mq-stat">
+        <span class="mq-stat-label">Generate QR</span>
+        <span class="mq-stat-val" style="color:<%= (account.sessionTokenEncrypted || account.qrisPayload) ? '#86efac' : '#fcd34d' %>"><%= (account.sessionTokenEncrypted || account.qrisPayload) ? 'Siap' : 'Belum' %></span>
+      </div>
+      <div class="mq-stat">
+        <span class="mq-stat-label">Watcher</span>
+        <span class="mq-stat-val" style="color:#86efac">Python Standby</span>
+      </div>
+      <div class="mq-stat">
+        <span class="mq-stat-label">Mutasi</span>
+        <span class="mq-stat-val" style="color:<%= (account.sessionTokenEncrypted || account.cookiesEncrypted || account.webCookiesEncrypted) ? '#86efac' : '#fcd34d' %>"><%= (account.sessionTokenEncrypted || account.cookiesEncrypted || account.webCookiesEncrypted) ? 'Siap' : 'Belum' %></span>
+      </div>
+      <div class="mq-stat">
+        <span class="mq-stat-label">Health</span>
+        <span class="mq-stat-val" style="color:<%= account.healthStatus === 'healthy' ? '#86efac' : account.healthStatus === 'degraded' ? '#fcd34d' : '#fca5a5' %>"><%= account.healthStatus || 'unknown' %></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="mq-side-card">
+    <div class="mq-side-title">Kelengkapan Kredensial</div>
+    <div class="mq-quick-grid">
+      <div class="mq-stat"><span class="mq-stat-label">Token</span><span class="mq-stat-val" style="color:<%= account.sessionTokenEncrypted ? '#86efac' : '#fca5a5' %>"><%= account.sessionTokenEncrypted ? 'Ada' : 'Kosong' %></span></div>
+      <div class="mq-stat"><span class="mq-stat-label">App Reg</span><span class="mq-stat-val" style="color:<%= account.cookiesEncrypted ? '#86efac' : '#fcd34d' %>"><%= account.cookiesEncrypted ? 'Ada' : 'Kosong' %></span></div>
+        <div class="mq-stat"><span class="mq-stat-label">Web Cookie</span><span class="mq-stat-val" style="color:<%= account.webCookiesEncrypted ? '#86efac' : '#fcd34d' %>"><%= account.webCookiesEncrypted ? 'Ada' : 'Kosong' %></span></div>
+        <div class="mq-stat"><span class="mq-stat-label">Device</span><span class="mq-stat-val" style="color:<%= account.deviceId ? '#86efac' : '#fcd34d' %>"><%= account.deviceId ? 'Ada' : 'Kosong' %></span></div>
+        <div class="mq-stat"><span class="mq-stat-label">Payload</span><span class="mq-stat-val" style="color:<%= account.qrisPayload ? '#86efac' : '#fcd34d' %>"><%= account.qrisPayload ? 'Ada' : 'Kosong' %></span></div>
+        <div class="mq-stat"><span class="mq-stat-label">PIN</span><span class="mq-stat-val" style="color:<%= account.transferPinEncrypted ? '#86efac' : '#fcd34d' %>"><%= account.transferPinEncrypted ? 'Ada' : 'Kosong' %></span></div>
+      </div>
+    </div>
+
+  <div class="mq-side-card">
+    <div class="mq-side-title">Preset Interval</div>
+    <ul class="mq-note-list">
+      <li><i class="fa-solid fa-robot"></i><span><strong>Standby Aman</strong>: cek saldo QRIS tiap 2 detik dan RRN detail 20 detik.</span></li>
+      <li><i class="fa-solid fa-sliders"></i><span><strong>Standby Normal</strong>: cek saldo QRIS tiap 3 detik dan RRN detail 20 detik.</span></li>
+      <li><i class="fa-solid fa-bolt"></i><span><strong>Standby Santai</strong>: cek saldo QRIS tiap 4 detik dan RRN detail 20 detik.</span></li>
+    </ul>
+  </div>
+
+  <div class="mq-side-card">
+    <div class="mq-side-title">Tips Praktis</div>
+    <ul class="mq-note-list">
+      <li><i class="fa-solid fa-lock"></i><span>Simpan token dan <code>app_reg_id</code> hanya di form ini. Tidak perlu dibagikan ke luar.</span></li>
+      <li><i class="fa-solid fa-plug-circle-check"></i><span>Pakai <strong>Test Koneksi</strong> setelah edit supaya kamu tahu merchant sudah siap sebelum dipakai.</span></li>
+      <li><i class="fa-solid fa-arrows-rotate"></i><span>Pakai <strong>Sinkronkan Sekarang</strong> saat kamu baru isi merchant dan ingin cek mutasi tanpa menunggu jadwal worker.</span></li>
+    </ul>
+  </div>
+</aside>
+<% } %>
+</div>
+
+<div id="merchant-action-modal" class="mq-action-modal" aria-hidden="true">
+  <div class="mq-action-card">
+    <div class="mq-action-head">
+      <div>
+        <h3 id="merchant-action-title" class="mq-action-title">Merchant QR</h3>
+        <p id="merchant-action-sub" class="mq-action-sub">Memproses permintaan...</p>
+      </div>
+      <button type="button" class="mq-close-btn" onclick="closeMerchantActionModal()">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div id="merchant-action-body" class="mq-action-body">
+      <div class="mq-result-hero">Menyiapkan hasil...</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Show/hide password
+  window.togglePwd = function(id, btn) {
+    const inp = document.getElementById(id);
+    if (!inp) return;
+    const isHidden = inp.type === 'password';
+    inp.type = isHidden ? 'text' : 'password';
+    btn.innerHTML = isHidden
+      ? '<i class="fa-solid fa-eye-slash"></i>'
+      : '<i class="fa-solid fa-eye"></i>';
+  };
+
+  // Toggle scheduler section
+  window.toggleScheduler = function() {
+    const body = document.getElementById('sched-body');
+    const chev = document.getElementById('sched-chev');
+    const open = body.style.display === 'none';
+    body.style.display = open ? '' : 'none';
+    chev.style.transform = open ? 'rotate(180deg)' : '';
+  };
+
+  window.applySchedulerPreset = function(type) {
+    const presets = {
+      'standby-safe': {
+        balanceWatchActiveSeconds: 2,
+        detailPollSeconds: 20,
+      },
+      'standby-normal': {
+        balanceWatchActiveSeconds: 3,
+        detailPollSeconds: 20,
+      },
+      'standby-relaxed': {
+        balanceWatchActiveSeconds: 4,
+        detailPollSeconds: 20,
+      },
+    };
+    const preset = presets[type];
+    if (!preset) return;
+    Object.entries(preset).forEach(([name, value]) => {
+      const field = document.querySelector(`[name="${name}"]`);
+      if (field) field.value = value;
+    });
+    const body = document.getElementById('sched-body');
+    const chev = document.getElementById('sched-chev');
+    if (body && body.style.display === 'none') {
+      body.style.display = '';
+      chev.style.transform = 'rotate(180deg)';
+    }
+  };
+
+  window.toggleOptionalBox = function(id, btn) {
+    const box = document.getElementById(id);
+    if (!box) return;
+    box.classList.toggle('open');
+    const icon = btn ? btn.querySelector('i') : null;
+    if (icon) {
+      icon.className = box.classList.contains('open')
+        ? 'fa-solid fa-chevron-up'
+        : 'fa-solid fa-layer-group';
+    }
+  };
+
+  function openMerchantActionModal(title, subtitle, bodyHtml) {
+    document.getElementById('merchant-action-title').textContent = title;
+    document.getElementById('merchant-action-sub').textContent = subtitle;
+    document.getElementById('merchant-action-body').innerHTML = bodyHtml;
+    document.getElementById('merchant-action-modal').classList.add('open');
+  }
+
+  function closeMerchantActionModal() {
+    document.getElementById('merchant-action-modal').classList.remove('open');
+  }
+
+  function renderMerchantReport(report, modeLabel) {
+    const readiness = report.readiness || {};
+    const stats = report.stats || {};
+    const checks = Array.isArray(report.checks) ? report.checks : [];
+    const cards = [
+      { key: 'Generate', value: readiness.generateReady ? 'Siap' : 'Belum', color: readiness.generateReady ? '#86efac' : '#fcd34d' },
+      { key: 'Mutasi', value: readiness.mutationReady ? 'Siap' : 'Belum', color: readiness.mutationReady ? '#86efac' : '#fcd34d' },
+      { key: 'Mode', value: modeLabel, color: '#93c5fd' },
+      { key: 'Mutasi Baru', value: String((stats.newQrisMutations ?? 0) + (stats.newUtamaMutations ?? 0)), color: '#ffb4a8' },
+    ];
+
+    return `
+      <div class="mq-result-hero">
+        <strong>${report.account.code} · ${report.account.merchantName}</strong><br>
+        ${report.message || 'Tidak ada pesan tambahan.'}
+      </div>
+      <div class="mq-result-grid">
+        ${cards.map((card) => `
+          <div class="mq-result-card">
+            <div class="mq-result-k">${card.key}</div>
+            <div class="mq-result-v" style="color:${card.color}">${card.value}</div>
+          </div>
+        `).join('')}
+      </div>
+      ${stats.mainBalance != null || stats.qrisBalance != null || stats.maderaBalance != null ? `
+        <div class="mq-result-grid" style="margin-top:-2px">
+          <div class="mq-result-card"><div class="mq-result-k">Saldo Utama</div><div class="mq-result-v">Rp ${(stats.mainBalance ?? 0).toLocaleString('id-ID')}</div></div>
+          <div class="mq-result-card"><div class="mq-result-k">Saldo QRIS</div><div class="mq-result-v">Rp ${(stats.qrisBalance ?? 0).toLocaleString('id-ID')}</div></div>
+          <div class="mq-result-card"><div class="mq-result-k">Saldo Madera</div><div class="mq-result-v">Rp ${(stats.maderaBalance ?? 0).toLocaleString('id-ID')}</div></div>
+          <div class="mq-result-card"><div class="mq-result-k">Match</div><div class="mq-result-v">${stats.matchedTransactions ?? 0}</div></div>
+        </div>
+      ` : ''}
+      <div class="mq-result-checks">
+        ${checks.map((check) => `
+          <div class="mq-result-check ${check.ok ? 'ok' : 'bad'}">
+            <div class="mq-result-icon"><i class="fa-solid ${check.ok ? 'fa-check' : 'fa-triangle-exclamation'}"></i></div>
+            <div>
+              <div class="mq-result-check-title">${check.label}</div>
+              <div class="mq-result-check-detail">${check.detail}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  window.runMerchantAction = async function(id, action) {
+    const isSync = action === 'sync';
+    openMerchantActionModal(
+      isSync ? 'Sinkronkan Merchant' : 'Test Koneksi Merchant',
+      isSync ? 'Menarik data terbaru dari OrderKuota...' : 'Mengecek token, payload, dan jalur mutasi...',
+      '<div class="mq-result-hero">Sedang memproses. Mohon tunggu sebentar...</div>'
+    );
+
+    try {
+      const res = await fetch(`<%= url('/merchant-qr') %>/${id}/${isSync ? 'sync-now' : 'test-connection'}`, {
+        method: 'POST',
+        headers: { 'Accept': 'application/json' }
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        openMerchantActionModal(
+          isSync ? 'Sinkron Gagal' : 'Test Gagal',
+          'Permintaan belum berhasil dijalankan',
+          `<div class="mq-result-hero">${data.error || 'Terjadi kesalahan yang tidak diketahui.'}</div>`
+        );
+        return;
+      }
+
+      const report = data.report;
+      const modeMap = {
+        app: 'App API',
+        web: 'Cookie/Web',
+        'payload-only': 'Payload Only',
+        unconfigured: 'Belum Lengkap',
+      };
+
+      openMerchantActionModal(
+        isSync ? 'Sinkron Selesai' : 'Test Koneksi Selesai',
+        'Hasil pemeriksaan merchant terbaru',
+        renderMerchantReport(report, modeMap[report.mode] || report.mode)
+      );
+    } catch (err) {
+      openMerchantActionModal(
+        isSync ? 'Sinkron Gagal' : 'Test Gagal',
+        'Permintaan belum berhasil dijalankan',
+        `<div class="mq-result-hero">${err?.message || 'Terjadi kesalahan jaringan.'}</div>`
+      );
+    }
+  };
+
+  function parseRawReportHeaders(raw) {
+    const text = String(raw || '').replace(/\r/g, '').trim();
+    if (!text) return { cookie: '', userAgent: '' };
+
+    const cookieLines = [];
+    let userAgent = '';
+    let mode = '';
+    text.split('\n').forEach((sourceLine) => {
+      const line = sourceLine.trim();
+      if (!line) return;
+      const cookieMatch = line.match(/^cookie\s*:\s*(.*)$/i);
+      if (cookieMatch) {
+        mode = 'cookie';
+        if (cookieMatch[1]) cookieLines.push(cookieMatch[1].trim());
+        return;
+      }
+      const setCookieMatch = line.match(/^set-cookie\s*:\s*(.*)$/i);
+      if (setCookieMatch) {
+        mode = 'set-cookie';
+        if (setCookieMatch[1]) cookieLines.push(setCookieMatch[1].trim());
+        return;
+      }
+      const userAgentMatch = line.match(/^user-agent\s*:\s*(.*)$/i);
+      if (userAgentMatch) {
+        userAgent = userAgentMatch[1].trim();
+        mode = '';
+        return;
+      }
+      if (/^[a-z-]+\s*:/i.test(line)) {
+        mode = '';
+        return;
+      }
+      if (mode === 'cookie' || mode === 'set-cookie') {
+        cookieLines.push(line);
+      }
+    });
+
+    return {
+      cookie: cookieLines.join('\n').trim(),
+      userAgent,
+    };
+  }
+
+  function renderReportLoginResult(payload) {
+    const report = payload?.report || payload;
+    const badges = Array.isArray(report?.badges) ? report.badges : [];
+    const preview = report?.preview || {};
+    const detectedPattern = report?.detectedPattern || {};
+    const box = document.getElementById('report-login-test-box');
+    if (!box) return;
+
+    box.classList.add('open');
+    box.innerHTML = `
+      <div style="font-size:13px;font-weight:800;color:var(--color-ink)">${report?.success ? 'Report login valid' : 'Report login belum valid'}</div>
+      <div style="font-size:12px;color:var(--color-muted);margin-top:4px;line-height:1.6">${report?.message || 'Tidak ada pesan.'}</div>
+      <div class="mq-badge-row">
+        ${badges.map((badge) => `
+          <div class="mq-test-badge ${badge.ok ? 'ok' : 'bad'}" title="${badge.detail || ''}">
+            <i class="fa-solid ${badge.ok ? 'fa-circle-check' : 'fa-circle-xmark'}"></i>
+            <span>${badge.label}</span>
+          </div>
+        `).join('')}
+      </div>
+      <div class="mq-test-grid">
+        <div class="mq-test-card"><div class="mq-test-k">Nama Akun Report</div><div class="mq-test-v">${preview.accountName || '-'}</div></div>
+        <div class="mq-test-card"><div class="mq-test-k">Saldo Utama</div><div class="mq-test-v">${preview.mainBalance != null ? `Rp ${Number(preview.mainBalance).toLocaleString('id-ID')}` : '-'}</div></div>
+        <div class="mq-test-card"><div class="mq-test-k">Saldo QRIS</div><div class="mq-test-v">${preview.qrisBalance != null ? `Rp ${Number(preview.qrisBalance).toLocaleString('id-ID')}` : '-'}</div></div>
+        <div class="mq-test-card"><div class="mq-test-k">Baris Terbaca</div><div class="mq-test-v">QRIS ${preview.qrisCount ?? 0} · Utama ${preview.utamaCount ?? 0}</div></div>
+        <div class="mq-test-card"><div class="mq-test-k">Halaman Report</div><div class="mq-test-v">QRIS ${preview.qrisPagesRead ?? '-'} · Utama ${preview.utamaPagesRead ?? '-'}</div></div>
+        <div class="mq-test-card"><div class="mq-test-k">Detected Pattern</div><div class="mq-test-v">QRIS: ${detectedPattern.qris || '-'}<br>Utama: ${detectedPattern.utama || '-'}</div></div>
+      </div>
+    `;
+  }
+
+  function renderSourceComparisonResult(payload) {
+    const report = payload?.report || {};
+    const sourceReport = report.report || {};
+    const live = report.live || {};
+    const delta = report.delta || {};
+    const box = document.getElementById('source-compare-box');
+    if (!box) return;
+    const warnings = [];
+    const absMainDiff = delta.mainBalanceDiff != null ? Math.abs(Number(delta.mainBalanceDiff)) : null;
+    const absQrisDiff = delta.qrisBalanceDiff != null ? Math.abs(Number(delta.qrisBalanceDiff)) : null;
+    const absQrisCountDiff = delta.qrisCountDiff != null ? Math.abs(Number(delta.qrisCountDiff)) : null;
+    const absUtamaCountDiff = delta.utamaCountDiff != null ? Math.abs(Number(delta.utamaCountDiff)) : null;
+    if (absMainDiff != null && absMainDiff >= 1000) {
+      warnings.push(`Saldo utama berbeda cukup besar: Rp ${absMainDiff.toLocaleString('id-ID')}.`);
+    }
+    if (absQrisDiff != null && absQrisDiff >= 1000) {
+      warnings.push(`Saldo QRIS berbeda cukup besar: Rp ${absQrisDiff.toLocaleString('id-ID')}.`);
+    }
+    if (absQrisCountDiff != null && absQrisCountDiff >= 2) {
+      warnings.push(`Jumlah baris mutasi QRIS berbeda ${absQrisCountDiff} data.`);
+    }
+    if (absUtamaCountDiff != null && absUtamaCountDiff >= 2) {
+      warnings.push(`Jumlah baris mutasi utama berbeda ${absUtamaCountDiff} data.`);
+    }
+
+    box.classList.add('open');
+    box.innerHTML = `
+      <div style="font-size:13px;font-weight:800;color:var(--color-ink)">Perbandingan Source: ${report.mode || '-'}</div>
+      <div style="font-size:12px;color:var(--color-muted);margin-top:4px;line-height:1.6">${report.message || 'Tidak ada pesan.'}</div>
+      ${warnings.length ? `
+        <div class="mq-warning-box">
+          <strong>Warning selisih besar</strong><br>
+          ${warnings.join('<br>')}
+        </div>
+      ` : ''}
+      <div class="mq-test-grid" style="margin-top:12px">
+        <div class="mq-test-card">
+          <div class="mq-test-k">Report Scraper</div>
+          <div class="mq-test-v">${sourceReport.ok ? 'Siap' : 'Belum siap'}</div>
+          <div style="font-size:12px;color:var(--color-muted);margin-top:8px;line-height:1.55">
+            Akun: ${sourceReport.accountName || '-'}<br>
+            QRIS: ${sourceReport.qrisCount ?? 0} baris<br>
+            Utama: ${sourceReport.utamaCount ?? 0} baris
+          </div>
+        </div>
+        <div class="mq-test-card">
+          <div class="mq-test-k">Live App API</div>
+          <div class="mq-test-v">${live.ok ? 'Siap' : 'Belum siap'}</div>
+          <div style="font-size:12px;color:var(--color-muted);margin-top:8px;line-height:1.55">
+            QRIS: ${live.qrisCount ?? 0} baris<br>
+            Utama: ${live.utamaCount ?? 0} baris<br>
+            Session: ${document.getElementById('fld-session')?.value ? 'Terisi' : 'Kosong'}
+          </div>
+        </div>
+        <div class="mq-test-card">
+          <div class="mq-test-k">Saldo</div>
+          <div style="font-size:12px;color:var(--color-muted);line-height:1.7">
+            Report utama: ${sourceReport.mainBalance != null ? `Rp ${Number(sourceReport.mainBalance).toLocaleString('id-ID')}` : '-'}<br>
+            Live utama: ${live.mainBalance != null ? `Rp ${Number(live.mainBalance).toLocaleString('id-ID')}` : '-'}<br>
+            Report QRIS: ${sourceReport.qrisBalance != null ? `Rp ${Number(sourceReport.qrisBalance).toLocaleString('id-ID')}` : '-'}<br>
+            Live QRIS: ${live.qrisBalance != null ? `Rp ${Number(live.qrisBalance).toLocaleString('id-ID')}` : '-'}
+          </div>
+        </div>
+        <div class="mq-test-card">
+          <div class="mq-test-k">Delta</div>
+          <div style="font-size:12px;color:var(--color-muted);line-height:1.7">
+            Selisih utama: ${delta.mainBalanceDiff != null ? `Rp ${Number(delta.mainBalanceDiff).toLocaleString('id-ID')}` : '-'}<br>
+            Selisih QRIS: ${delta.qrisBalanceDiff != null ? `Rp ${Number(delta.qrisBalanceDiff).toLocaleString('id-ID')}` : '-'}<br>
+            Selisih count QRIS: ${delta.qrisCountDiff ?? '-'}<br>
+            Selisih count utama: ${delta.utamaCountDiff ?? '-'}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function setFieldLocked(selector, locked, noteId) {
+    const field = typeof selector === 'string' ? document.querySelector(selector) : selector;
+    if (!field) return;
+    field.disabled = locked;
+    field.readOnly = locked;
+    field.style.opacity = locked ? '.6' : '';
+    const note = noteId ? document.getElementById(noteId) : null;
+    if (note) note.classList.toggle('show', locked);
+  }
+
+  function refreshSourcePresetVisual(mode) {
+    const labels = {
+      app: 'Mode app only mengunci field report web dan fokus ke session token, app_reg_id, dan device ID.',
+      web: 'Mode web report only mengunci field app live dan fokus ke cookie report serta User-Agent.',
+      hybrid: 'Mode hybrid menyalakan report scraper dan live app API sekaligus supaya bisa dibandingkan.',
+    };
+    const sub = document.getElementById('source-preset-sub');
+    if (sub) sub.textContent = labels[mode] || labels.hybrid;
+    ['app', 'web', 'hybrid'].forEach((key) => {
+      const btn = document.getElementById(`preset-${key}-btn`);
+      if (!btn) return;
+      btn.style.background = key === mode ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.04)';
+      btn.style.borderColor = key === mode ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)';
+    });
+  }
+
+  function getFieldState() {
+    return {
+      hasSession: Boolean(document.getElementById('fld-session')?.value.trim()),
+      hasAppCookie: Boolean(document.getElementById('fld-cookies')?.value.trim()),
+      hasDevice: Boolean(document.querySelector('[name="deviceId"]')?.value.trim()),
+      hasWebCookie: Boolean(document.getElementById('fld-web-cookies')?.value.trim()),
+      hasRawHeader: Boolean(document.getElementById('fld-raw-report-headers')?.value.trim()),
+      hasWebUA: Boolean(document.querySelector('[name="webUserAgent"]')?.value.trim()),
+    };
+  }
+
+  function getRecommendedSourceMode() {
+    const state = getFieldState();
+    const hasAppCore = state.hasSession;
+    const hasAppSupport = state.hasAppCookie || state.hasDevice;
+    const hasWebCore = state.hasWebCookie || state.hasRawHeader;
+    const hasWebSupport = state.hasWebUA;
+
+    if (hasAppCore && hasWebCore) {
+      return {
+        mode: 'hybrid',
+        note: 'Session token dan cookie report sama-sama tersedia. Hybrid paling bernilai karena bisa membandingkan scraping dengan live app API.',
+      };
+    }
+    if (hasWebCore && !hasAppCore) {
+      return {
+        mode: 'web',
+        note: hasWebSupport
+          ? 'Cookie report siap dipakai. Web Report Only paling aman untuk sinkron mutasi dari report.'
+          : 'Cookie report sudah ada. Tambahkan User-Agent jika perlu, tetapi mode Web Report Only sudah paling cocok.',
+      };
+    }
+    if (hasAppCore && !hasWebCore) {
+      return {
+        mode: 'app',
+        note: hasAppSupport
+          ? 'Kredensial app live sudah cukup. App Only direkomendasikan sampai cookie report ditambahkan.'
+          : 'Session token sudah ada, tetapi App Reg ID atau Device ID masih layak dilengkapi supaya jalur live lebih stabil.',
+      };
+    }
+    return {
+      mode: 'hybrid',
+      note: 'Belum ada kredensial yang cukup dominan. Mulai dari mode yang Anda butuhkan, lalu form akan menyesuaikan otomatis.',
+    };
+  }
+
+  function updateSourceRecommendation(activeMode) {
+    const recommended = getRecommendedSourceMode();
+    const valueEl = document.getElementById('source-recommend-value');
+    const noteEl = document.getElementById('source-recommend-note');
+    if (valueEl) {
+      const labelMap = { app: 'App Only', web: 'Web Report Only', hybrid: 'Hybrid' };
+      valueEl.textContent = `${labelMap[recommended.mode] || recommended.mode}${activeMode && activeMode !== recommended.mode ? ` · aktif: ${labelMap[activeMode] || activeMode}` : ''}`;
+      valueEl.style.color = recommended.mode === activeMode ? 'var(--color-ink)' : '#fcd34d';
+    }
+    if (noteEl) {
+      noteEl.textContent = recommended.note;
+    }
+  }
+
+  window.applySourcePreset = function(type) {
+    const mode = type === 'app' || type === 'web' ? type : 'hybrid';
+    const rawField = document.getElementById('fld-raw-report-headers');
+    const sessionField = document.getElementById('fld-session');
+    const appCookieField = document.getElementById('fld-cookies');
+    const deviceField = document.querySelector('[name="deviceId"]');
+    const webCookieField = document.getElementById('fld-web-cookies');
+    const userAgentField = document.querySelector('[name="webUserAgent"]');
+
+    const lockApp = mode === 'web';
+    const lockWeb = mode === 'app';
+
+    setFieldLocked(sessionField, lockApp, 'session-lock-note');
+    setFieldLocked(appCookieField, lockApp, 'app-cookie-lock-note');
+    setFieldLocked(deviceField, lockApp, 'device-lock-note');
+    setFieldLocked(rawField, lockWeb, 'raw-header-lock-note');
+    setFieldLocked(webCookieField, lockWeb, 'web-cookie-lock-note');
+    setFieldLocked(userAgentField, lockWeb, 'web-ua-lock-note');
+
+    if (lockApp) {
+      if (sessionField && !sessionField.value) sessionField.placeholder = 'dikunci karena mode web report only';
+      if (appCookieField && !appCookieField.value) appCookieField.placeholder = 'dikunci karena mode web report only';
+    }
+    if (lockWeb) {
+      if (webCookieField && !webCookieField.value) webCookieField.placeholder = 'dikunci karena mode app only';
+    }
+
+    refreshSourcePresetVisual(mode);
+    updateSourceRecommendation(mode);
+    if (mode !== 'app') document.getElementById('hybrid-box')?.classList.add('open');
+    if (mode === 'web' && webCookieField) webCookieField.focus();
+    if (mode === 'app' && sessionField) sessionField.focus();
+    window.__merchantSourcePreset = mode;
+  };
+
+  window.applyRawReportHeaders = function() {
+    const rawField = document.getElementById('fld-raw-report-headers');
+    const webCookieField = document.getElementById('fld-web-cookies');
+    const userAgentField = document.querySelector('[name="webUserAgent"]');
+    if (!rawField || !webCookieField || !userAgentField) return;
+    const parsed = parseRawReportHeaders(rawField.value);
+    if (parsed.cookie) webCookieField.value = parsed.cookie;
+    if (parsed.userAgent && !userAgentField.value) userAgentField.value = parsed.userAgent;
+    document.getElementById('hybrid-box')?.classList.add('open');
+    updateSourceRecommendation(window.__merchantSourcePreset || 'hybrid');
+  };
+
+  window.runReportLoginTest = async function() {
+    const rawField = document.getElementById('fld-raw-report-headers');
+    const webCookieField = document.getElementById('fld-web-cookies');
+    const userAgentField = document.querySelector('[name="webUserAgent"]');
+    const box = document.getElementById('report-login-test-box');
+    if (!rawField || !webCookieField || !userAgentField || !box) return;
+
+    const parsed = parseRawReportHeaders(rawField.value);
+    if (parsed.cookie && !webCookieField.value) webCookieField.value = parsed.cookie;
+    if (parsed.userAgent && !userAgentField.value) userAgentField.value = parsed.userAgent;
+
+    box.classList.add('open');
+    box.innerHTML = '<div style="font-size:12px;color:var(--color-muted)">Sedang mengetes login report dan membaca preview mutasi...</div>';
+
+    try {
+      const res = await fetch('<%= url('/merchant-qr/test-report-login') %>', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          rawHeaders: rawField.value,
+          webCookies: webCookieField.value,
+          webUserAgent: userAgentField.value,
+        }),
+      });
+      const data = await res.json();
+      if (!data?.report) {
+        box.innerHTML = `<div style="font-size:12px;color:#fca5a5">${data?.error || 'Test report gagal.'}</div>`;
+        return;
+      }
+      if (data.report.normalized?.cookie && !webCookieField.value) webCookieField.value = data.report.normalized.cookie;
+      if (data.report.normalized?.userAgent && !userAgentField.value) userAgentField.value = data.report.normalized.userAgent;
+      renderReportLoginResult(data);
+    } catch (err) {
+      box.innerHTML = `<div style="font-size:12px;color:#fca5a5">${err?.message || 'Gagal menghubungi server untuk test report.'}</div>`;
+    }
+  };
+
+  window.compareSourceInputs = async function() {
+    const rawField = document.getElementById('fld-raw-report-headers');
+    const webCookieField = document.getElementById('fld-web-cookies');
+    const userAgentField = document.querySelector('[name="webUserAgent"]');
+    const sessionField = document.getElementById('fld-session');
+    const appCookieField = document.getElementById('fld-cookies');
+    const deviceField = document.querySelector('[name="deviceId"]');
+    const box = document.getElementById('source-compare-box');
+    if (!rawField || !webCookieField || !userAgentField || !sessionField || !appCookieField || !deviceField || !box) return;
+
+    const parsed = parseRawReportHeaders(rawField.value);
+    if (parsed.cookie && !webCookieField.value) webCookieField.value = parsed.cookie;
+    if (parsed.userAgent && !userAgentField.value) userAgentField.value = parsed.userAgent;
+
+    box.classList.add('open');
+    box.innerHTML = '<div style="font-size:12px;color:var(--color-muted)">Sedang membandingkan report scraper dengan live app API...</div>';
+
+    try {
+      const res = await fetch('<%= url('/merchant-qr/compare-sources') %>', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          rawHeaders: rawField.value,
+          webCookies: webCookieField.value,
+          webUserAgent: userAgentField.value,
+          sessionToken: sessionField.value,
+          cookies: appCookieField.value,
+          deviceId: deviceField.value,
+        }),
+      });
+      const data = await res.json();
+      if (!data?.report) {
+        box.innerHTML = `<div style="font-size:12px;color:#fca5a5">${data?.error || 'Perbandingan source gagal.'}</div>`;
+        return;
+      }
+      renderSourceComparisonResult(data);
+    } catch (err) {
+      box.innerHTML = `<div style="font-size:12px;color:#fca5a5">${err?.message || 'Gagal menghubungi server untuk perbandingan source.'}</div>`;
+    }
+  };
+
+  (function initSourcePreset() {
+    [
+      '#fld-session',
+      '#fld-cookies',
+      '[name="deviceId"]',
+      '#fld-web-cookies',
+      '#fld-raw-report-headers',
+      '[name="webUserAgent"]',
+    ].forEach((selector) => {
+      const field = document.querySelector(selector);
+      if (field) {
+        field.addEventListener('input', () => {
+          updateSourceRecommendation(window.__merchantSourcePreset || 'hybrid');
+        });
+      }
+    });
+    const hasApp = Boolean(document.getElementById('fld-session')?.value || document.getElementById('fld-cookies')?.value || document.querySelector('[name="deviceId"]')?.value);
+    const hasWeb = Boolean(document.getElementById('fld-web-cookies')?.value || document.querySelector('[name="webUserAgent"]')?.value);
+    const initialMode = hasApp && hasWeb ? 'hybrid' : hasWeb ? 'web' : hasApp ? 'app' : 'hybrid';
+    window.applySourcePreset(initialMode);
+  })();
+</script>

@@ -1,0 +1,674 @@
+<%
+  const isQris = source === 'qris';
+  const sourceTabs = [
+    { key: 'qris', href: url('/dashboard/mutations/qris'), label: 'Mutasi QRIS', desc: 'Mutasi payment masuk', icon: 'fa-qrcode' },
+    { key: 'utama', href: url('/dashboard/mutations/utama'), label: 'Saldo Utama', desc: 'Ledger internal utama', icon: 'fa-wallet' },
+    { key: 'madera', href: url('/dashboard/mutations/madera'), label: 'Saldo Madera', desc: 'Ledger internal madera', icon: 'fa-piggy-bank' },
+  ];
+  const initialBalanceSummary = typeof balanceSummary !== 'undefined' ? balanceSummary : null;
+%>
+
+<style>
+  /* ── Source tab pills ─────────────────────────── */
+  .mut-source-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .mut-source-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    border-radius: 14px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--ink);
+    text-decoration: none;
+    transition: all .2s;
+    min-width: 0;
+  }
+  .mut-source-tab:hover {
+    border-color: rgba(255,124,108,0.3);
+    background: rgba(255,124,108,0.05);
+  }
+  .mut-source-tab.active {
+    border-color: rgba(255,124,108,0.45);
+    background: linear-gradient(135deg, rgba(255,124,108,0.16), rgba(255,124,108,0.05));
+  }
+  .mut-source-tab-icon {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    font-size: 14px;
+    flex-shrink: 0;
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+    transition: all .2s;
+  }
+  .mut-source-tab.active .mut-source-tab-icon {
+    background: rgba(255,124,108,0.18);
+    color: #ffb4a8;
+  }
+  .mut-source-tab-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+  .mut-source-tab-desc {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.2;
+    margin-top: 1px;
+  }
+
+  /* ── Balance summary cards ────────────────────── */
+  .mut-balance-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 14px;
+  }
+  .mut-balance-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    flex: 1;
+    min-width: 0;
+    transition: border-color .2s;
+  }
+  .mut-balance-card:hover { border-color: rgba(99,130,255,0.25); }
+  .mut-balance-icon {
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .mut-balance-icon.blue   { background: rgba(59,130,246,0.12); color: #60a5fa; }
+  .mut-balance-icon.green  { background: rgba(34,197,94,0.12);  color: #4ade80; }
+  .mut-balance-icon.amber  { background: rgba(249,115,22,0.12); color: #fb923c; }
+  .mut-balance-body { min-width: 0; }
+  .mut-balance-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .mut-balance-value {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--ink);
+    line-height: 1.2;
+    margin-top: 1px;
+  }
+  .mut-balance-sub {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── Stat cards row ───────────────────────────── */
+  .mut-stats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .mut-stat {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--panel);
+    min-width: 0;
+    flex: 1;
+    transition: border-color .2s;
+  }
+  .mut-stat:hover { border-color: rgba(99,130,255,0.25); }
+  .mut-stat-icon {
+    width: 32px;
+    height: 32px;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+  .mut-stat-icon.violet { background: rgba(139,92,246,0.12); color: #a78bfa; }
+  .mut-stat-icon.green  { background: rgba(34,197,94,0.12);  color: #4ade80; }
+  .mut-stat-icon.red    { background: rgba(239,68,68,0.12);  color: #f87171; }
+  .mut-stat-icon.blue   { background: rgba(59,130,246,0.12); color: #60a5fa; }
+  .mut-stat-body { min-width: 0; }
+  .mut-stat-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .mut-stat-value {
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--ink);
+    line-height: 1.2;
+    margin-top: 1px;
+  }
+  .mut-stat-sub {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  /* ── Table toolbar ────────────────────────────── */
+  .mut-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(135deg, rgba(255,124,108,0.04), rgba(59,130,246,0.03));
+  }
+  .mut-toolbar-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .mut-toolbar-title .count {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+    margin-left: 4px;
+  }
+  .mut-toolbar-sep {
+    width: 1px;
+    height: 28px;
+    background: var(--line);
+    flex-shrink: 0;
+  }
+
+  /* ── Filter bar ───────────────────────────────── */
+  .mut-filter-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: end;
+    gap: 10px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .mut-filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+  }
+  .mut-filter-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+  }
+  .mut-filter-input {
+    height: 34px;
+    padding: 0 10px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 12px;
+    outline: none;
+    transition: border-color .2s;
+    cursor: pointer;
+  }
+  .mut-filter-input:focus { border-color: rgba(99,130,255,0.5); }
+
+  @media (max-width: 768px) {
+    .mut-source-tab { padding: 8px 12px; gap: 10px; }
+    .mut-source-tab-icon { width: 30px; height: 30px; font-size: 12px; }
+    .mut-source-tab-label { font-size: 12px; }
+    .mut-balance-card { flex: none; min-width: calc(100% - 0px); }
+    .mut-stat { flex: none; min-width: calc(50% - 4px); }
+    .mut-stat-value { font-size: 15px; }
+    .mut-balance-value { font-size: 15px; }
+    .mut-toolbar { padding: 10px 14px; }
+    .mut-filter-bar { padding: 10px 14px; }
+  }
+</style>
+
+<section class="space-y-5">
+  <div class="qris-page-header">
+    <div class="flex items-center justify-between flex-wrap gap-3">
+      <div>
+        <h1 class="qris-page-title">Mutasi <span><%= sourceLabel %></span></h1>
+        <p class="qris-section-sub mt-1"><%= sourceSubtitle %></p>
+      </div>
+      <div class="flex items-center gap-2">
+        <span id="live-badge"
+              style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:4px 12px;border-radius:999px;font-size:11px;font-weight:700">
+          <span id="live-dot" style="width:7px;height:7px;border-radius:50%;background:#4ade80;display:inline-block"></span>
+          LIVE
+        </span>
+        <span id="last-updated" style="font-size:11px;color:var(--muted)"></span>
+      </div>
+    </div>
+
+    <div class="mut-source-tabs">
+      <% sourceTabs.forEach((tab) => { %>
+        <a href="<%= tab.href %>"
+           class="mut-source-tab <%= source === tab.key ? 'active' : '' %>">
+          <span class="mut-source-tab-icon">
+            <i class="fa-solid <%= tab.icon %>"></i>
+          </span>
+          <span>
+            <span class="mut-source-tab-label"><%= tab.label %></span>
+            <span class="mut-source-tab-desc"><%= tab.desc %></span>
+          </span>
+        </a>
+      <% }) %>
+    </div>
+
+    <% if (isQris) { %>
+      <div class="mut-balance-row" id="balance-summary">
+        <div class="mut-balance-card">
+          <div class="mut-balance-icon blue">
+            <i class="fa-solid fa-wallet"></i>
+          </div>
+          <div class="mut-balance-body">
+            <p class="mut-balance-label">Saldo Utama</p>
+            <p class="mut-balance-value" id="balance-main">-</p>
+            <p class="mut-balance-sub" id="balance-main-sub">Menunggu sinkronisasi</p>
+          </div>
+        </div>
+        <div class="mut-balance-card">
+          <div class="mut-balance-icon green">
+            <i class="fa-solid fa-qrcode"></i>
+          </div>
+          <div class="mut-balance-body">
+            <p class="mut-balance-label">Saldo QRIS</p>
+            <p class="mut-balance-value" id="balance-qris">-</p>
+            <p class="mut-balance-sub" id="balance-qris-sub">Menunggu sinkronisasi</p>
+          </div>
+        </div>
+        <div class="mut-balance-card">
+          <div class="mut-balance-icon amber">
+            <i class="fa-solid fa-piggy-bank"></i>
+          </div>
+          <div class="mut-balance-body">
+            <p class="mut-balance-label">Saldo Madera</p>
+            <p class="mut-balance-value" id="balance-madera">-</p>
+            <p class="mut-balance-sub" id="balance-madera-sub">Menunggu sinkronisasi</p>
+          </div>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <!-- Summary stats -->
+  <div class="mut-stats-row" id="mut-stats">
+    <div class="mut-stat">
+      <div class="mut-stat-icon violet">
+        <i class="fa-solid fa-layer-group"></i>
+      </div>
+      <div class="mut-stat-body">
+        <p class="mut-stat-label"><%= isQris ? 'Total Mutasi' : 'Total Entri' %></p>
+        <p class="mut-stat-value" id="stat-total">-</p>
+      </div>
+    </div>
+    <div class="mut-stat">
+      <div class="mut-stat-icon green">
+        <i class="fa-solid fa-arrow-down"></i>
+      </div>
+      <div class="mut-stat-body">
+        <p class="mut-stat-label"><%= isQris ? 'Total Kredit' : 'Total Masuk' %></p>
+        <p class="mut-stat-value" style="color:#86efac" id="stat-kredit">-</p>
+      </div>
+    </div>
+    <div class="mut-stat">
+      <div class="mut-stat-icon red">
+        <i class="fa-solid fa-arrow-up"></i>
+      </div>
+      <div class="mut-stat-body">
+        <p class="mut-stat-label"><%= isQris ? 'Total Debet' : 'Total Keluar' %></p>
+        <p class="mut-stat-value" style="color:#fca5a5" id="stat-debet">-</p>
+      </div>
+    </div>
+    <div class="mut-stat">
+      <div class="mut-stat-icon blue">
+        <i class="fa-solid <%= isQris ? 'fa-check-double' : 'fa-scale-balanced' %>"></i>
+      </div>
+      <div class="mut-stat-body">
+        <p class="mut-stat-label" id="stat-four-label"><%= isQris ? 'Sudah Dicocokkan' : 'Saldo Saat Ini' %></p>
+        <p class="mut-stat-value" style="color:#93c5fd" id="stat-four">-</p>
+        <p class="mut-stat-sub" id="stat-four-sub"><%= isQris ? '0 / 0 entri' : 'saldo akhir terbaru' %></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="qris-table-wrap">
+    <!-- Toolbar -->
+    <div class="mut-toolbar">
+      <span class="mut-toolbar-title">Riwayat Mutasi <span class="count" id="tbl-count"></span></span>
+      <div style="margin-left:auto"></div>
+    </div>
+
+    <!-- Filter bar -->
+    <div class="mut-filter-bar">
+      <% if (isQris) { %>
+        <div class="mut-filter-group">
+          <span class="mut-filter-label">Kategori</span>
+          <select id="filter-bucket" class="mut-filter-input">
+            <option value="all">Semua kategori</option>
+            <option value="qris">QRIS</option>
+            <option value="utama">Utama</option>
+            <option value="madera">Madera</option>
+          </select>
+        </div>
+      <% } %>
+      <div class="mut-filter-group">
+        <span class="mut-filter-label">Tipe</span>
+        <select id="filter-type" class="mut-filter-input">
+          <option value="">Semua tipe</option>
+          <option value="credit">Kredit</option>
+          <option value="debit">Debet</option>
+        </select>
+      </div>
+      <div class="mut-filter-group">
+        <span class="mut-filter-label"><%= isQris ? 'Status' : 'Referensi' %></span>
+        <select id="filter-status" class="mut-filter-input">
+          <option value="">
+            <%= isQris ? 'Semua status' : 'Semua ref' %>
+          </option>
+          <% if (isQris) { %>
+            <option value="matched">Sudah Cocok</option>
+            <option value="unmatched">Belum Cocok</option>
+          <% } else { %>
+            <option value="deposit_success">Deposit</option>
+            <option value="settlement_in">Masuk</option>
+            <option value="settlement_out">Keluar</option>
+            <option value="adjustment">Adjustment</option>
+          <% } %>
+        </select>
+      </div>
+    </div>
+
+    <div id="mut-empty" style="display:none" class="qris-empty py-16">
+      <i class="fa-solid fa-arrow-right-arrow-left qris-empty-icon"></i>
+      <p class="qris-empty-title">Belum ada mutasi</p>
+      <p class="qris-empty-sub">Data akan muncul setelah sumber mutasi aktif dan berhasil ditarik</p>
+    </div>
+
+    <div class="overflow-x-auto" id="mut-table-wrap">
+      <table class="qris-table" id="mut-table">
+        <thead>
+          <tr>
+            <th>Tanggal</th>
+            <th>Keterangan</th>
+            <% if (isQris) { %><th class="hidden sm:table-cell">RRN / Ref</th><% } %>
+            <th class="text-right">Debet</th>
+            <th class="text-right">Kredit</th>
+            <th class="text-right">Saldo Akhir</th>
+            <th class="text-center"><%= isQris ? 'Cocok' : 'Status' %></th>
+            <th class="hidden md:table-cell"><%= isQris ? 'Kategori' : 'Sumber' %></th>
+          </tr>
+        </thead>
+        <tbody id="mut-tbody">
+          <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--muted)">Memuat data...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<script>
+(function () {
+  const source = '<%= source %>';
+  const apiBase = '<%= url('/dashboard/api/mutations') %>';
+  const apiAccountsUrl = '<%= url('/dashboard/api/qris-accounts') %>';
+  const apiRefreshBalanceUrlTemplate = '<%= url('/dashboard/api/qris-accounts/__ACCOUNT_ID__/refresh-balance') %>';
+  const initialBalanceSummary = <%- JSON.stringify(initialBalanceSummary) %>;
+  let allRows = [];
+  let lastCount = -1;
+
+  const rp = n => 'Rp\u00a0' + (n || 0).toLocaleString('id-ID');
+  const getRefreshBalanceUrl = (accountId) => apiRefreshBalanceUrlTemplate.replace('__ACCOUNT_ID__', encodeURIComponent(accountId));
+
+  function buildApiUrl() {
+    const params = new URLSearchParams();
+    params.set('source', source);
+    params.set('limit', '500');
+
+    if (source === 'qris') {
+      const bucket = document.getElementById('filter-bucket')?.value || 'all';
+      if (bucket !== 'all') {
+        params.set('bucket', bucket);
+      }
+    }
+
+    return `${apiBase}?${params.toString()}`;
+  }
+
+  function formatTime(value) {
+    return new Date(value).toLocaleString('id-ID', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Jakarta',
+    });
+  }
+
+  function statusPill(row) {
+    if (source === 'qris') {
+      return row.matched
+        ? '<span style="background:rgba(34,197,94,0.12);color:#86efac;border:1px solid rgba(34,197,94,0.25);padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700">Ya</span>'
+        : '<span style="background:rgba(100,116,139,0.12);color:#94a3b8;border:1px solid rgba(100,116,139,0.2);padding:2px 8px;border-radius:999px;font-size:10px;font-weight:700">Tidak</span>';
+    }
+
+    const meta = {
+      deposit_success: { label: 'Deposit',    pill: 'qris-pill-paid'   },
+      settlement_in:   { label: 'Masuk',      pill: 'qris-pill-open'   },
+      settlement_out:  { label: 'Keluar',     pill: 'qris-pill-review' },
+      adjustment:      { label: 'Adjustment', pill: 'qris-pill-muted'  },
+    }[row.refType] || { label: row.refType || '-', pill: 'qris-pill-muted' };
+
+    return '<span class="qris-pill ' + meta.pill + '">' + meta.label + '</span>';
+  }
+
+  function categoryMeta(category) {
+    const map = {
+      qris:   { label: 'QRIS',   bg: 'rgba(34,197,94,0.12)',  color: '#86efac', border: 'rgba(34,197,94,0.25)' },
+      utama:  { label: 'Utama',  bg: 'rgba(59,130,246,0.12)', color: '#93c5fd', border: 'rgba(59,130,246,0.25)' },
+      madera: { label: 'Madera', bg: 'rgba(245,158,11,0.12)', color: '#fcd34d', border: 'rgba(245,158,11,0.25)' },
+    };
+    return map[category] || map.utama;
+  }
+
+  function renderBalanceSummary(summary) {
+    if (source !== 'qris') return;
+
+    if (!summary) {
+      document.getElementById('balance-main').textContent = '-';
+      document.getElementById('balance-qris').textContent = '-';
+      document.getElementById('balance-madera').textContent = '-';
+      document.getElementById('balance-main-sub').textContent = 'Menunggu sinkronisasi';
+      document.getElementById('balance-qris-sub').textContent = 'Menunggu sinkronisasi';
+      document.getElementById('balance-madera-sub').textContent = 'Menunggu sinkronisasi';
+      return;
+    }
+
+    const fmt = (value) => 'Rp\u00a0' + (value || 0).toLocaleString('id-ID');
+    const synced = summary.syncedAccounts ?? 0;
+    const total = summary.totalAccounts ?? 0;
+    const updated = summary.updatedAt ? new Date(summary.updatedAt).toLocaleString('id-ID') : 'Belum ada sinkron';
+    const subText = `${synced}/${total} akun · ${updated}`;
+
+    document.getElementById('balance-main').textContent = fmt(summary.mainBalance);
+    document.getElementById('balance-qris').textContent = fmt(summary.qrisBalance);
+    document.getElementById('balance-madera').textContent = fmt(summary.maderaBalance);
+
+    document.getElementById('balance-main-sub').textContent = subText;
+    document.getElementById('balance-qris-sub').textContent = subText;
+    document.getElementById('balance-madera-sub').textContent = subText;
+  }
+
+  function updateStats(rows, currentBalance) {
+    const kredit = rows.filter(r => r.type === 'credit').reduce((s, r) => s + (r.amount || 0), 0);
+    const debet = rows.filter(r => r.type === 'debit').reduce((s, r) => s + (r.amount || 0), 0);
+    const matched = rows.filter(r => r.matched).length;
+    const balance = typeof currentBalance === 'number'
+      ? currentBalance
+      : (rows[0] ? rows[0].balanceAfter || 0 : 0);
+
+    document.getElementById('stat-total').textContent = rows.length.toLocaleString('id-ID');
+    document.getElementById('stat-kredit').textContent = rp(kredit);
+    document.getElementById('stat-debet').textContent = rp(debet);
+
+    if (source === 'qris') {
+      document.getElementById('stat-four').textContent = matched + ' / ' + rows.length;
+      document.getElementById('stat-four-sub').textContent = 'entri cocok / total';
+    } else {
+      document.getElementById('stat-four').textContent = rp(balance);
+      document.getElementById('stat-four-sub').textContent = 'saldo akhir terbaru';
+    }
+  }
+
+  function renderTable(rows) {
+    const typeFilter = document.getElementById('filter-type').value;
+    const statusFilter = document.getElementById('filter-status').value;
+    const bucketFilter = source === 'qris' ? (document.getElementById('filter-bucket')?.value || 'all') : 'all';
+
+    const filtered = rows.filter(r => {
+      if (typeFilter && r.type !== typeFilter) return false;
+      if (source === 'qris' && bucketFilter !== 'all' && r.category !== bucketFilter) return false;
+      if (source === 'qris') {
+        if (statusFilter === 'matched' && !r.matched) return false;
+        if (statusFilter === 'unmatched' && r.matched) return false;
+      } else if (statusFilter && r.refType !== statusFilter) {
+        return false;
+      }
+      return true;
+    });
+
+    document.getElementById('tbl-count').textContent = '(' + filtered.length + ' entri)';
+    document.getElementById('mut-empty').style.display = filtered.length === 0 ? '' : 'none';
+    document.getElementById('mut-table-wrap').style.display = filtered.length === 0 ? 'none' : '';
+
+    const tbody = document.getElementById('mut-tbody');
+    tbody.innerHTML = filtered.map(r => {
+      const isCredit = r.type === 'credit';
+      const sourceCode = r.accountCode || r.walletCode || '-';
+      const desc = r.description || (r.rrn ? ('RRN ' + r.rrn) : (r.statusLabel || r.type));
+      const timeStr = formatTime(r.time);
+      const category = r.category || (source === 'qris' ? 'utama' : source);
+      const meta = categoryMeta(category);
+      const categoryHtml = source === 'qris'
+        ? `<div class="flex flex-col items-start gap-1">
+             <span style="display:inline-flex;align-items:center;padding:2px 8px;border-radius:999px;border:1px solid ${meta.border};background:${meta.bg};color:${meta.color};font-size:10px;font-weight:700">
+               ${meta.label}
+             </span>
+             <span class="text-[10px] text-muted font-mono">${sourceCode}${r.settlementIndex ? ' #' + r.settlementIndex : ''}</span>
+           </div>`
+        : `<span class="font-mono text-xs text-muted">${sourceCode}</span>`;
+
+      const rrnCell = source === 'qris'
+        ? '<td class="hidden sm:table-cell text-xs font-mono" style="color:#94a3b8;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + (r.rrn || '') + '">' + (r.rrn || '—') + '</td>'
+        : '';
+
+      return [
+        '<tr>',
+        '<td class="text-xs text-muted whitespace-nowrap">' + timeStr + '</td>',
+        '<td class="text-xs text-ink-2 max-w-xs truncate" title="' + String(desc).replace(/"/g, '&quot;') + '">' + desc + '</td>',
+        rrnCell,
+        '<td class="text-right font-mono text-xs whitespace-nowrap" style="color:#fca5a5">' + (isCredit ? '-' : rp(r.amount)) + '</td>',
+        '<td class="text-right font-mono text-xs whitespace-nowrap font-semibold" style="color:#86efac">' + (isCredit ? rp(r.amount) : '-') + '</td>',
+        '<td class="text-right font-mono text-xs whitespace-nowrap text-ink">' + rp(r.balanceAfter) + '</td>',
+        '<td class="text-center">' + statusPill(r) + '</td>',
+        '<td class="hidden md:table-cell text-xs text-muted">' + categoryHtml + '</td>',
+        '</tr>',
+      ].join('');
+    }).join('');
+  }
+
+  async function refreshAllSourceBalancesOnce() {
+    if (source !== 'madera') return;
+
+    try {
+      const accountsRes = await fetch(apiAccountsUrl, { cache: 'no-store' });
+      const accountsData = await accountsRes.json();
+      const accounts = Array.isArray(accountsData?.accounts) ? accountsData.accounts : [];
+
+      for (const account of accounts) {
+        if (!account?.id) continue;
+        await fetch(getRefreshBalanceUrl(account.id), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ wallet: 'madera' }),
+        });
+      }
+    } catch (_) {
+      // best-effort refresh only
+    }
+  }
+
+  async function poll() {
+    try {
+      const res = await fetch(buildApiUrl());
+      const data = await res.json();
+      if (!data.ok) return;
+
+      allRows = data.mutations || [];
+
+      if (data.total !== lastCount && lastCount !== -1) {
+        const dot = document.getElementById('live-dot');
+        dot.style.background = '#facc15';
+        setTimeout(() => { dot.style.background = '#4ade80'; }, 400);
+      }
+      lastCount = data.total;
+
+      updateStats(allRows, data.currentBalance);
+      if (source === 'qris') {
+        renderBalanceSummary(data.balanceSummary || initialBalanceSummary);
+      }
+      renderTable(allRows);
+
+      const now = new Date();
+      document.getElementById('last-updated').textContent =
+        'Diperbarui ' + now.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    } catch (_) {
+      // silently retry
+    }
+  }
+
+  document.getElementById('filter-type').addEventListener('change', () => renderTable(allRows));
+  document.getElementById('filter-status').addEventListener('change', () => renderTable(allRows));
+  if (source === 'qris') {
+    document.getElementById('filter-bucket').addEventListener('change', () => poll());
+    renderBalanceSummary(initialBalanceSummary);
+  }
+
+  void refreshAllSourceBalancesOnce().finally(() => poll());
+  setInterval(poll, 2000);
+})();
+</script>

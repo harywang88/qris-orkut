@@ -1,0 +1,292 @@
+<!-- Header + Date Filter -->
+<div class="qris-page-header flex flex-wrap items-start justify-between gap-4">
+  <div>
+    <h1 class="qris-page-title">Laporan <span>Analitik</span></h1>
+    <p class="qris-section-sub mt-1">Ringkasan transaksi dan performa per site</p>
+  </div>
+</div>
+
+<!-- Date Range + Site Filter -->
+<%
+  var siteQS = selectedSite ? ('&site=' + encodeURIComponent(selectedSite)) : '';
+  var dateQS = 'range=' + encodeURIComponent(range) + (fromStr ? ('&from=' + encodeURIComponent(fromStr)) : '') + (toStr ? ('&to=' + encodeURIComponent(toStr)) : '');
+  var reportsBase = url('/reports');
+%>
+<div class="qris-card p-4 mb-5">
+  <form method="GET" class="flex flex-wrap gap-3 items-end">
+    <input type="hidden" name="site" value="<%= selectedSite %>" />
+    <div class="flex gap-2">
+      <a href="<%= url('/reports?range=today') + siteQS %>"
+         class="qris-btn qris-btn-sm <%= range === 'today' ? 'qris-btn-accent' : 'qris-btn-ghost' %>">
+        Hari Ini
+      </a>
+      <a href="<%= url('/reports?range=yesterday') + siteQS %>"
+         class="qris-btn qris-btn-sm <%= range === 'yesterday' ? 'qris-btn-accent' : 'qris-btn-ghost' %>">
+        Kemarin
+      </a>
+    </div>
+    <div class="flex items-end gap-2 flex-wrap">
+      <input type="hidden" name="range" value="custom" />
+      <div>
+        <label class="qris-label">Dari</label>
+        <input type="date" name="from" value="<%= fromStr %>" class="qris-input" style="width:auto;min-width:140px" />
+      </div>
+      <div>
+        <label class="qris-label">Sampai</label>
+        <input type="date" name="to" value="<%= toStr %>" class="qris-input" style="width:auto;min-width:140px" />
+      </div>
+      <button type="submit" class="qris-btn qris-btn-accent">
+        <i class="fa-solid fa-search text-xs"></i>
+        Tampilkan
+      </button>
+    </div>
+    <% var _siteLocked = (typeof siteLocked !== 'undefined' && siteLocked); %>
+    <% if (!_siteLocked) { %>
+    <div style="margin-left:auto">
+      <label class="qris-label">Site</label>
+      <select class="qris-input" style="width:auto;min-width:180px" onchange="location.href=this.value">
+        <option value="<%= reportsBase + '?' + dateQS %>" <%= selectedSite === '' ? 'selected' : '' %>>Semua Site (gabungan)</option>
+        <% sites.forEach(function(s){ %>
+          <option value="<%= reportsBase + '?' + dateQS + '&site=' + encodeURIComponent(s.id) %>" <%= selectedSite === s.id ? 'selected' : '' %>><%= s.name %></option>
+        <% }); %>
+        <% if (hasNoneBucket) { %>
+          <option value="<%= reportsBase + '?' + dateQS + '&site=none' %>" <%= selectedSite === 'none' ? 'selected' : '' %>>Tanpa site</option>
+        <% } %>
+      </select>
+    </div>
+    <% } else if (sites.length) { %>
+    <div style="margin-left:auto">
+      <label class="qris-label">Site</label>
+      <div class="qris-input" style="display:flex;align-items:center;gap:6px;width:auto;min-width:180px;opacity:.9"><i class="fa-solid fa-lock text-[10px]" style="color:#93c5fd"></i> <%= sites[0].name %></div>
+    </div>
+    <% } %>
+  </form>
+</div>
+
+<!-- Overall Summary Cards -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5 qris-card-enter">
+  <div class="qris-stat-card">
+    <div class="qris-stat-icon qris-stat-icon-blue">
+      <i class="fa-solid fa-qrcode"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Total QR</p>
+      <p class="text-2xl font-bold text-ink"><%= overall.total %></p>
+      <p class="text-xs text-muted-2 mt-0.5"><%= overall.paid %> lunas · <%= overall.expired %> expired</p>
+    </div>
+  </div>
+  <div class="qris-stat-card">
+    <div class="qris-stat-icon qris-stat-icon-green">
+      <i class="fa-solid fa-coins"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Nominal Terbayar</p>
+      <p class="text-base font-bold text-ink leading-tight">Rp <%= overall.totalPaid.toLocaleString('id-ID') %></p>
+      <p class="text-xs text-muted-2 mt-0.5">dari <%= overall.paid %> transaksi</p>
+    </div>
+  </div>
+  <div class="qris-stat-card">
+    <div class="qris-stat-icon qris-stat-icon-amber">
+      <i class="fa-solid fa-percent"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Total Fee</p>
+      <p class="text-base font-bold text-ink leading-tight">Rp <%= (overall.totalFee + (overall.fee2 || 0)).toLocaleString('id-ID') %></p>
+      <p class="text-xs text-muted-2 mt-0.5">Layanan Rp <%= overall.totalFee.toLocaleString('id-ID') %> · 1% Rp <%= (overall.fee2 || 0).toLocaleString('id-ID') %></p>
+    </div>
+  </div>
+  <div class="qris-stat-card" style="border-color:rgba(34,197,94,0.2)">
+    <div class="qris-stat-icon qris-stat-icon-green">
+      <i class="fa-solid fa-arrow-trend-up"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Net Amount</p>
+      <p class="text-base font-bold leading-tight" style="color:#86efac">Rp <%= overall.netAmount.toLocaleString('id-ID') %></p>
+      <p class="text-xs text-muted-2 mt-0.5">setelah Fee + FEE 2</p>
+    </div>
+  </div>
+</div>
+
+<!-- Daily Chart -->
+<div class="qris-card p-5 mb-5">
+  <div class="flex items-center justify-between mb-4">
+    <h2 class="text-sm font-bold text-ink">Grafik Harian — Nominal Terbayar</h2>
+    <% if (typeof chartBucketDays !== 'undefined' && chartBucketDays > 1) { %>
+      <span class="text-[11px] text-muted-2" title="Rentang panjang dikelompokkan agar seluruh data tampil">
+        <i class="fa-solid fa-layer-group text-[10px]"></i> 1 batang = <%= chartBucketDays %> hari
+      </span>
+    <% } %>
+  </div>
+  <div class="qris-chart-wrap">
+    <canvas id="report-chart" height="100"></canvas>
+  </div>
+</div>
+
+<!-- Per-Site Breakdown Table -->
+<div class="qris-table-wrap">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-line">
+    <h3 class="text-sm font-bold text-ink">Rincian Per Site</h3>
+    <% if (selectedSite) { %>
+      <a href="<%= reportsBase + '?' + dateQS %>" class="text-[11px] text-muted-2 hover:underline" style="color:#93c5fd">
+        <i class="fa-solid fa-layer-group text-[10px]"></i> Lihat Semua Site
+      </a>
+    <% } %>
+  </div>
+  <% if (overall.total === 0) { %>
+    <div class="qris-empty">
+      <i class="fa-solid fa-chart-column qris-empty-icon"></i>
+      <p class="qris-empty-title">Tidak ada data untuk rentang ini</p>
+      <% if (siteBreakdown.length === 0) { %>
+        <p class="qris-empty-sub">Belum ada site dengan akun. Buat site & assign akun di menu Akun QRIS.</p>
+      <% } %>
+    </div>
+  <% } else { %>
+    <div class="overflow-x-auto">
+      <table class="qris-table">
+        <thead>
+          <tr>
+            <th>Site</th>
+            <th class="text-right">Total QR</th>
+            <th class="text-right">Lunas</th>
+            <th class="text-right">Expired</th>
+            <th class="text-right">Open</th>
+            <th class="text-right">Dep OK</th>
+            <th class="text-right">Dep Gagal</th>
+            <th class="text-right">Review</th>
+            <th class="text-right">Nominal</th>
+            <th class="text-right" title="QRIS Biaya Layanan (0.3% OrderKuota)">Fee</th>
+            <th class="text-right" title="Utama Biaya QRIS 1% (Percepatan Pencairan)">FEE 2</th>
+            <th class="text-right">Net</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% siteBreakdown.forEach(row => { %>
+            <tr>
+              <td class="font-medium text-ink">
+                <%= row.siteName %>
+                <span class="text-[10px] text-muted-2 font-normal">· <%= row.accountCount %> akun</span>
+              </td>
+              <td class="text-right font-mono"><%= row.total %></td>
+              <td class="text-right font-mono" style="color:#86efac"><%= row.paid %></td>
+              <td class="text-right font-mono text-muted"><%= row.expired %></td>
+              <td class="text-right font-mono" style="color:#93c5fd"><%= row.open %></td>
+              <td class="text-right font-mono" style="color:#86efac"><%= row.depositSuccess %></td>
+              <td class="text-right font-mono" style="color:#fca5a5"><%= row.depositFailed %></td>
+              <td class="text-right font-mono" style="color:#fdba74"><%= row.manualReview %></td>
+              <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= row.totalPaid.toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap text-muted">Rp <%= row.totalFee.toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#fbbf24">Rp <%= (row.fee2 || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap font-semibold" style="color:#86efac">Rp <%= row.netAmount.toLocaleString('id-ID') %></td>
+            </tr>
+          <% }); %>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td class="font-bold text-ink">TOTAL<%= selectedSite ? '' : ' (Semua Site)' %></td>
+            <td class="text-right font-mono font-bold text-ink"><%= overall.total %></td>
+            <td class="text-right font-mono font-bold" style="color:#86efac"><%= overall.paid %></td>
+            <td class="text-right font-mono font-bold text-muted"><%= overall.expired %></td>
+            <td class="text-right font-mono font-bold" style="color:#93c5fd"><%= overall.open %></td>
+            <td class="text-right font-mono font-bold" style="color:#86efac"><%= overall.depositSuccess %></td>
+            <td class="text-right font-mono font-bold" style="color:#fca5a5"><%= overall.depositFailed %></td>
+            <td class="text-right font-mono font-bold" style="color:#fdba74"><%= overall.manualReview %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= overall.totalPaid.toLocaleString('id-ID') %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap text-muted">Rp <%= overall.totalFee.toLocaleString('id-ID') %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#fbbf24">Rp <%= (overall.fee2 || 0).toLocaleString('id-ID') %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#86efac">Rp <%= overall.netAmount.toLocaleString('id-ID') %></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  <% } %>
+</div>
+
+<script>
+(function () {
+  const labels  = <%- chartData.labels %>;
+  const amounts = <%- chartData.amounts %>;
+  const counts  = <%- chartData.counts %>;
+
+  Chart.defaults.color = '#9a9085';
+  Chart.defaults.font.family = "'Inter', sans-serif";
+
+  const ctx = document.getElementById('report-chart').getContext('2d');
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Nominal (Rp)',
+          data: amounts,
+          backgroundColor: 'rgba(22,163,74,0.2)',
+          borderColor: '#16a34a',
+          borderWidth: 2,
+          borderRadius: 6,
+          borderSkipped: false,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Transaksi',
+          data: counts,
+          type: 'line',
+          borderColor: '#22c55e',
+          backgroundColor: 'rgba(34,197,94,0.08)',
+          pointBackgroundColor: '#22c55e',
+          pointRadius: 4,
+          pointHoverRadius: 6,
+          tension: 0.35,
+          fill: true,
+          yAxisID: 'y2',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      animation: { duration: 800, easing: 'easeOutQuart' },
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { color: '#9a9085', padding: 16, font: { size: 11 } },
+        },
+        tooltip: {
+          backgroundColor: 'rgba(18,20,26,0.95)',
+          borderColor: 'rgba(37,42,53,0.8)',
+          borderWidth: 1,
+          titleColor: '#f1ece4',
+          bodyColor: '#9a9085',
+          padding: 10,
+          cornerRadius: 12,
+          callbacks: {
+            label: function (ctx) {
+              if (ctx.dataset.yAxisID === 'y') return ' Rp ' + Number(ctx.parsed.y).toLocaleString('id-ID');
+              return ' ' + ctx.parsed.y + ' transaksi';
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(37,42,53,0.5)' },
+          ticks: { color: '#6b6560', font: { size: 11 } },
+        },
+        y: {
+          beginAtZero: true,
+          position: 'left',
+          grid: { color: 'rgba(37,42,53,0.5)' },
+          ticks: { color: '#6b6560', font: { size: 11 } },
+          title: { display: true, text: 'Nominal (Rp)', color: '#6b6560', font: { size: 11 } },
+        },
+        y2: {
+          beginAtZero: true,
+          position: 'right',
+          grid: { drawOnChartArea: false },
+          ticks: { precision: 0, color: '#6b6560', font: { size: 11 } },
+          title: { display: true, text: 'Transaksi', color: '#6b6560', font: { size: 11 } },
+        },
+      },
+    },
+  });
+})();
+</script>

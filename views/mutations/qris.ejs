@@ -1,0 +1,1716 @@
+<%
+  const rp = n => 'Rp\u00a0' + (n || 0).toLocaleString('id-ID');
+  const totalAkun = accounts.length;
+%>
+
+<style>
+  .qris-mut-hero {
+    padding: 22px 24px;
+    border-radius: 22px;
+    border: 1px solid var(--line);
+    background:
+      radial-gradient(circle at top right, rgba(255,124,108,0.12), transparent 34%),
+      radial-gradient(circle at bottom left, rgba(99,179,237,0.08), transparent 28%),
+      var(--card);
+  }
+  .qris-mut-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    color: var(--accent);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+  }
+  .qris-mut-livebox {
+    padding: 14px 16px;
+    border-radius: 16px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+  }
+  .qris-mut-stat {
+    position: relative;
+    overflow: hidden;
+  }
+  .qris-mut-stat::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.06), transparent 40%);
+    opacity: .6;
+    pointer-events: none;
+  }
+  .qris-mut-tablewrap {
+    overflow: hidden;
+    border-radius: 20px;
+    border: 1px solid var(--line);
+    background: var(--card);
+  }
+
+  /* ── Tabulator premium styling (matches Transactions page) ──── */
+  #mut-tabulator {
+    font-size: 12px;
+    border: none !important;
+    background: var(--shell) !important;
+    color: var(--ink) !important;
+  }
+  #mut-tabulator .tabulator-header {
+    background: linear-gradient(180deg, rgba(20,25,35,0.98), rgba(16,20,29,0.98)) !important;
+    border-bottom: 1px solid var(--line) !important;
+    border-top: none !important;
+  }
+  #mut-tabulator .tabulator-col {
+    background: transparent !important;
+    border-right: 1px solid var(--line) !important;
+  }
+  #mut-tabulator .tabulator-col:last-child {
+    border-right: none !important;
+  }
+  #mut-tabulator .tabulator-col-title {
+    font-size: 10px !important;
+    font-weight: 800 !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+    color: #98a5c4 !important;
+    text-align: center !important;
+    padding: 10px 6px !important;
+  }
+  #mut-tabulator .tabulator-col .tabulator-col-content {
+    padding: 0 !important;
+  }
+  #mut-tabulator .tabulator-tableholder {
+    background: var(--shell) !important;
+  }
+  #mut-tabulator .tabulator-row {
+    background: var(--shell) !important;
+    border-bottom: 1px solid var(--line) !important;
+    min-height: 52px !important;
+    color: var(--ink) !important;
+  }
+  #mut-tabulator .tabulator-row:nth-child(even) {
+    background: var(--panel) !important;
+  }
+  #mut-tabulator .tabulator-row:hover {
+    background: var(--card-hi) !important;
+  }
+  #mut-tabulator .tabulator-cell {
+    color: var(--ink) !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+    padding: 10px 8px !important;
+    border-right: none !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    overflow: hidden !important;
+    font-weight: 700 !important;
+  }
+  #mut-tabulator .tabulator-footer {
+    background: linear-gradient(180deg, rgba(20,25,35,0.98), rgba(16,20,29,0.98)) !important;
+    border-top: 1px solid var(--line) !important;
+    color: var(--ink-2) !important;
+    padding: 8px 12px !important;
+  }
+  #mut-tabulator .tabulator-footer .tabulator-page {
+    border: 1px solid var(--line) !important;
+    background: var(--card-hi) !important;
+    color: var(--ink-2) !important;
+    border-radius: 8px !important;
+    padding: 4px 10px !important;
+    font-size: 11px;
+    font-weight: 600;
+    margin: 0 2px;
+    transition: all .15s ease;
+  }
+  #mut-tabulator .tabulator-footer .tabulator-page:hover {
+    border-color: var(--line-hi) !important;
+    background: var(--card) !important;
+  }
+  #mut-tabulator .tabulator-footer .tabulator-page.active {
+    border-color: var(--accent) !important;
+    background: var(--accent) !important;
+    color: white !important;
+  }
+  #mut-tabulator .tabulator-footer .tabulator-paginator label {
+    color: var(--muted) !important;
+    font-size: 11px;
+  }
+  .qris-mut-title {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--color-ink);
+    line-height: 1.45;
+    text-align: center;
+  }
+  .qris-mut-sub {
+    margin-top: 4px;
+    font-size: 11px;
+    line-height: 1.55;
+    color: var(--color-muted);
+    text-align: center;
+  }
+  .qris-mut-accountcell {
+    display: grid;
+    gap: 8px;
+    justify-items: center;
+  }
+  .qris-mut-accountcode {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 56px;
+    padding: 6px 12px;
+    border-radius: 999px;
+    background: rgba(59,130,246,0.16);
+    border: 1px solid rgba(59,130,246,0.3);
+    color: #93c5fd;
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .qris-mut-accountname {
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
+    color: var(--color-ink);
+    text-align: center;
+    text-transform: uppercase;
+  }
+  .qris-mut-time {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--color-ink);
+    white-space: normal;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    text-align: center;
+  }
+  .qris-mut-num,
+  .qris-mut-rrn,
+  .qris-mut-balance {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    text-align: center;
+  }
+  .qris-mut-num {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--color-muted);
+  }
+  .qris-mut-rrn {
+    font-size: 13px;
+    font-weight: 800;
+    color: #60a5fa;
+    letter-spacing: .03em;
+  }
+  .qris-mut-rrn.muted {
+    color: var(--muted);
+  }
+  .qris-mut-balance {
+    font-size: 14px;
+    font-weight: 900;
+    color: var(--color-ink);
+    white-space: normal;
+  }
+  .qris-mut-amount {
+    font-size: 15px;
+    font-weight: 900;
+    white-space: normal;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    text-align: center;
+  }
+  .qris-mut-amount.in { color: #22c55e; }
+  .qris-mut-amount.out { color: #ef4444; }
+  .qris-mut-statusstack {
+    display: inline-grid;
+    gap: 6px;
+    justify-items: center;
+  }
+  .qris-mut-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: fit-content;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    border: 1px solid transparent;
+  }
+  .qris-mut-pill.in {
+    background: var(--green-dim);
+    border-color: var(--green-border);
+    color: #22c55e;
+  }
+  .qris-mut-pill.out {
+    background: var(--red-dim);
+    border-color: var(--red-border);
+    color: #ef4444;
+  }
+  .qris-mut-pill.info {
+    background: var(--blue-dim);
+    border-color: var(--blue-border);
+    color: #3b82f6;
+  }
+  .qris-mut-pill.warn {
+    background: var(--amber-dim);
+    border-color: var(--amber-border);
+    color: #f59e0b;
+  }
+  .qris-mut-pill.pending {
+    background: var(--amber-dim);
+    border-color: var(--amber-border);
+    color: #fbbf24;
+  }
+  .qris-mut-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: 11px;
+    font-style: italic;
+    opacity: 0.7;
+  }
+</style>
+
+<!-- ── Header ────────────────────────────────────────────────────────────────── -->
+<div class="qris-mut-hero" style="
+  padding:20px 24px 16px;
+  border-radius:18px;
+  border:1px solid rgba(255,255,255,0.06);
+  background:linear-gradient(135deg,rgba(255,124,108,0.07) 0%,rgba(99,179,237,0.05) 60%,transparent 100%);
+  margin-bottom:16px;
+">
+  <!-- Top row: title + live status -->
+  <div class="flex items-center justify-between flex-wrap gap-3 mb-4">
+    <div class="flex items-center gap-3">
+      <div style="width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,rgba(255,124,108,0.2),rgba(255,124,108,0.06));border:1px solid rgba(255,124,108,0.2);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+        <i class="fa-solid fa-wave-square" style="color:#ffb4a8;font-size:16px"></i>
+      </div>
+      <div>
+        <h1 style="font-size:18px;font-weight:800;color:var(--color-ink);line-height:1.2;margin:0">Mutasi QRIS</h1>
+        <p style="font-size:11px;color:var(--color-muted);margin:2px 0 0">
+          <i class="fa-solid fa-circle-check" style="color:#4ade80;font-size:9px;margin-right:4px"></i>
+          Memantau <strong style="color:var(--color-ink)"><%= totalAkun %></strong> akun aktif · waktu real-time + kolom RRN
+        </p>
+      </div>
+      <button type="button" id="btnSyncAllMut" title="Sinkron semua akun QRIS (maks 1x per menit)" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(99,179,237,0.18),rgba(99,179,237,0.06));border:1px solid rgba(99,179,237,0.3);color:#bfdbfe;padding:9px 15px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;cursor:pointer;transition:opacity .2s;white-space:nowrap">
+        <i class="fa-solid fa-arrows-rotate"></i><span id="btnSyncAllMutLabel">Sinkron ALL</span>
+      </button>
+      <select id="syncOneSelMut" title="Pilih akun untuk disinkron" style="background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.12);color:var(--color-ink);padding:9px 12px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;max-width:170px">
+        <option value="">Pilih Akun…</option>
+      </select>
+      <button type="button" id="btnSyncOneMut" title="Sinkron akun terpilih (maks 1x per menit per akun)" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(52,211,153,0.18),rgba(52,211,153,0.06));border:1px solid rgba(52,211,153,0.32);color:#a7f3d0;padding:9px 15px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;cursor:pointer;transition:opacity .2s;white-space:nowrap">
+        <i class="fa-solid fa-rotate"></i><span id="btnSyncOneMutLabel">Sinkron</span>
+      </button>
+    </div>
+
+    <!-- Right: LIVE + clock -->
+    <div class="flex items-center gap-3">
+      <div style="text-align:right">
+        <div style="font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-muted);font-weight:700">Update Terakhir</div>
+        <div id="last-updated" style="font-size:20px;color:var(--color-ink);font-weight:900;letter-spacing:.04em;line-height:1.1;margin-top:1px">—</div>
+      </div>
+      <span id="live-badge" style="display:inline-flex;align-items:center;gap:6px;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.25);color:#86efac;padding:6px 14px;border-radius:999px;font-size:11px;font-weight:800;letter-spacing:.06em">
+        <span id="live-dot" style="width:7px;height:7px;border-radius:50%;background:#4ade80;display:inline-block;transition:background .3s"></span>
+        <span id="live-label">LIVE</span>
+      </span>
+    </div>
+  </div>
+
+  <!-- Premium Filter Panel -->
+  <style>
+    .mqf-panel { display:flex; flex-direction:column; gap:12px; padding:14px 16px; background:rgba(255,255,255,0.025); border:1px solid rgba(255,255,255,0.07); border-radius:16px; }
+    .mqf-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; }
+    .mqf-field { display:flex; flex-direction:column; gap:5px; min-width:150px; }
+    .mqf-field.mqf-grow { flex:1 1 220px; }
+    .mqf-label { font-size:10px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--color-muted); }
+    .mqf-input { height:38px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); color:var(--color-ink); border-radius:10px; padding:0 12px; font-size:13px; outline:none; transition:border-color .2s; }
+    .mqf-input:focus { border-color:rgba(99,179,237,0.4); }
+    select.mqf-input { cursor:pointer; -webkit-appearance:none; appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23999' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:30px; }
+    .mqf-daterow { display:flex; align-items:center; gap:8px; }
+    .mqf-daterow .mqf-input { min-width:145px; }
+    .mqf-sep { color:var(--color-muted); font-weight:700; }
+    .mqf-pills { display:flex; flex-wrap:wrap; gap:6px; }
+    .date-pill { padding:8px 15px; border-radius:999px; font-size:12px; font-weight:600; cursor:pointer; border:1px solid rgba(255,255,255,0.1); background:transparent; color:var(--color-muted); transition:all .18s; }
+    .date-pill:hover { border-color:rgba(255,255,255,0.25); color:var(--color-ink); }
+    .date-pill.active { border-color:rgba(255,124,108,0.5); background:rgba(255,124,108,0.15); color:#ffb4a8; font-weight:700; box-shadow:0 3px 12px -5px rgba(255,124,108,0.55); }
+    .mqf-actions { flex-direction:row; align-items:flex-end; gap:8px; min-width:auto; }
+    .mqf-btn { height:38px; display:inline-flex; align-items:center; gap:7px; padding:0 16px; border-radius:10px; font-size:13px; font-weight:800; cursor:pointer; border:1px solid transparent; transition:transform .15s, opacity .15s; }
+    .mqf-btn:hover { transform:translateY(-1px); }
+    .mqf-btn-primary { background:linear-gradient(135deg,#ff7c6c,#f43f5e); color:#fff; box-shadow:0 6px 18px -8px rgba(244,63,94,0.7); }
+    .mqf-btn-ghost { background:rgba(255,255,255,0.05); border-color:rgba(255,255,255,0.12); color:var(--color-muted); }
+    /* Dropdown options: paksa background gelap + teks terang agar terbaca di dark mode */
+    .mqf-input option { background:#141a26; color:#e6ebf5; }
+    .mqf-input option:checked, .mqf-input option:hover { background:#243043; color:#ffffff; }
+  </style>
+  <div class="mqf-panel">
+    <!-- Row 1: Periode + Custom Range -->
+    <div class="mqf-row">
+      <div class="mqf-field">
+        <span class="mqf-label">Periode</span>
+        <div class="mqf-pills">
+          <button class="date-pill" data-preset="today" onclick="setDatePreset('today',this)">Hari Ini</button>
+          <button class="date-pill" data-preset="yesterday" onclick="setDatePreset('yesterday',this)">Kemarin</button>
+          <button class="date-pill" data-preset="7d" onclick="setDatePreset('7d',this)">7 Hari</button>
+          <button class="date-pill" data-preset="30d" onclick="setDatePreset('30d',this)">30 Hari</button>
+          <button class="date-pill active" data-preset="all" onclick="setDatePreset('all',this)">Semua</button>
+          <button class="date-pill" data-preset="custom" onclick="setDatePreset('custom',this)" style="display:none">Custom</button>
+        </div>
+      </div>
+      <div class="mqf-field">
+        <span class="mqf-label">Custom Range</span>
+        <div class="mqf-daterow" id="filter-date-custom">
+          <input id="filter-date-from" type="date" class="mqf-input" onchange="onCustomDate()">
+          <span class="mqf-sep">/</span>
+          <input id="filter-date-to" type="date" class="mqf-input" onchange="onCustomDate()">
+        </div>
+      </div>
+    </div>
+    <!-- Row 2: Akun / Tipe / Site / Cari / Filter / Reset -->
+    <div class="mqf-row">
+      <div class="mqf-field">
+        <span class="mqf-label">Akun QRIS</span>
+        <select id="filter-account" class="mqf-input" onchange="onAccountChange(this.value)">
+          <option value="__all__">Semua Akun</option>
+          <% accounts.forEach(function(acct){ %>
+          <option value="<%= acct.id %>" data-site="<%= acct.siteName ? String(acct.siteName).toLowerCase() : '__none__' %>"><%= acct.merchantName %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="mqf-field">
+        <span class="mqf-label">Tipe</span>
+        <select id="filter-type" class="mqf-input" onchange="applyFilter()">
+          <option value="">Semua</option>
+          <option value="credit">Masuk (IN)</option>
+          <option value="debit">Keluar (OUT)</option>
+        </select>
+      </div>
+      <div class="mqf-field">
+        <span class="mqf-label">Site</span>
+        <select id="filter-site" class="mqf-input" onchange="onSiteChange(this.value)">
+          <option value="">Semua Site</option>
+          <% (typeof sites !== 'undefined' ? sites : []).forEach(function(s){ %>
+            <option value="<%= String(s.name).toLowerCase() %>"><%= s.name %></option>
+          <% }); %>
+          <option value="__none__">Tanpa site</option>
+        </select>
+      </div>
+      <div class="mqf-field">
+        <span class="mqf-label">Status Match</span>
+        <select id="filter-match" class="mqf-input" onchange="applyFilter()">
+          <option value="">Semua</option>
+          <option value="matched">Sudah Match</option>
+          <option value="unmatched">Belum Match (Pending)</option>
+        </select>
+      </div>
+      <div class="mqf-field mqf-grow">
+        <span class="mqf-label">Cari (User ID / RRN / Nominal)</span>
+        <input id="search-input" type="text" class="mqf-input" placeholder="Cari...">
+      </div>
+      <div class="mqf-field mqf-actions">
+        <button class="mqf-btn mqf-btn-primary" onclick="applyFilter()"><i class="fa-solid fa-magnifying-glass" style="font-size:12px"></i> Filter</button>
+        <button class="mqf-btn mqf-btn-ghost" onclick="resetFilter()"><i class="fa-solid fa-xmark" style="font-size:12px"></i> Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter Panel (type + bank, no date) -->
+  <div id="filter-panel" style="display:none;margin-top:10px">
+    <!-- filter Tipe/Bank lama dipindah ke panel filter premium di atas -->
+    <div style="display:none"></div>
+    <div class="qris-stat-card qris-mut-stat py-3" style="display:none!important">
+      <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Biaya Layanan</p>
+      <p class="text-lg font-bold" style="color:#fbbf24" id="hdr-fee-legacy">â€”</p>
+    </div>
+    <div class="qris-stat-card qris-mut-stat py-3" style="display:none!important">
+      <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Biaya Layanan</p>
+      <p class="text-lg font-bold" style="color:#fbbf24" id="hdr-fee-hidden">â€”</p>
+    </div>
+    <div class="qris-stat-card qris-mut-stat py-3" style="display:none!important">
+      <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Biaya Layanan</p>
+      <p class="text-lg font-bold" style="color:#fbbf24" id="hdr-fee-stray">â€”</p>
+    </div>
+  </div>
+</div>
+
+<!-- Account Tabs dihapus: pemilihan akun kini via dropdown "Akun QRIS" di panel filter -->
+<% accounts.forEach(function(acct){ %><span id="tab-count-<%= acct.id %>" style="display:none"></span><% }) %>
+
+<!-- Date Filter Bar dihapus: Periode & Custom Range kini ada di panel filter premium -->
+<span id="date-range-label" style="display:none"></span>
+
+<!-- ── Account Header (balance + status) ─────────────────────────────────────── -->
+<div id="acct-header" style="display:none;margin-top:0;padding:14px 0 10px">
+  <!-- Strip Rekonsiliasi: cocokkan catatan OrderKuota vs saldo fisik (deteksi mutasi ketinggalan tarik) -->
+  <div id="reconcile-strip" style="display:none;margin-bottom:12px"></div>
+  <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
+    <div class="qris-stat-card qris-mut-stat py-3">
+      <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Saldo Awal</p>
+      <p class="text-lg font-bold text-ink" id="hdr-main">—</p>
+    </div>
+    <div class="qris-stat-card qris-mut-stat py-3">
+      <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Saldo QRIS</p>
+      <p class="text-lg font-bold" style="color:#86efac" id="hdr-qris">—</p>
+    </div>
+    <div class="qris-stat-card qris-mut-stat py-3">
+      <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Total Masuk</p>
+      <p class="text-lg font-bold" style="color:#86efac" id="hdr-in">—</p>
+    </div>
+    <div class="qris-stat-card qris-mut-stat py-3">
+      <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Total Keluar</p>
+      <p class="text-lg font-bold" style="color:#fca5a5" id="hdr-out">—</p>
+    </div>
+    <div class="qris-stat-card qris-mut-stat py-3">
+      <p class="text-[10px] uppercase tracking-wider text-muted mb-1">Biaya Layanan</p>
+      <p class="text-lg font-bold" style="color:#fbbf24" id="hdr-fee">—</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Mutation Table ─────────────────────────────────────────────────────────── -->
+<div class="qris-mut-tablewrap" style="margin-top:12px">
+  <div class="flex items-center justify-between px-5 py-3 border-b border-line flex-wrap gap-2">
+    <h3 class="text-sm font-bold text-ink" id="tbl-title">
+      Pilih akun di atas untuk melihat mutasi
+      <span id="tbl-count" class="text-xs font-normal text-muted ml-1"></span>
+    </h3>
+    <div class="flex items-center gap-2" id="tbl-actions" style="display:none!important">
+      <span id="sync-status" style="font-size:11px;color:var(--color-muted)"></span>
+    </div>
+  </div>
+
+  <!-- Empty state -->
+  <div id="tbl-empty" style="display:none" class="qris-empty py-16">
+    <i class="fa-solid fa-arrow-right-arrow-left qris-empty-icon"></i>
+    <p class="qris-empty-title">Belum ada mutasi</p>
+    <p class="qris-empty-sub">Belum ada transaksi tercatat untuk akun ini</p>
+  </div>
+
+  <!-- Initial state -->
+  <div id="tbl-initial" class="qris-empty py-16">
+    <i class="fa-solid fa-hand-pointer qris-empty-icon"></i>
+    <p class="qris-empty-title">Pilih Akun</p>
+    <p class="qris-empty-sub">Klik salah satu tab akun di atas untuk melihat mutasi</p>
+  </div>
+
+  <!-- Loading state -->
+  <div id="tbl-loading" style="display:none;text-align:center;padding:3rem;color:var(--color-muted)">
+    <i class="fa-solid fa-circle-notch fa-spin" style="font-size:24px;margin-bottom:8px"></i>
+    <p style="font-size:13px">Memuat data mutasi...</p>
+  </div>
+
+  <div id="tbl-wrap" style="display:none">
+    <div id="mut-tabulator"></div>
+    <div class="qris-mut-foot">
+      <span>Waktu diprioritaskan dari payload OrderKuota mentah agar presisi sampai detik.</span>
+      <span>RRN akan tampil otomatis saat dikirim oleh sumber data mutasi.</span>
+      <span>`Belum cocok` berarti mutasi sudah masuk, tetapi sistem belum menemukan transaksi QR yang pas untuk dipasangkan.</span>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const apiMutUrl   = '<%= url('/dashboard/api/mutations') %>';
+  const apiReconcileUrl = '<%= url('/dashboard/api/mutations/reconcile') %>';
+  const apiAcctUrl  = '<%= url('/dashboard/api/qris-accounts') %>';
+  const apiRefreshBalanceUrlTemplate = '<%= url('/dashboard/api/qris-accounts/__ACCOUNT_ID__/refresh-balance') %>';
+  const syncMerchantUrlTemplate = '<%= url('/merchant-qr/__ACCOUNT_ID__/sync-now') %>';
+  const streamUrl   = '<%= streamUrl %>';
+
+  // Server-side account list (code, merchantName, etc.)
+  const serverAccounts = <%- JSON.stringify(accounts.map(a => ({
+    id: a.id,
+    code: a.code,
+    merchantName: a.merchantName,
+    lastMainBalance: a.lastMainBalance,
+    lastQrisBalance: a.lastQrisBalance,
+    lastBalanceSyncStatus: a.lastBalanceSyncStatus,
+    healthStatus: a.healthStatus,
+  }))) %>;
+
+  const accountMap = {};
+  serverAccounts.forEach(a => { accountMap[a.id] = a; });
+
+  let currentAccountId = null;
+  const ALL_ID = '__all__';
+  const sumQrisBalance = () => Object.keys(accountMap).reduce((s, k) => s + Number(accountMap[k].lastQrisBalance || 0), 0);
+  let allRows = [];
+  let currentQrisBalance = 0;
+  let pollTimer = null;
+  let filterVisible = false;
+  let fetchInFlight = false;
+  let syncInFlight = false;
+  let countsTimer = null;
+  let autoSyncTimer = null;
+  let mutationStream = null;
+  let streamReconnectTimer = null;
+  const AUTO_SYNC_MS = 1000;
+  const FALLBACK_POLL_MS = 10000;
+  const COUNTS_POLL_MS = 15000;
+
+  function esc(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
+  function parseRaw(row) {
+    try {
+      return JSON.parse(row.rawDataJson || '{}');
+    } catch (_) {
+      return {};
+    }
+  }
+
+  function setLiveState(state, label) {
+    const badge = document.getElementById('live-badge');
+    const dot = document.getElementById('live-dot');
+    const liveLabel = document.getElementById('live-label');
+    if (!badge || !dot || !liveLabel) return;
+
+    if (state === 'live') {
+      badge.style.background = 'rgba(34,197,94,0.1)';
+      badge.style.borderColor = 'rgba(34,197,94,0.25)';
+      badge.style.color = '#86efac';
+      dot.style.background = '#4ade80';
+      liveLabel.textContent = label || 'LIVE';
+      return;
+    }
+
+    if (state === 'syncing') {
+      badge.style.background = 'rgba(250,204,21,0.12)';
+      badge.style.borderColor = 'rgba(250,204,21,0.28)';
+      badge.style.color = '#fde68a';
+      dot.style.background = '#facc15';
+      liveLabel.textContent = label || 'SYNC';
+      return;
+    }
+
+    badge.style.background = 'rgba(239,68,68,0.12)';
+    badge.style.borderColor = 'rgba(239,68,68,0.28)';
+    badge.style.color = '#fca5a5';
+    dot.style.background = '#f87171';
+    liveLabel.textContent = label || 'RECONNECT';
+  }
+
+  function getRefreshBalanceUrl(accountId) {
+    return apiRefreshBalanceUrlTemplate.replace('__ACCOUNT_ID__', encodeURIComponent(accountId));
+  }
+
+  function getSyncMerchantUrl(accountId) {
+    return syncMerchantUrlTemplate.replace('__ACCOUNT_ID__', encodeURIComponent(accountId));
+  }
+
+  // ── Sinkron ALL + Sinkron per-akun — state cooldown di SERVER (60s), 1 pintu (anti-bentrok), live lintas-menu ──
+  (function initSync(){
+    const btnAll = document.getElementById('btnSyncAllMut');
+    const lblAll = document.getElementById('btnSyncAllMutLabel');
+    const sel = document.getElementById('syncOneSelMut');
+    const btnOne = document.getElementById('btnSyncOneMut');
+    const lblOne = document.getElementById('btnSyncOneMutLabel');
+    if (!btnAll) return;
+    const ALL_URL = '<%= url('/merchant-qr/sync-all') %>';
+    const STATUS_URL = '<%= url('/merchant-qr/sync-all/status') %>';
+    const ONE_TPL = '<%= url('/merchant-qr/__ID__/sync-one') %>';
+    const oneUrl = function(id){ return ONE_TPL.replace('__ID__', encodeURIComponent(id)); };
+    const ALL_CD = 60000, ONE_CD = 60000;
+    let busy = false, allNextAt = 0, perCd = {}, tick = null, lastResultAt = null, acctName = {};
+    function toast(msg, ok){
+      let box = document.getElementById('syncToastBox');
+      if (!box){ box = document.createElement('div'); box.id = 'syncToastBox'; box.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:99999;display:flex;flex-direction:column;gap:8px'; document.body.appendChild(box); }
+      const t = document.createElement('div');
+      t.style.cssText = 'background:' + (ok ? 'rgba(16,185,129,0.96)' : 'rgba(239,68,68,0.96)') + ';color:#fff;padding:11px 16px;border-radius:12px;font-size:13px;font-weight:700;box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:320px;opacity:0;transform:translateY(8px);transition:all .25s';
+      t.textContent = msg; box.appendChild(t);
+      requestAnimationFrame(function(){ t.style.opacity = '1'; t.style.transform = 'translateY(0)'; });
+      setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translateY(8px)'; setTimeout(function(){ t.remove(); }, 300); }, 4200);
+    }
+    function dis(btn, lbl, txt){ if (!btn) return; btn.disabled = true; btn.style.opacity = '.55'; btn.style.cursor = 'not-allowed'; if (lbl) lbl.textContent = txt; }
+    function ena(btn, lbl, txt){ if (!btn) return; btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; if (lbl) lbl.textContent = txt; }
+    function render(){
+      const now = Date.now();
+      const allRem = allNextAt - now;
+      if (busy) dis(btnAll, lblAll, 'Menyinkron…');
+      else if (allRem > 0) dis(btnAll, lblAll, 'Tunggu ' + Math.ceil(allRem/1000) + 's');
+      else ena(btnAll, lblAll, 'Sinkron ALL');
+      const id = sel ? sel.value : '';
+      const oneRem = id ? Math.max(0, (perCd[id]||0) - now) : 0;
+      if (busy) dis(btnOne, lblOne, 'Menyinkron…');
+      else if (!id) dis(btnOne, lblOne, 'Sinkron');
+      else if (oneRem > 0) dis(btnOne, lblOne, 'Tunggu ' + Math.ceil(oneRem/1000) + 's');
+      else ena(btnOne, lblOne, 'Sinkron');
+    }
+    function startTick(){ if (tick) return; tick = setInterval(function(){ render(); const now = Date.now(); let act = busy || (allNextAt - now > 0); for (const k in perCd){ if (perCd[k] - now > 0) act = true; } if (!act){ clearInterval(tick); tick = null; } }, 500); }
+    async function loadAccounts(){
+      try {
+        const r = await fetch(apiAcctUrl, { cache: 'no-store' });
+        const d = await r.json();
+        const list = (d && d.accounts) || [];
+        if (!sel) return;
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">Pilih Akun…</option>' + list.map(function(a){ acctName[a.id] = a.merchantName || a.code || a.id; return '<option value="' + a.id + '">' + (a.merchantName || a.code || a.id) + '</option>'; }).join('');
+        if (cur) sel.value = cur;
+      } catch(_){}
+    }
+    async function poll(){
+      try {
+        const r = await fetch(STATUS_URL, { headers: { 'Accept': 'application/json' } });
+        const d = await r.json();
+        if (!d || !d.ok) return;
+        const now = Date.now();
+        busy = !!d.busy;
+        allNextAt = now + Math.max(0, Number(d.remainingMs) || 0);
+        const pc = {}; const pa = d.perAccount || {}; for (const k in pa){ pc[k] = now + Math.max(0, Number(pa[k]) || 0); }
+        perCd = pc;
+        const lr = d.lastResult;
+        if (lr && lr.at){ if (lastResultAt !== null && lr.at !== lastResultAt && !busy){ toast('Sinkron ALL selesai · ' + lr.ok + '/' + lr.total + ' akun tersinkron', true); } lastResultAt = lr.at; }
+        render(); startTick();
+      } catch(_){}
+    }
+    async function clickAll(){
+      if (btnAll.disabled) return;
+      busy = true; render(); startTick();
+      try {
+        const r = await fetch(ALL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const d = await r.json().catch(function(){ return {}; });
+        busy = !!d.running;
+        allNextAt = Date.now() + Math.max(0, Number(d.remainingMs) || ALL_CD);
+        if (r.status === 429) toast(d.error || 'Sinkron ALL belum bisa.', false);
+      } catch(_){ allNextAt = Date.now() + ALL_CD; }
+      render(); startTick(); poll();
+    }
+    async function clickOne(){
+      if (btnOne.disabled) return;
+      const id = sel ? sel.value : '';
+      if (!id){ toast('Pilih akun dulu.', false); return; }
+      busy = true; render(); startTick();
+      try {
+        const r = await fetch(oneUrl(id), { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+        const d = await r.json().catch(function(){ return {}; });
+        const now = Date.now();
+        busy = false;
+        if (r.ok && d.success){
+          perCd[id] = now + ONE_CD;
+          toast('✓ ' + (acctName[id] || 'Akun') + ' tersinkron · ' + (d.newQris || 0) + ' mutasi baru', true);
+        } else {
+          if (d.remainingMs) perCd[id] = now + Number(d.remainingMs);
+          toast(d.error || 'Gagal sinkron akun.', false);
+        }
+      } catch(_){ busy = false; toast('Koneksi gagal.', false); }
+      render(); startTick(); poll();
+    }
+    btnAll.addEventListener('click', clickAll);
+    if (btnOne) btnOne.addEventListener('click', clickOne);
+    if (sel) sel.addEventListener('change', render);
+    loadAccounts();
+    poll();
+    setInterval(poll, 3000);
+  })();
+
+  async function refreshSelectedWalletBalance(wallet, silent) {
+    if (!currentAccountId || currentAccountId === ALL_ID) return null;
+    try {
+      const res = await fetch(getRefreshBalanceUrl(currentAccountId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet }),
+      });
+      const data = await res.json();
+      if (!data.ok || !data.account) return null;
+
+      if (accountMap[currentAccountId]) {
+        accountMap[currentAccountId].lastMainBalance = data.account.lastMainBalance;
+        accountMap[currentAccountId].lastQrisBalance = data.account.lastQrisBalance;
+      }
+
+      currentQrisBalance = Number(data.account.lastQrisBalance || 0);
+      document.getElementById('hdr-qris').textContent = fmt(data.account.lastQrisBalance);
+      return data.account;
+    } catch (_) {
+      if (!silent) setLiveState('error', 'RETRY');
+      return null;
+    }
+  }
+
+  async function syncSelectedAccountNow(silent) {
+    if (!currentAccountId || currentAccountId === ALL_ID || syncInFlight || document.hidden) return null;
+    syncInFlight = true;
+    try {
+      setLiveState('syncing', 'SYNC');
+      const res = await fetch(getSyncMerchantUrl(currentAccountId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await res.json().catch(() => ({ success: false }));
+      if (data?.success && data.report) {
+        const stats = data.report.stats || {};
+        if (accountMap[currentAccountId]) {
+          if (typeof stats.mainBalance === 'number') accountMap[currentAccountId].lastMainBalance = stats.mainBalance;
+          if (typeof stats.qrisBalance === 'number') accountMap[currentAccountId].lastQrisBalance = stats.qrisBalance;
+        }
+        if (typeof stats.qrisBalance === 'number') {
+          currentQrisBalance = Number(stats.qrisBalance || 0);
+          document.getElementById('hdr-qris').textContent = fmt(stats.qrisBalance);
+        }
+        await fetchAndRender();
+        setLiveState('live', 'LIVE');
+        return data.report;
+      }
+      if (!silent) setLiveState('error', 'RETRY');
+      return null;
+    } catch (_) {
+      if (!silent) setLiveState('error', 'RETRY');
+      return null;
+    } finally {
+      syncInFlight = false;
+    }
+  }
+
+  function scheduleStreamReconnect() {
+    if (streamReconnectTimer) return;
+    streamReconnectTimer = setTimeout(() => {
+      streamReconnectTimer = null;
+      connectMutationStream();
+    }, 2500);
+  }
+
+  function handleStreamDelta(payload) {
+    const events = Array.isArray(payload?.events) ? payload.events : [];
+    if (!events.length) return;
+
+    const accountTouched = events.some(event => !currentAccountId || currentAccountId === ALL_ID || event.qrisAccountId === currentAccountId);
+    loadAccountCounts();
+    if (accountTouched) {
+      setLiveState('syncing', 'SYNC');
+      fetchAndRender();
+    }
+  }
+
+  function connectMutationStream() {
+    if (mutationStream) mutationStream.close();
+    mutationStream = new EventSource(streamUrl, { withCredentials: true });
+
+    mutationStream.addEventListener('ready', () => {
+      setLiveState('live', 'LIVE');
+    });
+
+    mutationStream.addEventListener('heartbeat', () => {
+      setLiveState('live', 'LIVE');
+    });
+
+    mutationStream.addEventListener('mutation.delta', (event) => {
+      setLiveState('live', 'LIVE');
+      try {
+        handleStreamDelta(JSON.parse(event.data || '{}'));
+      } catch (_) {}
+    });
+
+    mutationStream.onerror = function () {
+      setLiveState('error', 'RECONNECT');
+      scheduleStreamReconnect();
+    };
+  }
+
+  function getDisplayTime(row) {
+    return row.displayTime || formatTime(row.time);
+  }
+
+  function getStatusCode(row) {
+    return (row.statusCode || (row.type === 'credit' ? 'IN' : 'OUT')).toUpperCase();
+  }
+
+  function stripNobuText(value) {
+    return String(value || '')
+      .split('/')
+      .map(function(part) { return part.trim(); })
+      .filter(Boolean)
+      .filter(function(part) { return part.toUpperCase() !== 'NOBU'; })
+      .join(' / ');
+  }
+
+  function isPencairanQris(row) {
+    var raw = parseRaw(row);
+    var d = String(row.description || raw.description || raw.keterangan || raw.note || raw.ket || '').toLowerCase();
+    return d.includes('pencairan saldo qris');
+  }
+
+  function getPengirim(row) {
+    // Pencairan Saldo QRIS (QRIS -> Utama): tampilkan deskripsi bersih saja.
+    if (isPencairanQris(row)) {
+      var rawP = parseRaw(row);
+      var dP = String(rawP.keterangan || rawP.description || row.description || '');
+      var seg = dP.split('/').map(function(s){ return s.trim(); }).filter(Boolean)
+                  .find(function(s){ return /pencairan saldo qris/i.test(s); });
+      return seg || dP.trim() || 'Pencairan Saldo QRIS';
+    }
+    var bankLabel = stripNobuText(getBankSimple(row));
+    var raw = parseRaw(row);
+    var senderSource = String(row.senderName || raw.sender_name || raw.senderName || '');
+    var cleanedSender = stripNobuText(senderSource);
+    if (!cleanedSender) {
+      var desc = raw.description || raw.keterangan || row.description || '';
+      if (desc && desc.includes('/')) {
+        var parts = desc.split('/').map(function(part) { return part.trim(); }).filter(Boolean);
+        if (parts.length > 1) cleanedSender = stripNobuText(parts.slice(1).join(' / '));
+      }
+      if (!cleanedSender) cleanedSender = stripNobuText(desc || row.issuerName || 'Tidak terbaca');
+    }
+    if (!bankLabel) return cleanedSender || 'Tidak terbaca';
+    if (!cleanedSender) return bankLabel;
+    if (cleanedSender.toUpperCase() === bankLabel.toUpperCase()) return cleanedSender;
+    return bankLabel + ' / ' + cleanedSender;
+  }
+
+  function getAccountLabel(row) {
+    var acct = accountMap[row.qrisAccountId || currentAccountId] || null;
+    if (acct) return [acct.code, acct.merchantName].filter(Boolean).join(' ');
+    return [row.accountCode, row.merchant].filter(Boolean).join(' ') || 'Tidak terbaca';
+  }
+
+  function parseMoneyLike(value) {
+    if (value == null) return 0;
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.abs(Math.round(value));
+    var text = String(value).trim();
+    if (!text) return 0;
+    text = text.replace(/rp/ig, '').replace(/\s+/g, '').replace(/[^0-9,.,-]/g, '');
+    if (!text) return 0;
+    text = text.replace(/\./g, '').replace(/,/g, '.');
+    var parsed = Number(text);
+    return Number.isFinite(parsed) ? Math.abs(Math.round(parsed)) : 0;
+  }
+
+  function getServiceFee(row) {
+    var raw = parseRaw(row);
+    var direct = parseMoneyLike(raw.fee_user ?? raw.feeUser ?? raw.fee ?? raw.admin ?? raw.biaya_layanan ?? raw.biayaLayanan);
+    if (direct > 0) return direct;
+
+    var nett = parseMoneyLike(raw.amount_nett ?? raw.amountNett);
+    if (nett > 0 && row.amount > nett) return Math.max(0, Math.round(row.amount - nett));
+
+    return 0;
+  }
+
+  function getSignedAmount(row) {
+    return getStatusCode(row) === 'IN' ? Number(row.amount || 0) : -Number(row.amount || 0);
+  }
+
+  function getOpeningBalance(rows, endingBalance) {
+    if (!Array.isArray(rows) || rows.length === 0) return Number(endingBalance || 0);
+    var ordered = rows.slice().sort(function(a, b) {
+      return new Date(a.time).getTime() - new Date(b.time).getTime();
+    });
+    var earliest = ordered[0];
+    var earliestBalance = Number(earliest.balanceAfter || 0);
+    return earliestBalance - getSignedAmount(earliest);
+  }
+
+  function getDescription(row) {
+    return row.description || parseRaw(row).keterangan || '';
+  }
+
+  function getBank(row) {
+    if (isPencairanQris(row)) return 'Saldo Qris ke Saldo utama';
+    if (row.bankEwallet) return row.bankEwallet;
+    const raw = parseRaw(row);
+    const brandName = raw.brand && typeof raw.brand === 'object' ? raw.brand.name : '';
+    const desc = String(raw.description || raw.keterangan || row.description || '');
+    const parts = desc.split('/').map(part => part.trim()).filter(Boolean);
+    const bankParts = [brandName, raw.bank, raw.bank_name, parts[0], row.issuerName]
+      .filter(Boolean)
+      .filter((part, index, arr) => arr.indexOf(part) === index && part !== 'Orderkuota QRIS');
+    return bankParts.join(' / ') || 'OrderKuota';
+  }
+
+  function getRrn(row) {
+    if (row.rrn) return String(row.rrn);
+    const raw = parseRaw(row);
+    return raw.rrn || raw.ref || raw.reference || raw.reference_no || raw.no_referensi || '';
+  }
+
+  function getMutationId(row) {
+    const raw = parseRaw(row);
+    return raw.id ? String(raw.id) : '';
+  }
+
+  const rp = n => 'Rp\u00a0' + (n || 0).toLocaleString('id-ID');
+
+  function fmt(n) { return n == null ? '—' : rp(n); }
+
+  function formatTime(val) {
+    const d = new Date(val);
+    return d.toLocaleDateString('id-ID', { day:'2-digit', month:'2-digit', year:'numeric' }) + ' ' +
+           d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+  }
+
+  function formatDateInputValue(date) {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function parseDisplayDate(value) {
+    if (!value) return null;
+    const match = String(value).match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2})[.:](\d{2})(?:[.:](\d{2}))?$/);
+    if (match) {
+      const [, dd, mm, yyyy, HH, MM, SS = '00'] = match;
+      return new Date(`${yyyy}-${mm}-${dd}T${HH}:${MM}:${SS}`);
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  function getRowDate(row) {
+    // Utamakan row.time (ISO/UTC, tidak ambigu) untuk filter tanggal — tak bergantung format displayTime lokal.
+    const fromTime = new Date(row.time);
+    if (!Number.isNaN(fromTime.getTime())) return fromTime;
+    const displayDate = parseDisplayDate(getDisplayTime(row));
+    if (displayDate) return displayDate;
+    return null;
+  }
+
+  function getDateWindow() {
+    const activePill = document.querySelector('.date-pill.active');
+    const preset = activePill ? activePill.dataset.preset : 'today';
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    if (preset === 'yesterday') {
+      const yStart = new Date(start);
+      yStart.setDate(yStart.getDate() - 1);
+      const yEnd = new Date(end);
+      yEnd.setDate(yEnd.getDate() - 1);
+      return { start: yStart, end: yEnd };
+    }
+
+    if (preset === '7d') {
+      const s = new Date(start);
+      s.setDate(s.getDate() - 6);
+      return { start: s, end };
+    }
+
+    if (preset === '30d') {
+      const s = new Date(start);
+      s.setDate(s.getDate() - 29);
+      return { start: s, end };
+    }
+
+    if (preset === 'all') {
+      return null;
+    }
+
+    if (preset === 'custom') {
+      const fromValue = document.getElementById('filter-date-from').value;
+      const toValue = document.getElementById('filter-date-to').value;
+      if (!fromValue && !toValue) return null;
+
+      const fromDate = fromValue ? new Date(`${fromValue}T00:00:00`) : null;
+      const toDate = toValue ? new Date(`${toValue}T23:59:59.999`) : null;
+      return { start: fromDate, end: toDate };
+    }
+
+    return { start, end };
+  }
+
+  function setDefaultDateFilter() {
+    const today = formatDateInputValue(new Date());
+    document.querySelectorAll('.date-pill').forEach(function(p){ p.classList.remove('active'); });
+    const allPill = document.querySelector('.date-pill[data-preset="all"]');
+    if (allPill) allPill.classList.add('active');
+    document.getElementById('filter-date-from').value = today;
+    document.getElementById('filter-date-to').value = today;
+    updateDateRangeLabel('all');
+  }
+
+  function getBankSimple(row) {
+    var full = getBank(row);
+    // Deduplicate: "GOPAY / GOPAY / NOBU / NOBU" → "GOPAY / NOBU"
+    var parts = full.split('/').map(function(s) { return s.trim(); }).filter(Boolean);
+    var seen = {};
+    var unique = [];
+    parts.forEach(function(p) {
+      var key = p.toUpperCase();
+      if (!seen[key]) { seen[key] = true; unique.push(p); }
+    });
+    return unique.join(' / ') || full;
+  }
+
+  function extractPengirim(row) { return getPengirim(row); }
+
+  function extractBank(row) { return getBank(row); }
+
+  // ── Tab selection ──────────────────────────────────────────────────────────
+
+  window.selectAccount = function(accountId, el) {
+    currentAccountId = accountId;
+
+    // Update tab styles
+    document.querySelectorAll('.acct-tab').forEach(t => {
+      t.style.borderBottomColor = 'transparent';
+      t.style.color = 'var(--color-muted)';
+      t.querySelector('span:nth-child(2)').style.color = 'var(--color-ink)';
+    });
+    if (el) {
+      el.style.borderBottomColor = '#ff7c6c';
+      el.style.color = '#ffb4a8';
+      el.querySelector('span:nth-child(2)').style.color = '#ffb4a8';
+    }
+
+    // Show header
+    document.getElementById('acct-header').style.display = '';
+    // Sinkronkan dropdown Akun QRIS
+    var accSel = document.getElementById('filter-account');
+    if (accSel && accSel.value !== accountId) accSel.value = accountId;
+
+    // Update header with server-side data
+    const acct = accountMap[accountId];
+    if (accountId === ALL_ID) {
+      currentQrisBalance = sumQrisBalance();
+      document.getElementById('hdr-main').textContent = fmt(currentQrisBalance);
+      document.getElementById('hdr-qris').textContent = fmt(currentQrisBalance);
+      document.getElementById('hdr-fee').textContent = rp(0);
+    } else if (acct) {
+      currentQrisBalance = Number(acct.lastQrisBalance || 0);
+      document.getElementById('hdr-main').textContent = fmt(currentQrisBalance);
+      document.getElementById('hdr-qris').textContent = fmt(acct.lastQrisBalance);
+      document.getElementById('hdr-fee').textContent = rp(0);
+    }
+
+    // Update title
+    document.getElementById('tbl-initial').style.display = 'none';
+    document.getElementById('tbl-empty').style.display = 'none';
+    document.getElementById('tbl-wrap').style.display = 'none';
+    document.getElementById('tbl-loading').style.display = '';
+
+    // Reset strip rekonsiliasi supaya tak menampilkan status akun sebelumnya
+    var recStrip = document.getElementById('reconcile-strip');
+    if (recStrip) { recStrip.style.display = 'none'; recStrip.innerHTML = ''; }
+
+    // Stop previous poll, start new
+    if (pollTimer) clearInterval(pollTimer);
+    if (autoSyncTimer) clearInterval(autoSyncTimer);
+    void refreshSelectedWalletBalance('qris', true);
+    fetchAndRender();
+    void fetchReconcile(true);
+    void syncSelectedAccountNow(true);
+    autoSyncTimer = setInterval(() => {
+      void syncSelectedAccountNow(true);
+    }, AUTO_SYNC_MS);
+    pollTimer = setInterval(fetchAndRender, FALLBACK_POLL_MS);
+  };
+
+  // ── Fetch mutations for current account ───────────────────────────────────
+
+  async function fetchAndRender() {
+    if (!currentAccountId || fetchInFlight) return;
+    fetchInFlight = true;
+    try {
+      // Build URL with date filter params for backend
+      const isAll = currentAccountId === ALL_ID;
+      let url = isAll
+        ? `${apiMutUrl}?source=qris&bucket=qris&limit=500`
+        : `${apiMutUrl}?source=qris&accountId=${currentAccountId}&bucket=qris&limit=500`;
+      const dateWindow = getDateWindow();
+      if (dateWindow) {
+        if (dateWindow.start) url += '&dateFrom=' + formatDateInputValue(dateWindow.start);
+        if (dateWindow.end) url += '&dateTo=' + formatDateInputValue(dateWindow.end);
+      }
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = await res.json();
+      if (!data.ok) return;
+
+      allRows = data.mutations || [];
+      currentQrisBalance = isAll ? sumQrisBalance() : Number(data.currentBalance || accountMap[currentAccountId]?.lastQrisBalance || 0);
+
+      // Update tab count badge (hanya mode akun tunggal)
+      if (!isAll) {
+        const badge = document.getElementById(`tab-count-${currentAccountId}`);
+        if (badge) badge.textContent = allRows.length + ' transaksi';
+      }
+
+      // Update header stats
+      // Masuk/Keluar ikut label OrderKuota (getStatusCode): Pencairan Saldo QRIS status "OUT" -> Keluar.
+      const inAmt  = allRows.filter(r => getStatusCode(r) === 'IN').reduce((s, r) => s + Number(r.amount||0), 0);
+      const outAmt = allRows.filter(r => getStatusCode(r) !== 'IN').reduce((s, r) => s + Number(r.amount||0), 0);
+      const feeAmt = allRows.reduce((s, r) => s + getServiceFee(r), 0);
+      const openingBalance = isAll ? currentQrisBalance : getOpeningBalance(allRows, currentQrisBalance);
+      document.getElementById('hdr-main').textContent = rp(openingBalance);
+      document.getElementById('hdr-qris').textContent = fmt(currentQrisBalance);
+      document.getElementById('hdr-in').textContent  = rp(inAmt);
+      document.getElementById('hdr-out').textContent = rp(outAmt);
+      document.getElementById('hdr-fee').textContent = rp(feeAmt);
+
+      // Blink live dot on update
+      const dot = document.getElementById('live-dot');
+      dot.style.background = '#facc15';
+      setTimeout(() => { dot.style.background = '#4ade80'; }, 300);
+
+      document.getElementById('last-updated').textContent =
+        new Date().toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false });
+
+      renderTable(allRows);
+      fetchReconcile();
+
+    } catch (_) { /* silently retry */ }
+    finally { fetchInFlight = false; }
+  }
+
+  // ── Rekonsiliasi saldo (cocok / selisih) ────────────────────────────────────
+  let lastReconcileAt = 0;
+  let reconcileInFlight = false;
+
+  function reconcileBadge(bg, border, color, icon, text) {
+    return '<div style="display:flex;align-items:center;gap:10px;background:' + bg + ';border:1px solid ' + border +
+      ';border-radius:12px;padding:10px 14px;font-size:12.5px;font-weight:800;color:' + color + '">' +
+      '<i class="fa-solid ' + icon + '" style="font-size:15px"></i><span>' + text + '</span></div>';
+  }
+
+  function renderReconcileOne(acc) {
+    const strip = document.getElementById('reconcile-strip');
+    if (!strip || !acc) return;
+    strip.style.display = '';
+    if (acc.status === 'no_data') {
+      strip.innerHTML = reconcileBadge('rgba(148,163,184,.1)', 'rgba(148,163,184,.25)', '#cbd5e1', 'fa-circle-info',
+        'Belum ada data mutasi untuk diverifikasi.');
+      return;
+    }
+    if (acc.match) {
+      strip.innerHTML = reconcileBadge('rgba(34,197,94,.1)', 'rgba(34,197,94,.28)', '#86efac', 'fa-circle-check',
+        'Saldo COCOK — catatan OrderKuota sesuai saldo fisik (' + rp(acc.physicalBalance) + '). Semua mutasi tertarik.');
+      return;
+    }
+    const parts = [];
+    if (acc.diff && acc.diff !== 0) {
+      const arah = acc.diff > 0
+        ? 'saldo fisik lebih besar — ada mutasi MASUK terbaru belum tertarik'
+        : 'saldo fisik lebih kecil — ada mutasi KELUAR terbaru belum tertarik';
+      parts.push('Selisih ' + rp(Math.abs(acc.diff)) + ' (' + arah + ')');
+    }
+    if (acc.gap && acc.gap.jump) {
+      let jam = '';
+      try { jam = new Date(acc.gap.atTime).toLocaleString('id-ID', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false, timeZone:'Asia/Bangkok' }); } catch (_) {}
+      parts.push('kemungkinan mutasi masuk hilang ' + rp(acc.gap.jump) + (jam ? ' sekitar ' + jam : ''));
+    }
+    strip.innerHTML = reconcileBadge('rgba(239,68,68,.1)', 'rgba(239,68,68,.3)', '#fca5a5', 'fa-triangle-exclamation',
+      'TIDAK COCOK — ' + (parts.join('; ') || 'saldo tidak sesuai') + '.');
+  }
+
+  function renderReconcileAll(data) {
+    const strip = document.getElementById('reconcile-strip');
+    if (!strip || !data) return;
+    strip.style.display = '';
+    const sum = data.summary || {};
+    const head = sum.allMatch
+      ? reconcileBadge('rgba(34,197,94,.1)', 'rgba(34,197,94,.28)', '#86efac', 'fa-circle-check',
+          'Semua ' + (sum.total || 0) + ' akun COCOK — tidak ada mutasi ketinggalan.')
+      : reconcileBadge('rgba(239,68,68,.1)', 'rgba(239,68,68,.3)', '#fca5a5', 'fa-triangle-exclamation',
+          (sum.mismatch || 0) + ' akun SELISIH dari ' + (sum.total || 0) + ' — cek chip merah di bawah.');
+    const chips = (data.accounts || []).map(function(a) {
+      const ok = a.match;
+      const nd = a.status === 'no_data';
+      const bg = nd ? 'rgba(148,163,184,.1)' : (ok ? 'rgba(34,197,94,.1)' : 'rgba(239,68,68,.12)');
+      const bd = nd ? 'rgba(148,163,184,.25)' : (ok ? 'rgba(34,197,94,.28)' : 'rgba(239,68,68,.32)');
+      const cl = nd ? '#cbd5e1' : (ok ? '#86efac' : '#fca5a5');
+      const ic = nd ? 'fa-circle-info' : (ok ? 'fa-circle-check' : 'fa-triangle-exclamation');
+      const extra = (!ok && !nd && a.diff) ? ' · ' + rp(Math.abs(a.diff)) : '';
+      return '<div style="display:flex;align-items:center;gap:7px;background:' + bg + ';border:1px solid ' + bd +
+        ';border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:800;color:' + cl + '">' +
+        '<i class="fa-solid ' + ic + '"></i>' + esc(a.code || '-') + extra + '</div>';
+    }).join('');
+    strip.innerHTML = head + '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px">' + chips + '</div>';
+  }
+
+  async function fetchReconcile(force) {
+    const now = Date.now();
+    if (!currentAccountId) return;
+    if (!force && (reconcileInFlight || now - lastReconcileAt < 8000)) return;
+    reconcileInFlight = true; lastReconcileAt = now;
+    try {
+      const isAll = currentAccountId === ALL_ID;
+      const url = isAll ? apiReconcileUrl : (apiReconcileUrl + '?accountId=' + encodeURIComponent(currentAccountId));
+      const res = await fetch(url, { cache: 'no-store' });
+      const data = await res.json();
+      if (!data.ok) return;
+      if (isAll) renderReconcileAll(data); else renderReconcileOne(data.account);
+    } catch (_) { /* diam, coba lagi nanti */ }
+    finally { reconcileInFlight = false; }
+  }
+
+  // ── Tabulator instance ─────────────────────────────────────────────────────
+
+  let mutTable = null;
+  let mutTableReady = null;
+
+  function initTabulator() {
+    if (mutTable) return Promise.resolve(mutTable);
+    if (mutTableReady) return mutTableReady;
+
+    mutTableReady = new Promise(function(resolve, reject) {
+      let resolved = false;
+      const resolveTable = function() {
+        if (resolved || !mutTable) return;
+        resolved = true;
+        resolve(mutTable);
+      };
+      try {
+        mutTable = new Tabulator('#mut-tabulator', {
+          layout: 'fitDataStretch',
+          placeholder: 'Tidak ada data mutasi',
+          pagination: true,
+          paginationSize: 50,
+          paginationSizeSelector: [15, 30, 50, 100, 200, 300, 500],
+          paginationCounter: function(pageSize, currentRow, currentPage, totalRows) {
+            return '<span style="font-size:11px;color:var(--muted)">Menampilkan ' + currentRow + '-' + Math.min(currentRow + pageSize - 1, totalRows) + ' dari <b style="color:var(--ink)">' + totalRows + '</b> mutasi</span>';
+          },
+          columnDefaults: {
+            vertAlign: 'middle',
+            headerHozAlign: 'center',
+            hozAlign: 'center',
+            headerSort: true,
+            resizable: true,
+          },
+          tableBuilt: resolveTable,
+          columns: [
+        {
+          title: 'NO', field: '_rowNum', width: 55, headerSort: false, resizable: false,
+          formatter: function(cell) {
+            var idx = cell.getRow().getPosition(true);
+            return '<span style="font-size:11px;font-weight:700;color:var(--muted)">' + idx + '</span>';
+          }
+        },
+        {
+          title: 'WAKTU', field: 'time', width: 160, hozAlign: 'center',
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            var dt = getDisplayTime(r);
+            var sp = dt.indexOf(' ');
+            var datePart = sp > 0 ? dt.slice(0, sp) : dt;
+            var timePart = sp > 0 ? dt.slice(sp + 1) : '';
+            return '<div class="qris-mut-time"><div>' + esc(datePart) + '</div>' +
+              (timePart ? '<div style="font-size:11px;color:var(--color-muted);margin-top:2px">' + esc(timePart) + '</div>' : '') +
+              '</div>';
+          },
+          sorter: 'datetime', sorterParams: { format: 'iso' }
+        },
+        {
+          title: 'SITE', field: 'siteName', width: 120, hozAlign: 'center',
+          formatter: function(cell) {
+            var v = cell.getValue();
+            if (!v) return '<span style="color:var(--muted);font-size:11px">—</span>';
+            return '<div class="qris-mut-title" style="font-size:12px">' + esc(v) + '</div>';
+          }
+        },
+        {
+          title: 'USER ID', field: 'userIdExt', width: 120, hozAlign: 'center',
+          formatter: function(cell) {
+            var v = cell.getValue();
+            if (!v) return '<span style="color:var(--muted);font-size:11px">—</span>';
+            return '<div style="font-family:ui-monospace,SFMono-Regular,monospace;font-size:12px;font-weight:700;color:var(--ink);text-align:center">' + esc(v) + '</div>';
+          }
+        },
+        {
+          title: 'AKUN QRIS', field: '_akunQris', minWidth: 180, hozAlign: 'center',
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            var accountLabel = getAccountLabel(r);
+            var parts = accountLabel.split(' ');
+            var code = parts.shift() || '';
+            var name = parts.join(' ') || accountLabel;
+            return '<div class="qris-mut-accountcell">' +
+              '<span class="qris-mut-accountcode">' + esc(code) + '</span>' +
+              '<div class="qris-mut-accountname">' + esc(name) + '</div>' +
+              '</div>';
+          }
+        },
+        {
+          title: 'STATUS', field: 'type', width: 130,
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            var isIn = getStatusCode(r) === 'IN';
+            var sc = getStatusCode(r);
+            var amCls = isIn ? 'in' : 'out';
+            var matchPill = r.matched
+              ? '<span class="qris-mut-pill info"><i class="fa-solid fa-link"></i>MATCH</span>'
+              : (isIn ? '<span class="qris-mut-pill pending"><i class="fa-solid fa-clock"></i>PENDING</span>' : '');
+            return '<div class="qris-mut-statusstack">' +
+              '<span class="qris-mut-pill ' + amCls + '"><i class="fa-solid ' + (isIn ? 'fa-arrow-down' : 'fa-arrow-up') + '"></i>' + esc(sc) + '</span>' +
+              matchPill +
+              '</div>';
+          }
+        },
+        {
+          title: 'PENGIRIM', field: '_pengirim', minWidth: 160, hozAlign: 'center',
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            return '<div class="qris-mut-title">' + esc(getPengirim(r)) + '</div>';
+          }
+        },
+        {
+          title: 'BANK / EWALLET', field: '_bank', minWidth: 140, hozAlign: 'center',
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            var bank = getBankSimple(r);
+            return '<div class="qris-mut-title">' + esc(bank) + '</div>';
+          }
+        },
+        {
+          title: 'AMOUNT', field: 'amount', width: 150, hozAlign: 'center',
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            var isIn = getStatusCode(r) === 'IN';
+            var cls = isIn ? 'in' : 'out';
+            var txt = (isIn ? '+' : '-') + rp(r.amount);
+            return '<div class="qris-mut-amount ' + cls + '">' + esc(txt) + '</div>';
+          },
+          sorter: 'number'
+        },
+        {
+          title: 'BIAYA LAYANAN', field: '_serviceFee', width: 150, hozAlign: 'center',
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            return '<div class="qris-mut-balance">' + esc(rp(getServiceFee(r))) + '</div>';
+          },
+          sorter: function(a, b, aRow, bRow) {
+            return getServiceFee(aRow.getData()) - getServiceFee(bRow.getData());
+          }
+        },
+        {
+          title: 'RRN', field: '_rrn', width: 150,
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            var rrn = getRrn(r);
+            return rrn
+              ? '<div class="qris-mut-rrn">' + esc(rrn) + '</div>'
+              : '<div class="qris-mut-rrn muted">—</div>';
+          }
+        },
+        {
+          title: 'SALDO', field: 'balanceAfter', width: 150, hozAlign: 'center',
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            return '<div class="qris-mut-balance">' + esc(rp(r.balanceAfter)) + '</div>';
+          },
+          sorter: 'number'
+        }
+          ]
+        });
+        setTimeout(resolveTable, 250);
+      } catch (error) {
+        mutTableReady = null;
+        reject(error);
+      }
+    });
+
+    return mutTableReady;
+  }
+
+  function syncTabulatorRows(rows) {
+    const applyRows = function(table) {
+      requestAnimationFrame(function() {
+        // Pertahankan posisi scroll saat live-update (SSE) agar tidak lompat ke atas/kiri.
+        var winX = window.scrollX, winY = window.scrollY;
+        var holder = table.element && table.element.querySelector('.tabulator-tableholder');
+        var sl = holder ? holder.scrollLeft : 0;
+        var st = holder ? holder.scrollTop : 0;
+        // replaceData: update in-place tanpa reset scroll (beda dgn setData). Tanpa redraw(true).
+        Promise.resolve(table.replaceData(rows))
+          .then(function() {
+            if (holder) { holder.scrollLeft = sl; holder.scrollTop = st; }
+            window.scrollTo(winX, winY);
+          })
+          .catch(function() {});
+      });
+    };
+
+    if (mutTable) {
+      applyRows(mutTable);
+      return;
+    }
+
+    initTabulator()
+      .then(applyRows)
+      .catch(function() {});
+  }
+
+  // ── Render Table ──────────────────────────────────────────────────────────
+
+  function renderTable(rows) {
+    const search = document.getElementById('search-input').value.toLowerCase();
+    const typeFilter = document.getElementById('filter-type').value;
+    const siteEl = document.getElementById('filter-site');
+    const siteFilter = siteEl ? siteEl.value.toLowerCase() : '';
+    const dateWindow = getDateWindow();
+
+    let filtered = rows;
+
+    if (typeFilter) filtered = filtered.filter(r => getStatusCode(r) === (typeFilter === 'credit' ? 'IN' : 'OUT'));
+    if (siteFilter === '__none__') filtered = filtered.filter(r => !String(r.siteName || '').trim());
+    else if (siteFilter) filtered = filtered.filter(r => String(r.siteName || '').toLowerCase() === siteFilter);
+    const matchEl = document.getElementById('filter-match');
+    const matchFilter = matchEl ? matchEl.value : '';
+    if (matchFilter === 'matched') filtered = filtered.filter(r => !!r.matched);
+    else if (matchFilter === 'unmatched') filtered = filtered.filter(r => !r.matched && getStatusCode(r) === 'IN');
+    if (dateWindow) {
+      filtered = filtered.filter(r => {
+        const rowDate = getRowDate(r);
+        if (!rowDate) return false;
+        if (dateWindow.start && rowDate < dateWindow.start) return false;
+        if (dateWindow.end && rowDate > dateWindow.end) return false;
+        return true;
+      });
+    }
+
+    if (search) {
+      filtered = filtered.filter(r => {
+        const pengirim = getPengirim(r).toLowerCase();
+        const bank = getBank(r).toLowerCase();
+        const rrn = getRrn(r).toLowerCase();
+        const amount = String(r.amount);
+        const acct = (r.accountCode || '').toLowerCase();
+        const waktu = getDisplayTime(r).toLowerCase();
+        const desc = getDescription(r).toLowerCase();
+        const userId = String(r.userIdExt || '').toLowerCase();
+        const site = String(r.siteName || '').toLowerCase();
+        return pengirim.includes(search) || bank.includes(search) || rrn.includes(search) || amount.includes(search) || acct.includes(search) || waktu.includes(search) || desc.includes(search) || userId.includes(search) || site.includes(search);
+      });
+    }
+
+    document.getElementById('tbl-loading').style.display = 'none';
+    document.getElementById('tbl-count').textContent = '(' + filtered.length + ' transaksi)';
+
+    if (filtered.length === 0) {
+      document.getElementById('tbl-empty').style.display = '';
+      document.getElementById('tbl-wrap').style.display = 'none';
+      return;
+    }
+
+    document.getElementById('tbl-empty').style.display = 'none';
+    document.getElementById('tbl-wrap').style.display = '';
+
+    const acct = accountMap[currentAccountId];
+    if (currentAccountId === ALL_ID) {
+      document.getElementById('tbl-title').innerHTML =
+        '<span style="color:var(--color-ink)">Semua Akun</span> ' +
+        '<span id="tbl-count" class="text-xs font-normal text-muted ml-1">(' + filtered.length + ' transaksi)</span>';
+    } else if (acct) {
+      document.getElementById('tbl-title').innerHTML =
+        '<span style="color:var(--color-ink)">' + esc(acct.merchantName) + '</span> ' +
+        '<span class="text-xs font-mono" style="color:var(--color-muted)">' + esc(acct.code) + '</span> ' +
+        '<span id="tbl-count" class="text-xs font-normal text-muted ml-1">(' + filtered.length + ' transaksi)</span>';
+    }
+
+    // Filter Site kini diisi dari sites.json (server-render), tak dibangun ulang dari baris —
+    // supaya SEMUA site tampil (termasuk yang belum ada mutasi termuat) + opsi "Tanpa site".
+
+    syncTabulatorRows(filtered);
+  }
+
+  window.searchAllAccounts = function() {
+    const q = document.getElementById('search-input').value.trim();
+    if (!q) return;
+    // just apply filter on current view
+    if (allRows.length) renderTable(allRows);
+  };
+
+  // ── Date range label ───────────────────────────────────────────────────────
+
+  function updateDateRangeLabel(preset) {
+    const el = document.getElementById('date-range-label');
+    if (!el) return;
+    const now = new Date();
+    if (preset === 'today') {
+      el.textContent = now.toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric', timeZone:'Asia/Jakarta' });
+    } else if (preset === 'yesterday') {
+      const y = new Date(now); y.setDate(y.getDate() - 1);
+      el.textContent = y.toLocaleDateString('id-ID', { day:'2-digit', month:'long', year:'numeric', timeZone:'Asia/Jakarta' });
+    } else if (preset === '7d') {
+      const s = new Date(now); s.setDate(s.getDate() - 6);
+      el.textContent = formatDateInputValue(s) + ' \u2013 ' + formatDateInputValue(now);
+    } else if (preset === '30d') {
+      const s = new Date(now); s.setDate(s.getDate() - 29);
+      el.textContent = formatDateInputValue(s) + ' \u2013 ' + formatDateInputValue(now);
+    } else if (preset === 'all') {
+      el.textContent = 'Semua data';
+    } else {
+      const from = document.getElementById('filter-date-from').value;
+      const to   = document.getElementById('filter-date-to').value;
+      el.textContent = from && to ? from + ' \u2013 ' + to : '';
+    }
+  }
+
+  // ── New pill-based date preset ─────────────────────────────────────────────
+
+  window.setDatePreset = function(preset, btn) {
+    document.querySelectorAll('.date-pill').forEach(function(p){ p.classList.remove('active'); });
+    if (btn) btn.classList.add('active');
+    const today = formatDateInputValue(new Date());
+    if (preset === 'today') {
+      document.getElementById('filter-date-from').value = today;
+      document.getElementById('filter-date-to').value = today;
+    } else if (preset === 'yesterday') {
+      const y = new Date(); y.setDate(y.getDate() - 1);
+      const yStr = formatDateInputValue(y);
+      document.getElementById('filter-date-from').value = yStr;
+      document.getElementById('filter-date-to').value = yStr;
+    } else if (preset === '7d') {
+      const s = new Date(); s.setDate(s.getDate() - 6);
+      document.getElementById('filter-date-from').value = formatDateInputValue(s);
+      document.getElementById('filter-date-to').value = today;
+    } else if (preset === '30d') {
+      const s = new Date(); s.setDate(s.getDate() - 29);
+      document.getElementById('filter-date-from').value = formatDateInputValue(s);
+      document.getElementById('filter-date-to').value = today;
+    } else if (preset === 'all') {
+      document.getElementById('filter-date-from').value = '';
+      document.getElementById('filter-date-to').value = '';
+    }
+    updateDateRangeLabel(preset);
+    renderTable(allRows);
+  };
+
+  // Diketik manual di Custom Range -> aktifkan mode custom (pill tersembunyi) + render.
+  window.onCustomDate = function() {
+    document.querySelectorAll('.date-pill').forEach(function(p){ p.classList.remove('active'); });
+    const c = document.querySelector('.date-pill[data-preset="custom"]');
+    if (c) c.classList.add('active');
+    updateDateRangeLabel('custom');
+    renderTable(allRows);
+  };
+
+  // Ganti akun via dropdown "Akun QRIS".
+  window.onAccountChange = function(id) {
+    if (id) selectAccount(id, null);
+  };
+  // Dropdown Akun mengikuti Site terpilih: opsi akun di luar site disembunyikan.
+  function syncAccountBySite(siteVal) {
+    var accSel = document.getElementById('filter-account'); if (!accSel) return;
+    var sv = String(siteVal || '');
+    var hiddenSelected = false;
+    accSel.querySelectorAll('option[data-site]').forEach(function(o) {
+      var show = (sv === '' || o.getAttribute('data-site') === sv);
+      o.hidden = !show; o.disabled = !show;
+      if (!show && o.selected) hiddenSelected = true;
+    });
+    if (hiddenSelected) { accSel.value = ALL_ID; selectAccount(ALL_ID, null); }
+  }
+  window.onSiteChange = function(val) { syncAccountBySite(val); applyFilter(); };
+
+  // ── Filter toggle ──────────────────────────────────────────────────────────
+
+  window.toggleFilter = function() {
+    filterVisible = !filterVisible;
+    const panel = document.getElementById('filter-panel');
+    panel.style.display = filterVisible ? 'block' : 'none';
+    const btn = document.getElementById('btn-filter');
+    if (btn) {
+      btn.style.borderColor = filterVisible ? 'rgba(255,124,108,0.35)' : 'rgba(255,255,255,0.08)';
+      btn.style.color       = filterVisible ? '#ffb4a8' : 'var(--color-muted)';
+    }
+  };
+
+  window.handleDatePresetChange = function() {
+    const preset = document.getElementById('filter-date-preset')?.value || 'today';
+    const customWrap = document.getElementById('filter-date-custom');
+    customWrap.style.display = preset === 'custom' ? 'flex' : 'none';
+
+    if (preset === 'today') {
+      const today = formatDateInputValue(new Date());
+      document.getElementById('filter-date-from').value = today;
+      document.getElementById('filter-date-to').value = today;
+    } else if (preset === 'yesterday') {
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      const value = formatDateInputValue(yesterday);
+      document.getElementById('filter-date-from').value = value;
+      document.getElementById('filter-date-to').value = value;
+    }
+  };
+
+  window.applyFilter = function() {
+    const activePill = document.querySelector('.date-pill.active');
+    const preset = activePill ? activePill.dataset.preset : 'today';
+    updateDateRangeLabel(preset);
+    if (allRows.length) renderTable(allRows);
+  };
+  window.resetFilter = function() {
+    document.getElementById('filter-type').value = '';
+    var matchSel = document.getElementById('filter-match'); if (matchSel) matchSel.value = '';
+    var siteSel = document.getElementById('filter-site'); if (siteSel) siteSel.value = '';
+    syncAccountBySite('');
+    var searchEl = document.getElementById('search-input'); if (searchEl) searchEl.value = '';
+    setDefaultDateFilter();
+    if (allRows.length) renderTable(allRows);
+  };
+
+  // ── Tab scroll ────────────────────────────────────────────────────────────
+
+  window.scrollTabs = function(dir) {
+    const c = document.getElementById('tab-container');
+    c.scrollBy({ left: dir * 200, behavior: 'smooth' });
+  };
+
+  // ── Search input live filter ───────────────────────────────────────────────
+
+  document.getElementById('search-input').addEventListener('input', function() {
+    if (allRows.length) renderTable(allRows);
+  });
+
+  // ── Load all account counts on page load ──────────────────────────────────
+
+  async function loadAccountCounts() {
+    try {
+      const res = await fetch(apiAcctUrl, { cache: 'no-store' });
+      const data = await res.json();
+      if (!data.ok) return;
+      data.accounts.forEach(a => {
+        const badge = document.getElementById(`tab-count-${a.id}`);
+        if (badge && a.mutationCount > 0) {
+          badge.textContent = a.mutationCount + ' transaksi';
+        } else if (badge) {
+          badge.textContent = '0 transaksi';
+        }
+        // Update accountMap with fresh data
+        if (accountMap[a.id]) {
+          accountMap[a.id].lastMainBalance = a.lastMainBalance;
+          accountMap[a.id].lastQrisBalance = a.lastQrisBalance;
+        }
+      });
+    } catch (_) {}
+  }
+
+  connectMutationStream();
+  loadAccountCounts();
+  countsTimer = setInterval(loadAccountCounts, COUNTS_POLL_MS);
+  setDefaultDateFilter();
+
+  window.addEventListener('beforeunload', function () {
+    if (mutationStream) mutationStream.close();
+    if (streamReconnectTimer) clearTimeout(streamReconnectTimer);
+    if (pollTimer) clearInterval(pollTimer);
+    if (autoSyncTimer) clearInterval(autoSyncTimer);
+    if (countsTimer) clearInterval(countsTimer);
+  });
+
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden && currentAccountId) {
+      void syncSelectedAccountNow(true);
+    }
+  });
+
+  // Default "Semua Akun" — tampil semua akun sekaligus saat halaman dibuka.
+  selectAccount(ALL_ID, null);
+
+})();
+</script>

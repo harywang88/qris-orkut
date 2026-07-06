@@ -1,0 +1,121 @@
+<%
+  const isEdit = client !== null;
+  const formAction = isEdit ? url(`/clients/${client.id}`) : url('/clients');
+%>
+
+<div class="max-w-xl">
+  <div class="mb-5">
+    <a href="<%= url('/clients') %>"
+       class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors">
+      <i class="fa-solid fa-arrow-left text-xs"></i>
+      Kembali ke daftar klien
+    </a>
+  </div>
+
+  <div class="qris-page-header">
+    <h1 class="qris-page-title">
+      <%= isEdit ? 'Edit Klien' : 'Tambah <span>Klien</span>' %>
+    </h1>
+    <% if (isEdit) { %>
+      <p class="qris-section-sub mt-1"><%= client.name %></p>
+    <% } %>
+  </div>
+
+  <div class="qris-card p-6">
+    <% if (errors && errors._form) { %>
+      <div class="flash-error mb-4">
+        <i class="fa-solid fa-circle-xmark flex-shrink-0 text-sm"></i>
+        <span class="flex-1 text-sm"><%= errors._form[0] %></span>
+      </div>
+    <% } %>
+
+    <form action="<%= formAction %>" method="POST" class="space-y-4">
+
+      <div>
+        <label class="qris-label">Nama Klien <span style="color:#fca5a5">*</span></label>
+        <input type="text" name="name"
+               value="<%= isEdit ? client.name : '' %>"
+               required maxlength="100"
+               class="qris-input"
+               placeholder="Contoh: Website A" />
+        <% if (errors && errors.name) { %>
+          <p class="text-xs mt-1" style="color:#fca5a5"><%= errors.name[0] %></p>
+        <% } %>
+      </div>
+
+      <div>
+        <label class="qris-label">
+          Kode Panel <span style="color:#fca5a5">*</span>
+          <span class="text-muted-2 normal-case font-normal ml-1">(unik, contoh: WA)</span>
+        </label>
+        <input type="text" name="panelCode"
+               value="<%= isEdit ? client.panelCode : '' %>"
+               <%= isEdit ? 'readonly' : '' %>
+               required maxlength="10" pattern="[A-Za-z0-9]+"
+               class="qris-input <%= isEdit ? 'opacity-60 cursor-not-allowed' : '' %>"
+               placeholder="WA" />
+        <% if (errors && errors.panelCode) { %>
+          <p class="text-xs mt-1" style="color:#fca5a5"><%= errors.panelCode[0] %></p>
+        <% } %>
+      </div>
+
+      <% if (isEdit) { %>
+        <div>
+          <label class="qris-label">Status</label>
+          <div class="qris-select-wrap">
+            <select name="status" class="qris-input qris-select">
+              <option value="active"   <%= client.status === 'active'   ? 'selected' : '' %>>Aktif</option>
+              <option value="inactive" <%= client.status === 'inactive' ? 'selected' : '' %>>Nonaktif</option>
+            </select>
+          </div>
+        </div>
+      <% } %>
+
+      <div>
+        <label class="qris-label">Callback URL <span class="text-muted-2 normal-case font-normal">opsional</span></label>
+        <input type="url" name="callbackUrl"
+               value="<%= isEdit && client.callbackUrl ? client.callbackUrl : '' %>"
+               class="qris-input"
+               placeholder="https://example.com/callback" />
+      </div>
+
+      <div>
+        <label class="qris-label">Deposit API URL <span class="text-muted-2 normal-case font-normal">opsional</span></label>
+        <input type="url" name="depositApiUrl"
+               value="<%= isEdit && client.depositApiUrl ? client.depositApiUrl : '' %>"
+               class="qris-input"
+               placeholder="https://panel.example.com/api/deposit" />
+      </div>
+
+      <div>
+        <label class="qris-label">Deposit API Key <span class="text-muted-2 normal-case font-normal">opsional</span></label>
+        <input type="text" name="depositApiKey"
+               value="<%= isEdit && client.depositApiKey ? client.depositApiKey : '' %>"
+               maxlength="255"
+               class="qris-input"
+               placeholder="opsional" />
+      </div>
+
+      <div>
+        <label class="qris-label">Widget Allowed Origins <span class="text-muted-2 normal-case font-normal">opsional</span></label>
+        <input type="text" name="widgetAllowedOrigins"
+               value="<%= isEdit && client.widgetAllowedOrigins ? client.widgetAllowedOrigins : '' %>"
+               maxlength="1000"
+               class="qris-input"
+               placeholder="https://sulebet.com, https://www.sulebet.com" />
+        <p class="text-muted-2 text-xs mt-1">Daftar origin (dipisah koma) yang boleh memakai widget key di browser. Kosong = semua origin.</p>
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="qris-btn qris-btn-accent">
+          <i class="fa-solid fa-floppy-disk text-xs"></i>
+          <%= isEdit ? 'Simpan Perubahan' : 'Tambah Klien' %>
+        </button>
+        <a href="<%= isEdit ? url(`/clients/${client.id}`) : url('/clients') %>"
+           class="qris-btn qris-btn-ghost">
+          Batal
+        </a>
+      </div>
+    </form>
+  </div>
+</div>

@@ -1,0 +1,276 @@
+<%
+/* ───── Login Logs ───── */
+%>
+
+<style>
+  .ll-hero { margin-bottom:24px; }
+  .ll-hero-title { font-size:22px; font-weight:800; color:var(--color-ink); letter-spacing:-.3px; margin:0 0 4px; }
+  .ll-hero-title span { color:#6ee7b7; }
+  .ll-hero-sub { font-size:12px; color:var(--color-muted); margin:0; }
+
+  .ll-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:20px; }
+  @media(max-width:540px){ .ll-stats { grid-template-columns:1fr; } }
+  .ll-stat-card {
+    border-radius:16px; padding:14px 16px;
+    background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.07);
+    display:flex; align-items:center; gap:12px;
+  }
+  .ll-stat-icon {
+    width:36px; height:36px; border-radius:10px; flex-shrink:0;
+    display:flex; align-items:center; justify-content:center; font-size:14px;
+  }
+  .ll-stat-val { font-size:20px; font-weight:800; color:var(--color-ink); line-height:1; }
+  .ll-stat-lbl { font-size:10px; color:var(--color-muted); margin-top:2px; text-transform:uppercase; letter-spacing:.06em; }
+
+  .ll-table-wrap { border-radius:18px; border:1px solid var(--color-line); overflow:hidden; background:var(--color-card); }
+  .ll-table-toolbar {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:12px 16px; border-bottom:1px solid rgba(255,255,255,0.05); flex-wrap:wrap;
+  }
+  .ll-search {
+    display:flex; align-items:center; gap:8px;
+    background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08);
+    border-radius:10px; padding:6px 12px; min-width:200px;
+  }
+  .ll-search input {
+    background:none; border:none; outline:none; font-size:12px;
+    color:var(--color-ink); width:100%; caret-color:#6ee7b7;
+  }
+  .ll-search input::placeholder { color:var(--color-muted); }
+  .ll-search i { color:var(--color-muted); font-size:11px; flex-shrink:0; }
+  .ll-filter-tabs { display:flex; gap:4px; }
+  .ll-filter-tab {
+    padding:5px 12px; border-radius:8px; font-size:11px; font-weight:600;
+    border:1px solid rgba(255,255,255,0.08); background:transparent;
+    color:var(--color-muted); cursor:pointer; transition:all .15s;
+  }
+  .ll-filter-tab:hover { background:rgba(255,255,255,0.06); color:var(--color-ink); }
+  .ll-filter-tab.active { background:rgba(110,231,183,0.1); border-color:rgba(110,231,183,0.25); color:#6ee7b7; }
+
+  .ll-table { width:100%; border-collapse:collapse; font-size:12px; }
+  .ll-table thead tr { background:rgba(255,255,255,0.03); border-bottom:1px solid var(--color-line); }
+  .ll-table th { padding:10px 14px; text-align:left; font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.08em; color:var(--color-muted); white-space:nowrap; }
+  .ll-table td { padding:12px 14px; border-bottom:1px solid rgba(255,255,255,0.04); vertical-align:middle; }
+  .ll-table tbody tr:last-child td { border-bottom:none; }
+  .ll-table tbody tr { transition:background .15s; }
+  .ll-table tbody tr:hover { background:rgba(255,255,255,0.025); }
+
+  .ll-badge {
+    display:inline-flex; align-items:center; gap:4px;
+    padding:3px 9px; border-radius:999px; font-size:10px; font-weight:700;
+    border:1px solid transparent;
+  }
+  .ll-badge-ok  { background:rgba(34,197,94,0.1);  color:#86efac; border-color:rgba(34,197,94,0.22); }
+  .ll-badge-err { background:rgba(239,68,68,0.1);  color:#fca5a5; border-color:rgba(239,68,68,0.22); }
+  .ll-badge-dot { width:5px; height:5px; border-radius:50%; background:currentColor; }
+
+  .ll-mono { font-family:monospace; font-size:11px; color:var(--color-muted); }
+  .ll-ua { font-size:11px; color:rgba(255,255,255,0.3); max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ll-time { font-size:11px; color:var(--color-muted); white-space:nowrap; }
+  .ll-time-date { font-size:10px; color:rgba(255,255,255,0.25); }
+
+  .ll-empty { text-align:center; padding:48px 24px; }
+  .ll-empty-icon { font-size:36px; color:rgba(255,255,255,0.1); margin-bottom:12px; }
+  .ll-empty-title { font-size:14px; font-weight:600; color:var(--color-muted); }
+
+  .ll-pagination { display:flex; align-items:center; justify-content:space-between; padding:12px 16px; border-top:1px solid rgba(255,255,255,0.05); flex-wrap:wrap; gap:8px; }
+  .ll-pg-info { font-size:11px; color:var(--color-muted); }
+  .ll-pg-btns { display:flex; gap:4px; }
+  .ll-pg-btn {
+    padding:4px 10px; border-radius:7px; font-size:11px; font-weight:600;
+    border:1px solid rgba(255,255,255,0.08); background:rgba(255,255,255,0.04);
+    color:var(--color-muted); cursor:pointer; transition:all .15s;
+  }
+  .ll-pg-btn:hover:not(:disabled) { background:rgba(255,255,255,0.09); color:var(--color-ink); }
+  .ll-pg-btn:disabled { opacity:.35; cursor:not-allowed; }
+  .ll-pg-btn.active { background:rgba(110,231,183,0.1); border-color:rgba(110,231,183,0.25); color:#6ee7b7; }
+</style>
+
+<%
+  const logData = logs.map(l => ({
+    username:  l.username,
+    fullName:  l.user ? l.user.fullName : '—',
+    status:    l.status,
+    ipAddress: l.ipAddress,
+    userAgent: l.userAgent || '—',
+    createdAt: l.createdAt,
+  }));
+  const totalSuccess = logData.filter(l => l.status === 'success').length;
+  const totalFail    = logData.filter(l => l.status !== 'success').length;
+%>
+
+<!-- Header -->
+<div class="ll-hero">
+  <h1 class="ll-hero-title">Login <span>Logs</span></h1>
+  <p class="ll-hero-sub">Riwayat upaya login ke dashboard admin — <%= logData.length %> entri terakhir</p>
+</div>
+
+<!-- Stats -->
+<div class="ll-stats">
+  <div class="ll-stat-card">
+    <div class="ll-stat-icon" style="background:rgba(255,255,255,0.05);color:var(--color-muted)">
+      <i class="fa-solid fa-list"></i>
+    </div>
+    <div>
+      <div class="ll-stat-val"><%= logData.length %></div>
+      <div class="ll-stat-lbl">Total Percobaan</div>
+    </div>
+  </div>
+  <div class="ll-stat-card">
+    <div class="ll-stat-icon" style="background:rgba(34,197,94,0.12);color:#86efac">
+      <i class="fa-solid fa-circle-check"></i>
+    </div>
+    <div>
+      <div class="ll-stat-val" style="color:#86efac"><%= totalSuccess %></div>
+      <div class="ll-stat-lbl">Berhasil</div>
+    </div>
+  </div>
+  <div class="ll-stat-card">
+    <div class="ll-stat-icon" style="background:rgba(239,68,68,0.12);color:#fca5a5">
+      <i class="fa-solid fa-circle-xmark"></i>
+    </div>
+    <div>
+      <div class="ll-stat-val" style="color:#fca5a5"><%= totalFail %></div>
+      <div class="ll-stat-lbl">Gagal</div>
+    </div>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="ll-table-wrap">
+  <div class="ll-table-toolbar">
+    <div class="ll-search">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <input type="text" id="ll-search-input" placeholder="Cari username, IP, user agent…" oninput="llSearch(this.value)">
+    </div>
+    <div class="ll-filter-tabs">
+      <button class="ll-filter-tab active" data-filter="all"   onclick="llFilter('all',   this)">Semua</button>
+      <button class="ll-filter-tab"        data-filter="ok"    onclick="llFilter('ok',    this)">Berhasil</button>
+      <button class="ll-filter-tab"        data-filter="fail"  onclick="llFilter('fail',  this)">Gagal</button>
+    </div>
+  </div>
+
+  <div style="overflow-x:auto">
+    <table class="ll-table" id="ll-table">
+      <thead>
+        <tr>
+          <th>Waktu</th>
+          <th>Username</th>
+          <th class="hidden md:table-cell">Nama</th>
+          <th>Status</th>
+          <th class="hidden sm:table-cell">IP</th>
+          <th class="hidden lg:table-cell">User Agent</th>
+        </tr>
+      </thead>
+      <tbody id="ll-tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="ll-pagination">
+    <span class="ll-pg-info" id="ll-pg-info"></span>
+    <div class="ll-pg-btns" id="ll-pg-btns"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const raw = <%- JSON.stringify(logData) %>;
+  const PAGE_SIZE = 25;
+  let filtered = [...raw].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  let currentFilter = 'all';
+  let currentSearch = '';
+  let currentPage = 1;
+
+  function fmtTime(iso) {
+    const d = new Date(iso);
+    const time = d.toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false, timeZone:'Asia/Jakarta' });
+    const date = d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric', timeZone:'Asia/Jakarta' });
+    return `<div class="ll-time">${time} <span style="color:rgba(255,255,255,0.18)">WIB</span></div><div class="ll-time-date">${date}</div>`;
+  }
+
+  function render() {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    const page  = filtered.slice(start, start + PAGE_SIZE);
+    const tbody = document.getElementById('ll-tbody');
+
+    if (filtered.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="6"><div class="ll-empty"><div class="ll-empty-icon"><i class="fa-solid fa-magnifying-glass"></i></div><p class="ll-empty-title">Tidak ada data yang cocok</p></div></td></tr>`;
+    } else {
+      tbody.innerHTML = page.map(l => {
+        const ok = l.status === 'success';
+        const badge = ok
+          ? '<span class="ll-badge ll-badge-ok"><span class="ll-badge-dot"></span>success</span>'
+          : '<span class="ll-badge ll-badge-err"><span class="ll-badge-dot"></span>' + l.status + '</span>';
+        return `<tr>
+          <td>${fmtTime(l.createdAt)}</td>
+          <td style="font-weight:600;color:var(--color-ink)">${l.username}</td>
+          <td class="hidden md:table-cell" style="color:var(--color-muted)">${l.fullName}</td>
+          <td>${badge}</td>
+          <td class="hidden sm:table-cell"><span class="ll-mono">${l.ipAddress}</span></td>
+          <td class="hidden lg:table-cell"><span class="ll-ua" title="${l.userAgent}">${l.userAgent}</span></td>
+        </tr>`;
+      }).join('');
+    }
+
+    // Pagination
+    const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+    const info = document.getElementById('ll-pg-info');
+    info.textContent = `Menampilkan ${start + 1}–${Math.min(start + PAGE_SIZE, filtered.length)} dari ${filtered.length}`;
+
+    const btns = document.getElementById('ll-pg-btns');
+    btns.innerHTML = '';
+    const prev = document.createElement('button');
+    prev.className = 'll-pg-btn'; prev.textContent = '←';
+    prev.disabled = currentPage === 1;
+    prev.onclick = () => { currentPage--; render(); };
+    btns.appendChild(prev);
+
+    for (let i = 1; i <= totalPages; i++) {
+      if (i === 1 || i === totalPages || Math.abs(i - currentPage) <= 1) {
+        const b = document.createElement('button');
+        b.className = 'll-pg-btn' + (i === currentPage ? ' active' : '');
+        b.textContent = i;
+        b.onclick = () => { currentPage = i; render(); };
+        btns.appendChild(b);
+      } else if (Math.abs(i - currentPage) === 2) {
+        const s = document.createElement('span');
+        s.textContent = '…'; s.style.cssText = 'padding:4px 6px;color:var(--color-muted);font-size:11px';
+        btns.appendChild(s);
+      }
+    }
+
+    const next = document.createElement('button');
+    next.className = 'll-pg-btn'; next.textContent = '→';
+    next.disabled = currentPage === totalPages;
+    next.onclick = () => { currentPage++; render(); };
+    btns.appendChild(next);
+  }
+
+  function applyFilters() {
+    currentPage = 1;
+    filtered = raw.filter(l => {
+      if (currentFilter === 'ok'   && l.status !== 'success') return false;
+      if (currentFilter === 'fail' && l.status === 'success') return false;
+      if (currentSearch) {
+        const q = currentSearch.toLowerCase();
+        return l.username.toLowerCase().includes(q) ||
+               l.fullName.toLowerCase().includes(q) ||
+               l.ipAddress.toLowerCase().includes(q) ||
+               l.userAgent.toLowerCase().includes(q);
+      }
+      return true;
+    }).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    render();
+  }
+
+  window.llSearch = function(val) { currentSearch = val; applyFilters(); };
+  window.llFilter = function(f, btn) {
+    currentFilter = f;
+    document.querySelectorAll('.ll-filter-tab').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyFilters();
+  };
+
+  render();
+})();
+</script>

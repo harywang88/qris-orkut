@@ -1,0 +1,14 @@
+<div class="flex flex-col items-center justify-center py-20 text-center">
+  <div class="text-[96px] font-black leading-none mb-3"
+       style="background:linear-gradient(135deg,#16a34a,#15803d);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">
+    404
+  </div>
+  <h2 class="text-xl font-bold text-ink mb-2">Halaman Tidak Ditemukan</h2>
+  <p class="text-muted text-sm mb-8 max-w-sm">
+    <%= typeof message !== 'undefined' ? message : 'Halaman yang Anda cari tidak ada atau telah dipindahkan.' %>
+  </p>
+  <a href="<%= url('/dashboard') %>" class="qris-btn qris-btn-accent px-6">
+    <i class="fa-solid fa-house text-xs"></i>
+    Kembali ke Dashboard
+  </a>
+</div>

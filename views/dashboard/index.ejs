@@ -1,0 +1,307 @@
+<!-- ── Page Header ─────────────────────────────────────────────────── -->
+<div class="qris-page-header flex items-start justify-between gap-4">
+  <div>
+    <h1 class="qris-page-title">Dashboard <span>Overview</span></h1>
+    <p class="qris-section-sub mt-1">Ringkasan aktivitas pembayaran QRIS hari ini</p>
+  </div>
+  <div class="hidden sm:flex items-center gap-2 rounded-2xl border border-line bg-card px-4 py-2.5 text-xs text-muted">
+    <i class="fa-regular fa-calendar text-[11px]"></i>
+    <span id="today-date"></span>
+  </div>
+</div>
+
+<!-- ── Stat Cards ─────────────────────────────────────────────────────── -->
+<div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-6 qris-card-enter">
+
+  <div class="qris-stat-card">
+    <div class="qris-stat-icon qris-stat-icon-blue">
+      <i class="fa-solid fa-qrcode"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">QR Dibuat</p>
+      <p class="text-2xl font-bold text-ink" data-count="<%= stats.totalToday %>"><%= stats.totalToday %></p>
+      <p class="text-xs text-muted-2 mt-0.5">hari ini</p>
+    </div>
+  </div>
+
+  <div class="qris-stat-card">
+    <div class="qris-stat-icon qris-stat-icon-green">
+      <i class="fa-solid fa-circle-check"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Terbayar</p>
+      <p class="text-2xl font-bold text-ink" data-count="<%= stats.paidToday %>"><%= stats.paidToday %></p>
+      <p class="text-xs text-muted-2 mt-0.5">transaksi lunas</p>
+    </div>
+  </div>
+
+  <div class="qris-stat-card">
+    <div class="qris-stat-icon qris-stat-icon-violet">
+      <i class="fa-solid fa-money-bill-wave"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Nominal</p>
+      <p class="text-base font-bold text-ink leading-tight"><%= stats.paidAmountTodayFormatted %></p>
+      <p class="text-xs text-muted-2 mt-0.5">total hari ini</p>
+    </div>
+  </div>
+
+  <div class="qris-stat-card">
+    <div class="qris-stat-icon qris-stat-icon-amber">
+      <i class="fa-solid fa-server"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Akun Aktif</p>
+      <p class="text-2xl font-bold text-ink" data-count="<%= stats.activeAccounts %>"><%= stats.activeAccounts %></p>
+      <p class="text-xs text-muted-2 mt-0.5"><%= stats.totalClients %> klien terhubung</p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Secondary Stats ────────────────────────────────────────────────── -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+  <div class="qris-card px-4 py-3 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl flex items-center justify-center text-sm" style="background:rgba(239,68,68,0.1);color:#fca5a5">
+      <i class="fa-solid fa-xmark"></i>
+    </div>
+    <div>
+      <p class="text-[11px] text-muted">Gagal Deposit</p>
+      <p class="text-lg font-bold text-ink" data-count="<%= stats.failedDeposits || 0 %>"><%= stats.failedDeposits || 0 %></p>
+    </div>
+  </div>
+  <div class="qris-card px-4 py-3 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl flex items-center justify-center text-sm" style="background:rgba(249,115,22,0.1);color:#fdba74">
+      <i class="fa-solid fa-magnifying-glass"></i>
+    </div>
+    <div>
+      <p class="text-[11px] text-muted">Manual Review</p>
+      <p class="text-lg font-bold text-ink" data-count="<%= stats.manualReview || 0 %>"><%= stats.manualReview || 0 %></p>
+    </div>
+  </div>
+  <div class="qris-card px-4 py-3 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl flex items-center justify-center text-sm" style="background:rgba(245,158,11,0.1);color:#fcd34d">
+      <i class="fa-solid fa-hourglass-half"></i>
+    </div>
+    <div>
+      <p class="text-[11px] text-muted">Antrean Deposit</p>
+      <p class="text-lg font-bold text-ink" data-count="<%= stats.queueLag || 0 %>"><%= stats.queueLag || 0 %></p>
+    </div>
+  </div>
+  <div class="qris-card px-4 py-3 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl flex items-center justify-center text-sm" style="background:rgba(59,130,246,0.1);color:#93c5fd">
+      <i class="fa-solid fa-clock-rotate-left"></i>
+    </div>
+    <div>
+      <p class="text-[11px] text-muted">Expired Hari Ini</p>
+      <p class="text-lg font-bold text-ink" data-count="<%= stats.expiredToday || 0 %>"><%= stats.expiredToday || 0 %></p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Chart + Account Status ─────────────────────────────────────────── -->
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-6">
+
+  <!-- 7-day chart -->
+  <div class="xl:col-span-2 qris-card p-5">
+    <div class="flex items-center justify-between mb-5">
+      <div>
+        <h2 class="text-sm font-bold text-ink">Volume Transaksi</h2>
+        <p class="text-xs text-muted mt-0.5">7 hari terakhir — QR dibuat vs dibayar</p>
+      </div>
+      <span class="qris-pill qris-pill-paid text-[10px]">
+        <i class="fa-solid fa-circle text-[6px] mr-1"></i>Live
+      </span>
+    </div>
+    <div class="qris-chart-wrap">
+      <canvas id="txChart" height="180"></canvas>
+    </div>
+  </div>
+
+  <!-- Account health -->
+  <div class="qris-card p-5">
+    <div class="flex items-center justify-between mb-4">
+      <h2 class="text-sm font-bold text-ink">Status Akun QRIS</h2>
+      <span class="text-xs text-muted"><%= qrisAccounts.length %> akun</span>
+    </div>
+    <div class="space-y-3 overflow-y-auto max-h-[260px] pr-1">
+      <% qrisAccounts.forEach(acc => { %>
+        <%
+          const hPill = {
+            healthy:  'qris-pill-paid',
+            degraded: 'qris-pill-warn',
+            down:     'qris-pill-danger',
+          }[acc.healthStatus] || 'qris-pill-muted';
+          const usedPct = acc.dailyLimit > 0 ? Math.min(100, Math.round(acc.usedToday / acc.dailyLimit * 100)) : 0;
+          const barClass = usedPct >= 90 ? 'qris-progress-bar-red' : usedPct >= 70 ? 'qris-progress-bar-amber' : 'qris-progress-bar-blue';
+        %>
+        <div class="rounded-2xl border border-line bg-card-hi p-3">
+          <div class="flex items-center justify-between mb-2">
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="font-bold text-sm text-ink font-mono"><%= acc.code %></span>
+              <span class="text-xs text-muted truncate hidden sm:block"><%= acc.merchantName %></span>
+            </div>
+            <span class="qris-pill <%= hPill %>"><%= acc.healthStatus %></span>
+          </div>
+          <% if (acc.dailyLimit > 0) { %>
+            <div class="qris-progress mb-1.5">
+              <div class="qris-progress-bar <%= barClass %>" style="width:<%= usedPct %>%"></div>
+            </div>
+            <p class="text-[10px] text-muted flex justify-between">
+              <span>Rp <%= acc.usedToday.toLocaleString('id-ID') %></span>
+              <span><%= usedPct %>% / Rp <%= acc.dailyLimit.toLocaleString('id-ID') %></span>
+            </p>
+          <% } else { %>
+            <p class="text-[10px] text-muted-2">Tanpa batas harian</p>
+          <% } %>
+        </div>
+      <% }); %>
+      <% if (qrisAccounts.length === 0) { %>
+        <div class="qris-empty">
+          <i class="fa-solid fa-qrcode qris-empty-icon"></i>
+          <p class="qris-empty-sub">Belum ada akun QRIS</p>
+        </div>
+      <% } %>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Recent Transactions ─────────────────────────────────────────────── -->
+<div class="qris-table-wrap">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-line">
+    <h2 class="text-sm font-bold text-ink">Transaksi Terbaru</h2>
+    <a href="<%= url('/dashboard/history') %>"
+       class="text-xs font-medium hover:text-ink transition-colors"
+       style="color:#16a34a">
+      Lihat semua <i class="fa-solid fa-arrow-right text-[10px] ml-0.5"></i>
+    </a>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="qris-table">
+      <thead>
+        <tr>
+          <th>QR ID</th>
+          <th>Site</th>
+          <th>Akun</th>
+          <th class="text-right">Nominal</th>
+          <th class="text-center">Bayar</th>
+          <th class="text-center">Bot</th>
+          <th class="hidden lg:table-cell">Waktu</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (recentTransactions.length === 0) { %>
+          <tr>
+            <td colspan="7">
+              <div class="qris-empty">
+                <i class="fa-solid fa-receipt qris-empty-icon"></i>
+                <p class="qris-empty-title">Belum ada transaksi</p>
+              </div>
+            </td>
+          </tr>
+        <% } %>
+        <% recentTransactions.forEach(tx => { %>
+          <%
+            const payPill = { open:'qris-pill-open', paid:'qris-pill-paid', expired:'qris-pill-expired' }[tx.statusPay] || 'qris-pill-muted';
+            const botPill = {
+              pending:         'qris-pill-muted',
+              deposit_queued:  'qris-pill-warn',
+              deposit_success: 'qris-pill-paid',
+              deposit_failed:  'qris-pill-danger',
+              manual_review:   'qris-pill-review',
+            }[tx.statusBot] || 'qris-pill-muted';
+          %>
+          <tr>
+            <td class="font-mono text-xs text-muted-2"><%= tx.qrId.slice(0,12) %>…</td>
+            <td class="font-medium text-ink-2 text-xs"><%= tx.siteName || '—' %></td>
+            <td class="text-xs text-muted font-mono"><%= tx.qrisAccount.code %></td>
+            <td class="text-right font-semibold text-ink text-sm">
+              Rp <%= tx.finalAmount.toLocaleString('id-ID') %>
+            </td>
+            <td class="text-center">
+              <span class="qris-pill <%= payPill %>"><%= tx.statusPay %></span>
+            </td>
+            <td class="text-center">
+              <span class="qris-pill <%= botPill %>"><%= tx.statusBot.replace(/_/g, ' ') %></span>
+            </td>
+            <td class="text-xs text-muted hidden lg:table-cell">
+              <%= new Date(tx.createdAt).toLocaleString('id-ID') %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Today's date display
+  const dateEl = document.getElementById('today-date');
+  if (dateEl) {
+    dateEl.textContent = new Date().toLocaleDateString('id-ID', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+  }
+
+  const labels  = <%- chartData.labels %>;
+  const counts  = <%- chartData.counts %>;
+  const amounts = <%- chartData.amounts %>;
+
+  const ctx = document.getElementById('txChart').getContext('2d');
+  Chart.defaults.color = '#9a9085';
+  Chart.defaults.font.family = "'Inter', sans-serif";
+
+  new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Jumlah QR',
+          data: counts,
+          backgroundColor: 'rgba(22,163,74,0.15)',
+          borderColor: '#16a34a',
+          borderWidth: 2,
+          borderRadius: 6,
+          borderSkipped: false,
+          yAxisID: 'y',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      animation: { duration: 800, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(18,20,26,0.95)',
+          borderColor: 'rgba(37,42,53,0.8)',
+          borderWidth: 1,
+          titleColor: '#f1ece4',
+          bodyColor: '#9a9085',
+          padding: 10,
+          cornerRadius: 12,
+          callbacks: {
+            afterLabel: (ctx) => 'Nominal: Rp ' + amounts[ctx.dataIndex].toLocaleString('id-ID'),
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(37,42,53,0.5)', drawBorder: false },
+          ticks: { color: '#6b6560', font: { size: 11 } },
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: 'rgba(37,42,53,0.5)', drawBorder: false },
+          ticks: { precision: 0, color: '#6b6560', font: { size: 11 } },
+        },
+      },
+    },
+  });
+})();
+</script>

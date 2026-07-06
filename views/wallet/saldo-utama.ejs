@@ -1,0 +1,112 @@
+<!-- Header -->
+<div class="qris-page-header">
+  <h1 class="qris-page-title">Saldo <span>Utama</span></h1>
+  <p class="qris-section-sub mt-1">Wallet utama — menerima dana dari deposit QRIS sukses</p>
+</div>
+
+<!-- Balance Cards -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6 qris-card-enter">
+  <!-- Main Balance -->
+  <div class="qris-stat-card sm:col-span-1 overflow-hidden relative"
+       style="background:linear-gradient(135deg,rgba(59,130,246,0.15) 0%,rgba(37,99,235,0.08) 100%);border-color:rgba(59,130,246,0.25)">
+    <div class="absolute -right-4 -top-4 w-24 h-24 rounded-full opacity-10"
+         style="background:radial-gradient(circle,#3b82f6,transparent)"></div>
+    <div class="qris-stat-icon" style="background:rgba(59,130,246,0.15);color:#93c5fd">
+      <i class="fa-solid fa-wallet"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Saldo Saat Ini</p>
+      <p class="text-2xl font-bold" style="color:#93c5fd">Rp <%= balance.toLocaleString('id-ID') %></p>
+      <p class="text-xs text-muted-2 mt-0.5">wallet utama</p>
+    </div>
+  </div>
+  <div class="qris-stat-card">
+    <div class="qris-stat-icon qris-stat-icon-green">
+      <i class="fa-solid fa-arrow-down"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Total Masuk</p>
+      <p class="text-xl font-bold" style="color:#86efac">Rp <%= totalCredit.toLocaleString('id-ID') %></p>
+      <p class="text-xs text-muted-2 mt-0.5"><%= creditCount %> entri kredit</p>
+    </div>
+  </div>
+  <div class="qris-stat-card">
+    <div class="qris-stat-icon qris-stat-icon-red">
+      <i class="fa-solid fa-arrow-up"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Total Keluar</p>
+      <p class="text-xl font-bold" style="color:#fca5a5">Rp <%= Math.abs(totalDebit).toLocaleString('id-ID') %></p>
+      <p class="text-xs text-muted-2 mt-0.5"><%= debitCount %> entri debit</p>
+    </div>
+  </div>
+</div>
+
+<!-- Ledger Table -->
+<div class="qris-table-wrap">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-line">
+    <h3 class="text-sm font-bold text-ink">
+      Riwayat Ledger
+      <span class="ml-2 text-xs font-normal text-muted">(<%= total %> entri)</span>
+    </h3>
+  </div>
+
+  <% if (ledger.length === 0) { %>
+    <div class="qris-empty">
+      <i class="fa-solid fa-wallet qris-empty-icon"></i>
+      <p class="qris-empty-title">Belum ada entri ledger</p>
+      <p class="qris-empty-sub">Entri muncul setelah deposit berhasil atau settlement diproses</p>
+    </div>
+  <% } else { %>
+    <div class="overflow-x-auto">
+      <table class="qris-table">
+        <thead>
+          <tr>
+            <th>Waktu</th>
+            <th>Tipe</th>
+            <th>Keterangan</th>
+            <th class="text-right">Jumlah</th>
+            <th class="text-right">Saldo Setelah</th>
+            <th class="hidden md:table-cell">Ref</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% ledger.forEach(entry => { %>
+            <%
+              const refMeta = {
+                deposit_success: { label: 'Deposit',    pill: 'qris-pill-paid'   },
+                settlement_in:   { label: 'Masuk',      pill: 'qris-pill-open'   },
+                settlement_out:  { label: 'Keluar',     pill: 'qris-pill-review' },
+                adjustment:      { label: 'Adjustment', pill: 'qris-pill-muted'  },
+              }[entry.refType] || { label: entry.refType, pill: 'qris-pill-muted' };
+            %>
+            <tr>
+              <td class="text-xs text-muted whitespace-nowrap">
+                <%= new Date(entry.createdAt).toLocaleString('id-ID') %>
+              </td>
+              <td>
+                <span class="qris-pill <%= refMeta.pill %>"><%= refMeta.label %></span>
+              </td>
+              <td class="text-xs text-ink-2"><%= entry.description || '—' %></td>
+              <td class="text-right font-mono font-semibold whitespace-nowrap"
+                  style="color:<%= entry.amount >= 0 ? '#86efac' : '#fca5a5' %>">
+                <%= entry.amount >= 0 ? '+' : '' %>Rp <%= entry.amount.toLocaleString('id-ID') %>
+              </td>
+              <td class="text-right font-mono text-ink whitespace-nowrap">
+                Rp <%= entry.balanceAfter.toLocaleString('id-ID') %>
+              </td>
+              <td class="text-xs text-muted font-mono hidden md:table-cell">
+                <%= entry.refId ? entry.refId.slice(0, 12) + '…' : '—' %>
+              </td>
+            </tr>
+          <% }); %>
+        </tbody>
+      </table>
+    </div>
+    <% if (total > ledger.length) { %>
+      <div class="px-5 py-3 border-t border-line text-xs text-muted text-center">
+        Menampilkan <%= ledger.length %> dari <%= total %> entri terbaru
+      </div>
+    <% } %>
+  <% } %>
+</div>

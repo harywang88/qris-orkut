@@ -1,0 +1,355 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ── Clients ────────────────────────────────────────────────────────────────
+model Client {
+  id                        String   @id @default(cuid())
+  name                      String
+  panelCode                 String   @unique
+  apiKey                    String   @unique
+  apiSecretEncrypted        String
+  status                    String   @default("active") // active | inactive
+  callbackUrl               String?
+  depositApiUrl             String?
+  depositApiKey             String?
+  depositApiSecretEncrypted String?
+  allowedIps                String?  // comma-separated CIDR list; null = any
+  widgetKey                 String?  @unique // public browser widget key (alfael-style ?key=)
+  widgetAllowedOrigins      String?  // comma-separated origin allowlist for widget; null = any
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  transactions  Transaction[]
+  requestNonces RequestNonce[]
+}
+
+// ── Users ──────────────────────────────────────────────────────────────────
+model User {
+  id                 String    @id @default(cuid())
+  username           String    @unique
+  passwordHash       String
+  fullName           String
+  status             String    @default("active") // active | inactive
+  mustChangePassword Boolean   @default(true)
+  lastLoginAt        DateTime?
+  lastLoginIp        String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  userRoles UserRole[]
+  loginLogs LoginLog[]
+  auditLogs AuditLog[]
+}
+
+// ── Roles & Permissions ────────────────────────────────────────────────────
+model Role {
+  id          String   @id @default(cuid())
+  name        String   @unique // super-admin | admin | operator
+  description String?
+  createdAt   DateTime @default(now())
+
+  userRoles       UserRole[]
+  rolePermissions RolePermission[]
+}
+
+model Permission {
+  id          String   @id @default(cuid())
+  name        String   @unique // qris:manage | client:manage | report:view | setting:manage | log:view
+  description String?
+  createdAt   DateTime @default(now())
+
+  rolePermissions RolePermission[]
+}
+
+model UserRole {
+  id        String   @id @default(cuid())
+  userId    String
+  roleId    String
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+}
+
+model RolePermission {
+  id           String   @id @default(cuid())
+  roleId       String
+  permissionId String
+  createdAt    DateTime @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+}
+
+// ── QRIS Accounts ──────────────────────────────────────────────────────────
+model QrisAccount {
+  id                    String    @id @default(cuid())
+  code                  String    @unique // 4-char alias, e.g. "01WR"
+  accountNumber         String
+  merchantName          String
+  orkutAccountIndex     Int?      // Optional remote settlement account index
+  sessionTokenEncrypted String?
+  cookiesEncrypted      String?
+  webCookiesEncrypted   String?
+  webUserAgent          String?
+  deviceId              String?
+  transferPinEncrypted  String?
+  dailyLimit            Int       @default(30000000) // 0 = unlimited
+  usedToday             Int       @default(0)
+  lastResetAt           DateTime  @default(now())
+  lastAssignedAt        DateTime  @default(now())
+  lastMainBalance       Int?
+  lastQrisBalance       Int?
+  lastMaderaBalance     Int?
+  lastBalanceSyncAt     DateTime?
+  lastBalanceSyncStatus  String?
+  lastBalanceSyncError   String?
+  lastBalanceSyncRawJson String?
+  lastConnectionTestAt   DateTime?
+  lastConnectionTestStatus String?
+  lastConnectionTestError String?
+  watcherStrategy        String    @default("python_balance") // legacy column, runtime now uses python_balance
+  balanceWatchActiveSeconds Int    @default(2)
+  balanceWatchIdleSeconds   Int    @default(2)
+  fallbackSyncActiveSeconds Int    @default(0) // legacy column, fallback sync mutasi dimatikan
+  fallbackSyncIdleSeconds   Int    @default(0)
+  lastWatchProbeAt       DateTime?
+  lastWatchProbeStatus   String?
+  lastWatchProbeError    String?
+  qrisActivePollSeconds Int       @default(300)
+  qrisIdlePollSeconds   Int       @default(300)
+  balancePollSeconds    Int       @default(300)
+  detailPollSeconds     Int       @default(20)
+  healthStatus          String    @default("healthy") // healthy | degraded | down
+  status                String    @default("active")  // active | inactive
+  qrisPayload           String?   // base static QRIS string
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  transactions Transaction[]
+  mutations    Mutation[]
+  amountLocks  AmountLock[]
+  outboxEvents OutboxEvent[]
+}
+
+// ── Transactions ───────────────────────────────────────────────────────────
+model Transaction {
+  id                String    @id @default(cuid())
+  qrId              String    @unique @default(cuid()) // external-facing ID
+  clientId          String
+  userIdExt         String    // client's end-user identifier
+  externalReference String?
+  qrisAccountId     String
+  requestedAmount   Int
+  uniqueCode        Int       // 1-999
+  finalAmount       Int       // = requestedAmount + uniqueCode
+  note              String
+  qrPayload         String
+  qrImageBase64     String
+  statusPay         String    @default("open")    // open | paid | expired
+  statusBot         String    @default("pending") // pending | deposit_queued | deposit_success | deposit_failed | manual_review
+  paidAt            DateTime?
+  expiresAt         DateTime
+  issuerName        String?
+  rrn               String?
+  feeAmount         Int       @default(0)
+  receiptUrl        String?
+  metadataJson      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  client          Client           @relation(fields: [clientId], references: [id])
+  qrisAccount     QrisAccount      @relation(fields: [qrisAccountId], references: [id])
+  amountLock      AmountLock?
+  depositAttempts DepositAttempt[]
+  mutations       Mutation[]       @relation("MatchedTransaction")
+}
+
+// ── Amount Locks ───────────────────────────────────────────────────────────
+// Reserves a unique code (1-999) per QRIS account to prevent duplicate finalAmounts.
+model AmountLock {
+  id              String   @id @default(cuid())
+  qrisAccountId   String
+  requestedAmount Int
+  uniqueCode      Int
+  finalAmount     Int
+  activeKey       String?  @unique
+  transactionId   String   @unique
+  expiresAt       DateTime
+  status          String   @default("active") // active | released | expired
+  createdAt       DateTime @default(now())
+
+  qrisAccount QrisAccount @relation(fields: [qrisAccountId], references: [id])
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+
+  @@index([qrisAccountId, status])
+  @@index([expiresAt])
+}
+
+// ── Mutations ──────────────────────────────────────────────────────────────
+model Mutation {
+  id                   String    @id @default(cuid())
+  qrisAccountId        String
+  amount               Int
+  type                 String    @default("credit") // credit | debit
+  balanceBefore        Int       @default(0)
+  balanceAfter         Int       @default(0)
+  issuerName           String?
+  rrn                  String?
+  walletCategory       String?   // qris | utama | madera (derived from description)
+  transactionTime      DateTime
+  rawHash              String    @unique // sha256 of rawDataJson — dedup guard
+  rawDataJson          String
+  matchedTransactionId String?
+  createdAt            DateTime  @default(now())
+
+  qrisAccount        QrisAccount  @relation(fields: [qrisAccountId], references: [id])
+  matchedTransaction Transaction? @relation("MatchedTransaction", fields: [matchedTransactionId], references: [id])
+
+  @@index([qrisAccountId, matchedTransactionId])
+  @@index([qrisAccountId, transactionTime])
+}
+
+model OutboxEvent {
+  id             String    @id @default(cuid())
+  topic          String
+  aggregateType  String
+  aggregateId    String
+  qrisAccountId  String?
+  payloadJson    String
+  status         String    @default("pending") // pending | processing | delivered | failed
+  availableAt    DateTime  @default(now())
+  processedAt    DateTime?
+  attemptCount   Int       @default(0)
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+
+  qrisAccount QrisAccount? @relation(fields: [qrisAccountId], references: [id], onDelete: SetNull)
+
+  @@index([topic, status, availableAt])
+  @@index([qrisAccountId, createdAt])
+  @@index([aggregateType, aggregateId])
+}
+
+// ── Deposit Attempts ───────────────────────────────────────────────────────
+model DepositAttempt {
+  id                 String    @id @default(cuid())
+  transactionId      String
+  attemptNo          Int
+  idempotencyKey     String
+  requestPayloadJson String
+  responseCode       Int?
+  responseBody       String?
+  status             String    // pending | success | failed
+  errorMessage       String?
+  nextRetryAt        DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+
+  @@index([transactionId])
+}
+
+// ── Settlement ─────────────────────────────────────────────────────────────
+model SettlementRequest {
+  id            String    @id @default(cuid())
+  fromWallet    String    // qris | utama | madera
+  toWallet      String    // utama | madera | bank
+  amount        Int
+  qrisAccountId String?
+  bankCode      String?
+  bankAccount   String?
+  bankName      String?
+  status        String    @default("pending") // pending | processing | done | failed
+  referenceNo   String?
+  note          String?
+  processedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  items SettlementItem[]
+}
+
+model SettlementItem {
+  id                  String   @id @default(cuid())
+  settlementRequestId String
+  transactionId       String?
+  amount              Int
+  description         String?
+  createdAt           DateTime @default(now())
+
+  settlementRequest SettlementRequest @relation(fields: [settlementRequestId], references: [id])
+}
+
+// ── Logs ───────────────────────────────────────────────────────────────────
+model LoginLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  username  String
+  ipAddress String
+  userAgent String?
+  status    String   // success | failed
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String?
+  entityId   String?
+  detailJson String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+}
+
+// ── Wallet Ledger ──────────────────────────────────────────────────────────
+// Tracks running balances for internal wallets: utama and madera.
+model WalletLedger {
+  id           String   @id @default(cuid())
+  walletCode   String   // utama | madera
+  amount       Int      // positive = credit, negative = debit (rupiah)
+  refType      String   // deposit_success | settlement_in | settlement_out | adjustment
+  refId        String?  // transactionId, settlementRequestId, or null for adjustments
+  description  String?
+  balanceAfter Int      // running balance snapshot at time of entry
+  createdAt    DateTime @default(now())
+
+  @@index([walletCode, createdAt])
+}
+
+// ── HMAC Nonce Store ───────────────────────────────────────────────────────
+model RequestNonce {
+  id        String   @id @default(cuid())
+  clientId  String
+  apiKey    String
+  nonce     String
+  timestamp String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  client Client @relation(fields: [clientId], references: [id])
+
+  @@unique([apiKey, nonce])
+  @@index([expiresAt])
+}

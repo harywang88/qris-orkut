@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%- typeof title !== 'undefined' ? `${title} | ` : '' %>QRIS Hub</title>
+
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" /></noscript>
+
+  <!-- Apply saved theme immediately to prevent flash (default: day/light mode) -->
+  <script>
+    (function() {
+      var t = localStorage.getItem('qris-theme');
+      // Default ke day mode: light aktif kecuali pengguna memilih dark secara eksplisit
+      if (t !== 'dark') document.documentElement.classList.add('light');
+    })();
+  </script>
+  <link rel="stylesheet" href="<%= url('/css/tailwind.css') %>" />
+
+  <link rel="stylesheet" href="<%= url('/vendor/tabulator_simple.min.css') %>" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" media="print" onload="this.media='all'" />
+  <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" /></noscript>
+  <link rel="stylesheet" href="<%= url('/css/app.css') %>?v=20260706-green5" />
+  <!-- Tabulator & Chart.js SELF-HOST (dari harywang.online, bukan unpkg/jsdelivr) -> load cepat & tak blocking lama -->
+  <script src="<%= url('/vendor/chart.umd.min.js') %>"></script>
+  <script src="<%= url('/vendor/tabulator.min.js') %>"></script>
+  <%- typeof styles !== 'undefined' ? styles : '' %>
+</head>
+<body class="qris-shell font-sans antialiased">
+
+  <!-- Mobile sidebar overlay -->
+  <div class="qris-sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
+  <div class="flex min-h-screen">
+    <%- include('../partials/sidebar') %>
+
+    <div class="flex min-w-0 flex-1 flex-col overflow-hidden">
+      <%- include('../partials/navbar') %>
+
+      <main class="flex-1 overflow-y-auto px-5 py-6 md:px-7 qris-page-enter">
+        <%- include('../partials/flash') %>
+        <%- body %>
+      </main>
+    </div>
+  </div>
+
+  <script src="<%= url('/js/qr-modal.js') %>"></script>
+
+  <!-- Theme toggle logic -->
+  <script>
+    function toggleTheme() {
+      var html = document.documentElement;
+      var isLight = html.classList.toggle('light');
+      localStorage.setItem('qris-theme', isLight ? 'light' : 'dark');
+
+      // Fix inline styles on navbar that reference hardcoded dark rgba values
+      fixInlineNavbarStyles(isLight);
+    }
+
+    function fixInlineNavbarStyles(isLight) {
+      // Settings gear button
+      var gear = document.querySelector('.qris-navbar a[title="Pengaturan"]');
+      if (gear) {
+        if (isLight) {
+          gear.style.background = 'rgba(0,0,0,0.04)';
+          gear.style.borderColor = 'var(--line)';
+          gear.style.color = 'var(--muted)';
+          gear.onmouseover = function() { this.style.background='rgba(0,0,0,0.07)'; this.style.color='var(--ink)'; };
+          gear.onmouseout = function() { this.style.background='rgba(0,0,0,0.04)'; this.style.color='var(--muted)'; };
+        } else {
+          gear.style.background = 'rgba(255,255,255,0.04)';
+          gear.style.borderColor = 'rgba(255,255,255,0.08)';
+          gear.style.color = 'var(--color-muted)';
+          gear.onmouseover = function() { this.style.background='rgba(255,255,255,0.08)'; this.style.color='var(--color-ink)'; };
+          gear.onmouseout = function() { this.style.background='rgba(255,255,255,0.04)'; this.style.color='var(--color-muted)'; };
+        }
+      }
+
+      // Logout button
+      var logout = document.querySelector('.qris-navbar form[action*="logout"] button');
+      if (logout) {
+        if (isLight) {
+          logout.style.background = 'rgba(239,68,68,0.07)';
+          logout.style.borderColor = 'rgba(239,68,68,0.2)';
+          logout.style.color = '#dc2626';
+          logout.onmouseover = function() { this.style.background='rgba(239,68,68,0.12)'; this.style.borderColor='rgba(239,68,68,0.35)'; };
+          logout.onmouseout = function() { this.style.background='rgba(239,68,68,0.07)'; this.style.borderColor='rgba(239,68,68,0.2)'; };
+        } else {
+          logout.style.background = 'rgba(239,68,68,0.08)';
+          logout.style.borderColor = 'rgba(239,68,68,0.25)';
+          logout.style.color = '#fca5a5';
+          logout.onmouseover = function() { this.style.background='rgba(239,68,68,0.16)'; this.style.borderColor='rgba(239,68,68,0.4)'; };
+          logout.onmouseout = function() { this.style.background='rgba(239,68,68,0.08)'; this.style.borderColor='rgba(239,68,68,0.25)'; };
+        }
+      }
+
+      // Navbar divider
+      var divider = document.querySelector('.qris-navbar [style*="width:1px"]');
+      if (divider) {
+        divider.style.background = isLight ? 'var(--line)' : 'rgba(255,255,255,0.1)';
+      }
+    }
+
+    // Apply fixes on page load if light theme is active
+    document.addEventListener('DOMContentLoaded', function() {
+      if (document.documentElement.classList.contains('light')) {
+        fixInlineNavbarStyles(true);
+      }
+    });
+  </script>
+
+  <script>
+    // Mobile sidebar toggle
+    function openSidebar() {
+      document.querySelector('.qris-sidebar').classList.add('is-open');
+      document.getElementById('sidebarOverlay').classList.add('is-open');
+    }
+    function closeSidebar() {
+      document.querySelector('.qris-sidebar').classList.remove('is-open');
+      document.getElementById('sidebarOverlay').classList.remove('is-open');
+    }
+
+    // Animate number counters
+    function animateCounter(el) {
+      const target = parseFloat(el.dataset.count);
+      if (isNaN(target)) return;
+      const isCurrency = el.dataset.currency === '1';
+      const duration = 1000;
+      const steps = 40;
+      const increment = target / steps;
+      let current = 0;
+      let step = 0;
+      const timer = setInterval(() => {
+        step++;
+        current = step >= steps ? target : Math.floor(increment * step);
+        el.textContent = isCurrency
+          ? 'Rp ' + current.toLocaleString('id-ID')
+          : current.toLocaleString('id-ID');
+        if (step >= steps) clearInterval(timer);
+      }, duration / steps);
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('[data-count]').forEach(animateCounter);
+    });
+  </script>
+  <%- typeof scripts !== 'undefined' ? scripts : '' %>
+</body>
+</html>

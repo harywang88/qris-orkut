@@ -1,0 +1,256 @@
+<style>
+  .aa-wrap{max-width:1100px}
+  .aa-table{width:100%;border-collapse:collapse;font-size:13.5px}
+  .aa-table th,.aa-table td{text-align:left;padding:12px 14px;border-bottom:1px solid var(--line)}
+  .aa-table thead th{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.06em;font-weight:800;background:rgba(255,255,255,.02)}
+  .aa-table tbody tr:hover{background:rgba(255,255,255,.03)}
+  .aa-empty{text-align:center;color:var(--muted);padding:26px}
+  .role-pill{font-size:10px;font-weight:900;letter-spacing:.5px;padding:3px 9px;border-radius:999px;background:rgba(59,130,246,.16);border:1px solid rgba(59,130,246,.4);color:#93c5fd}
+  .role-pill.alias{background:rgba(148,163,184,.12);color:var(--muted);border-color:var(--line)}
+  .perm-count{display:inline-flex;align-items:baseline;gap:4px;font-weight:900;font-size:12.5px;padding:3px 10px;border-radius:999px;border:1px solid}
+  .perm-count .pc-lab{font-size:9px;font-weight:800;letter-spacing:.4px;opacity:.8;text-transform:uppercase}
+  .perm-count.full{color:#34d399;background:rgba(52,211,153,.14);border-color:rgba(52,211,153,.4)}
+  .perm-count.partial{color:#fbbf24;background:rgba(251,191,36,.14);border-color:rgba(251,191,36,.4)}
+  .perm-count.none{color:#f87171;background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.4)}
+  .aa-actbtn{padding:6px 12px;font-size:12px;font-weight:800;border-radius:8px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--ink);cursor:pointer}
+  .aa-actbtn:hover{background:rgba(255,255,255,.08)}
+  .aa-actbtn.danger{color:#fca5a5;border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.08)}
+  .aa-actbtn.danger:hover{background:rgba(239,68,68,.16)}
+  .aa-addbtn{display:inline-flex;align-items:center;gap:8px;padding:9px 16px;font-size:13px;font-weight:800;border-radius:10px;border:1px solid rgba(99,130,255,.35);background:rgba(99,130,255,.16);color:#a3c9ff;cursor:pointer}
+  .aa-addbtn:hover{background:rgba(99,130,255,.26)}
+  /* modal */
+  .aa-overlay{position:fixed;inset:0;background:rgba(2,4,10,.66);backdrop-filter:blur(3px);display:flex;align-items:center;justify-content:center;z-index:1000;padding:18px}
+  .aa-overlay[hidden]{display:none!important}
+  .aa-modal{width:100%;max-width:640px;max-height:90vh;overflow-y:auto;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .aa-modal h3{margin:0;font-size:17px;font-weight:800;color:var(--ink)}
+  .aa-mhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+  .aa-x{background:rgba(255,255,255,.05);border:1px solid var(--line);color:var(--muted);width:32px;height:32px;border-radius:8px;cursor:pointer;font-size:14px}
+  .aa-x:hover{color:#fca5a5}
+  .aa-field{display:block;margin-bottom:12px}
+  .aa-field span{display:block;font-size:12px;color:var(--muted);font-weight:700;margin-bottom:5px}
+  .aa-field input{width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--ink);font-size:13.5px;outline:none}
+  .aa-field input:focus{border-color:rgba(99,130,255,.5)}
+  .aa-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .perm-box{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:6px 0 16px;background:rgba(255,255,255,.02)}
+  .perm-box-title{font-size:13px;font-weight:800;color:var(--ink);margin-bottom:4px}
+  .perm-box-title .muted{font-weight:600;color:var(--muted);font-size:11.5px}
+  .perm-menu{border-top:1px solid var(--line);padding:9px 0}
+  .perm-menu:first-of-type{border-top:none}
+  .perm-menu-head{display:flex;align-items:center;gap:9px}
+  .perm-chk{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--ink);cursor:pointer;font-weight:700}
+  .perm-chk input{width:16px;height:16px;accent-color:#6382ff;cursor:pointer}
+  .perm-subs{display:flex;flex-wrap:wrap;gap:6px 16px;margin:7px 0 0 26px}
+  .perm-sub{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);cursor:pointer;padding:3px 6px;border-radius:7px}
+  .perm-sub:hover{background:rgba(255,255,255,.04)}
+  .perm-sub input{width:15px;height:15px;accent-color:#6382ff;cursor:pointer}
+  .perm-menu.locked{opacity:.55}
+  .perm-menu.locked .perm-chk,.perm-menu.locked .perm-sub{cursor:not-allowed}
+  .aa-mactions{display:flex;justify-content:flex-end;gap:10px;margin-top:6px}
+  .aa-savebtn{padding:9px 18px;font-size:13px;font-weight:800;border-radius:10px;border:1px solid rgba(99,130,255,.4);background:rgba(99,130,255,.2);color:#a3c9ff;cursor:pointer}
+  .aa-cancelbtn{padding:9px 16px;font-size:13px;font-weight:700;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--muted);cursor:pointer}
+  .perm-tools{display:flex;gap:8px;margin-bottom:8px}
+  .perm-tool{font-size:11px;font-weight:800;padding:4px 10px;border-radius:7px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--muted);cursor:pointer}
+  .perm-tool:hover{color:var(--ink)}
+</style>
+
+<div class="qris-page-header">
+  <h1 class="qris-page-title">Akun <span>Alias</span></h1>
+  <p class="qris-section-sub mt-1">Kelola akun operator &amp; hak aksesnya per menu (centang = diberi akses). Master = akses penuh.</p>
+</div>
+
+<div class="qris-card p-0 aa-wrap">
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:16px 18px;border-bottom:1px solid var(--line)">
+    <h2 style="margin:0;font-size:16px;font-weight:800;color:var(--ink)">👤 Daftar Akun</h2>
+    <button class="aa-addbtn" id="aaAddBtn"><i class="fa-solid fa-plus"></i> Tambah Akun</button>
+  </div>
+  <div style="overflow-x:auto">
+    <table class="aa-table">
+      <thead><tr><th>Nama</th><th>Username</th><th>Role</th><th>Site</th><th>Hak Akses Menu</th><th style="text-align:right">Aksi</th></tr></thead>
+      <tbody id="aaTbody"><tr><td colspan="6" class="aa-empty">Memuat…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Modal Tambah/Edit -->
+<div class="aa-overlay" id="aaOverlay" hidden>
+  <div class="aa-modal">
+    <div class="aa-mhead">
+      <h3 id="aaModalTitle">Tambah Akun Alias</h3>
+      <button class="aa-x" id="aaModalClose">✕</button>
+    </div>
+    <form id="aaForm">
+      <input type="hidden" id="aa_editUsername" />
+      <div class="aa-grid2">
+        <label class="aa-field"><span>Nama Tampilan</span><input type="text" id="aa_name" placeholder="mis. Operator 1" required></label>
+        <label class="aa-field"><span>Username</span><input type="text" id="aa_username" placeholder="username login" required></label>
+      </div>
+      <label class="aa-field"><span id="aa_passlabel">Password</span><input type="text" id="aa_password" placeholder="password"></label>
+      <label class="aa-field">
+        <span>Site (Tenant) — batasi akses ke 1 site</span>
+        <select id="aa_sitescope" style="width:100%;padding:10px 12px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.03);color:var(--ink);font-size:13.5px;outline:none">
+          <option value="">Semua Site (di bawah master)</option>
+        </select>
+        <span style="display:block;margin-top:5px;font-size:11px;color:var(--muted);font-weight:600">Kosong = lihat semua site. Pilih 1 site = alias tenant, hanya lihat site itu.</span>
+      </label>
+      <div class="perm-box">
+        <div class="perm-box-title">Hak Akses Menu <span class="muted">(centang = diberi akses · sub-aksi opsional)</span></div>
+        <div class="perm-tools">
+          <button type="button" class="perm-tool" id="aaCheckAll">Centang semua</button>
+          <button type="button" class="perm-tool" id="aaUncheckAll">Kosongkan</button>
+        </div>
+        <div id="aa_perms"></div>
+      </div>
+      <div class="aa-mactions">
+        <button type="button" class="aa-cancelbtn" id="aaModalCancel">Batal</button>
+        <button type="submit" class="aa-savebtn" id="aaSaveBtn">Simpan</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+(function(){
+  const MENU_DEFS = <%- JSON.stringify(menuDefs) %>;
+  const SITES = <%- JSON.stringify(typeof sites !== 'undefined' ? sites : []) %>;
+  const apiUrl = '<%= url('/dashboard/api/akun-alias') %>';
+  let accounts = <%- JSON.stringify(accounts) %>;
+
+  function siteNameById(id){ const s = SITES.find(x => x.id === id); return s ? s.name : id; }
+  function siteBadge(u){
+    if (u.isMaster || !u.siteScope) return '<span style="font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:rgba(52,211,153,.14);border:1px solid rgba(52,211,153,.4);color:#34d399">Semua site</span>';
+    return '<span style="font-size:11px;font-weight:800;padding:3px 9px;border-radius:999px;background:rgba(139,92,246,.16);border:1px solid rgba(139,92,246,.4);color:#c4b5fd"><i class="fa-solid fa-store" style="font-size:9px"></i> ' + esc(siteNameById(u.siteScope)) + '</span>';
+  }
+  function buildSiteScopeSelect(cur){
+    const sel = document.getElementById('aa_sitescope');
+    sel.innerHTML = '<option value="">Semua Site (di bawah master)</option>' +
+      SITES.map(s => '<option value="' + esc(s.id) + '"' + (s.id === cur ? ' selected' : '') + '>' + esc(s.name) + '</option>').join('');
+    sel.value = cur || '';
+  }
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (v) => String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+  const alertable = MENU_DEFS.filter(m => !m.masterOnly);
+  const totalMenus = alertable.length;
+
+  function menuGranted(perms, m){ return !!(perms && perms[m.key + '.view']); }
+  function permBadge(u){
+    if (u.isMaster) return `<span class="perm-count full" title="Master — semua akses">${totalMenus}/${totalMenus} <span class="pc-lab">menu</span></span>`;
+    const on = alertable.filter(m => menuGranted(u.perms, m));
+    const n = on.length;
+    const cls = n===0 ? 'none' : (n>=totalMenus ? 'full' : 'partial');
+    const tip = n ? ('Akses: ' + on.map(m=>m.label).join(', ')) : 'Belum ada akses menu';
+    return `<span class="perm-count ${cls}" title="${esc(tip)}">${n}/${totalMenus} <span class="pc-lab">menu</span></span>`;
+  }
+  function render(){
+    const tb = $('aaTbody');
+    if (!accounts.length){ tb.innerHTML = `<tr><td colspan="6" class="aa-empty">Belum ada akun</td></tr>`; return; }
+    tb.innerHTML = accounts.map(u => `
+      <tr>
+        <td><b style="color:var(--ink)">${esc(u.name)}</b></td>
+        <td style="color:var(--muted)">${esc(u.username)}</td>
+        <td>${u.isMaster ? '<span class="role-pill">MASTER</span>' : '<span class="role-pill alias">ALIAS</span>'}</td>
+        <td>${siteBadge(u)}</td>
+        <td>${permBadge(u)}</td>
+        <td style="text-align:right;white-space:nowrap">
+          ${u.isMaster ? '<span style="color:var(--muted);font-size:12px">— terkunci —</span>' : `
+            <button class="aa-actbtn" data-act="edit" data-u="${esc(u.username)}"><i class="fa-solid fa-pen"></i> Edit</button>
+            <button class="aa-actbtn danger" data-act="del" data-u="${esc(u.username)}"><i class="fa-solid fa-trash"></i> Hapus</button>`}
+        </td>
+      </tr>`).join('');
+  }
+
+  // ── Perm grid (menu + sub) ─────────────────────────────────────────────
+  function buildPerms(perms, locked){
+    $('aa_perms').innerHTML = MENU_DEFS.map(m => {
+      const lock = locked || m.masterOnly;
+      const viewKey = m.key + '.view';
+      const viewOn = perms && perms[viewKey];
+      const subs = m.subs.filter(s => s.key !== 'view').map(s => {
+        const key = m.key + '.' + s.key;
+        return `<label class="perm-sub"><input type="checkbox" class="aa-sub" data-menu="${m.key}" value="${key}" ${perms&&perms[key]?'checked':''} ${lock?'disabled':''}> ${esc(s.label)}</label>`;
+      }).join('');
+      return `<div class="perm-menu ${lock?'locked':''}" data-menu="${m.key}" ${m.masterOnly?'title="Khusus akun master"':''}>
+        <div class="perm-menu-head">
+          <label class="perm-chk"><input type="checkbox" class="aa-view" data-menu="${m.key}" value="${viewKey}" ${viewOn?'checked':''} ${lock?'disabled':''}> ${m.icon||''} ${esc(m.label)}${m.masterOnly?' <span style="font-size:10px;color:var(--muted);font-weight:600">(master)</span>':''}</label>
+        </div>
+        ${subs ? `<div class="perm-subs">${subs}</div>` : ''}
+      </div>`;
+    }).join('');
+    // interaksi: sub dicentang -> view auto-on; view di-off -> sub off
+    $('aa_perms').querySelectorAll('.aa-sub').forEach(sub => sub.addEventListener('change', () => {
+      if (sub.checked){ const v = $('aa_perms').querySelector('.aa-view[data-menu="'+sub.dataset.menu+'"]'); if(v) v.checked = true; }
+    }));
+    $('aa_perms').querySelectorAll('.aa-view').forEach(v => v.addEventListener('change', () => {
+      if (!v.checked){ $('aa_perms').querySelectorAll('.aa-sub[data-menu="'+v.dataset.menu+'"]').forEach(s => s.checked=false); }
+    }));
+  }
+  function collectPerms(){
+    const perms = {};
+    $('aa_perms').querySelectorAll('input[type=checkbox]:checked').forEach(c => { if(!c.disabled) perms[c.value] = true; });
+    return perms;
+  }
+
+  // ── Modal ──────────────────────────────────────────────────────────────
+  const overlay = $('aaOverlay');
+  function openModal(edit, u){
+    $('aaModalTitle').textContent = edit ? 'Edit Akun Alias' : 'Tambah Akun Alias';
+    $('aa_editUsername').value = edit ? u.username : '';
+    $('aa_name').value = edit ? u.name : '';
+    $('aa_username').value = edit ? u.username : '';
+    $('aa_username').disabled = !!edit;
+    $('aa_password').value = '';
+    $('aa_password').placeholder = edit ? '(kosongkan jika tidak diubah)' : 'password';
+    $('aa_passlabel').textContent = edit ? 'Password baru (opsional)' : 'Password';
+    buildSiteScopeSelect(edit ? (u.siteScope || '') : '');
+    buildPerms(edit ? u.perms : {}, false);
+    overlay.hidden = false;
+  }
+  function closeModal(){ overlay.hidden = true; }
+  $('aaAddBtn').addEventListener('click', () => openModal(false));
+  $('aaModalClose').addEventListener('click', closeModal);
+  $('aaModalCancel').addEventListener('click', closeModal);
+  overlay.addEventListener('click', (e) => { if(e.target===overlay) closeModal(); });
+  $('aaCheckAll').addEventListener('click', () => $('aa_perms').querySelectorAll('input:not(:disabled)').forEach(c=>c.checked=true));
+  $('aaUncheckAll').addEventListener('click', () => $('aa_perms').querySelectorAll('input:not(:disabled)').forEach(c=>c.checked=false));
+
+  $('aaTbody').addEventListener('click', async (e) => {
+    const btn = e.target.closest('button[data-act]'); if(!btn) return;
+    const u = accounts.find(x => x.username === btn.dataset.u); if(!u) return;
+    if (btn.dataset.act === 'edit') openModal(true, u);
+    else if (btn.dataset.act === 'del'){
+      if (!confirm(`Hapus akun "${u.name}" (${u.username})?`)) return;
+      const r = await fetch(apiUrl + '/' + encodeURIComponent(u.username), { method:'DELETE' });
+      const d = await r.json();
+      if (d.ok){ await reload(); } else alert(d.error || 'Gagal hapus');
+    }
+  });
+
+  $('aaForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const editUsername = $('aa_editUsername').value;
+    const perms = collectPerms();
+    const name = $('aa_name').value.trim();
+    const pwd = $('aa_password').value;
+    const siteScope = $('aa_sitescope').value;
+    try{
+      let r;
+      if (editUsername){
+        const body = { name, perms, siteScope }; if(pwd) body.password = pwd;
+        r = await fetch(apiUrl + '/' + encodeURIComponent(editUsername), { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body) });
+      } else {
+        const username = $('aa_username').value.trim();
+        if (!username || !pwd){ alert('Username & password wajib'); return; }
+        r = await fetch(apiUrl, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ username, name, password:pwd, perms, siteScope }) });
+      }
+      const d = await r.json();
+      if (d.ok){ closeModal(); await reload(); } else alert(d.error || 'Gagal menyimpan');
+    }catch(err){ alert('Gagal: ' + err.message); }
+  });
+
+  async function reload(){
+    try{ const r = await fetch(apiUrl, {cache:'no-store'}); const d = await r.json(); if(d.ok){ accounts = d.accounts||[]; render(); } }
+    catch(_){}
+  }
+  render();
+})();
+</script>

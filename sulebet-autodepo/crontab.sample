@@ -1,0 +1,3 @@
+# Sulebet auto-deposit — pasang dgn: crontab -e  (lalu tempel baris di bawah)
+* * * * * /usr/bin/python3 /opt/qris-orkut/sulebet-autodepo/auto_deposit_worker.py >> /opt/qris-orkut/sulebet-autodepo/logs/auto-deposit.log 2>&1
+* * * * * /usr/bin/python3 /opt/qris-orkut/sulebet-autodepo/session_prewarm.py >> /opt/qris-orkut/sulebet-autodepo/logs/prewarm.log 2>&1

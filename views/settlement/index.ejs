@@ -1,0 +1,3623 @@
+<%
+  function fmtRp(n) {
+    return 'Rp\u00a0' + (n || 0).toLocaleString('id-ID');
+  }
+  function extractSettlementRedirectUrl(note) {
+    if (!note) return null;
+    const match = String(note).match(/\[\[REDIRECT_URL:(.+?)\]\]/);
+    return match ? match[1] : null;
+  }
+  function cleanSettlementNote(note) {
+    if (!note) return '';
+    return String(note)
+      .replace(/\s*\[\[FEE:\d+\]\]\s*/g, ' ')
+      .replace(/\s*\[\[TOTAL:\d+\]\]\s*/g, ' ')
+      .replace(/\s*\[\[REDIRECT_URL:.+?\]\]\s*/g, ' ')
+      .replace(/\s+\|\s*$/g, '')
+      .trim();
+  }
+  function extractSettlementFee(note) {
+    if (!note) return null;
+    const match = String(note).match(/\[\[FEE:(\d+)\]\]/);
+    return match ? Number.parseInt(match[1], 10) : null;
+  }
+  function extractSettlementTotal(note) {
+    if (!note) return null;
+    const match = String(note).match(/\[\[TOTAL:(\d+)\]\]/);
+    return match ? Number.parseInt(match[1], 10) : null;
+  }
+  function syncLabel(account) {
+    if (!account.lastBalanceSyncAt) return 'Belum sinkron';
+    const d = new Date(account.lastBalanceSyncAt);
+    return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: 'Asia/Jakarta' });
+  }
+  function statusOk(account) {
+    return account.lastBalanceSyncStatus === 'synced' || account.lastBalanceSyncStatus === 'partial';
+  }
+
+  const BANKS = [
+    'BCA','BRI','BNI','Mandiri','CIMB Niaga','Danamon','Permata','BTN','Panin','Maybank',
+    'OCBC NISP','BTPN','Commonwealth','Mega','Bukopin','Sinarmas','MNC Bank','Artha Graha',
+    'NOBU','Jago','Allo Bank','SeaBank','Bank Neo Commerce','Bank Raya','Bank Amar',
+    'Bank Sahabat Sampoerna','Bank Index','Bank Ganesha','Bank Ina Perdana','Bank Kesejahteraan',
+    'Bank Maspion','Bank Mestika','Bank Mitraniaga','Bank OCBC','Bank Prima Master',
+    'Bank Rabobank','Bank Royal','Bank Shinhan','Bank SBI Indonesia','Bank Sinarmas',
+    'Bank UOB','Bank Windu','BJB','Bank Jateng','Bank Jatim','Bank DIY','Bank Sumsel Babel',
+    'Bank Sumut','Bank Sumbar','Bank Aceh','Bank Riau Kepri','Bank Lampung','Bank Bengkulu',
+    'Bank Kaltim','Bank Kalbar','Bank Kalteng','Bank Kalsel','Bank Sulteng','Bank Sulut',
+    'Bank Sulsel','Bank Sultra','Bank Sulbar','Bank Maluku','Bank Papua','Bank NTT','Bank NTB',
+    'Bank Bali','Bank BPD DIY','BPR BKK','BPD Sultengg',
+    'Dana','GoPay','OVO','ShopeePay','LinkAja','iSaku','QRIS','Jenius','KreditPlus',
+    'Kredivo','Akulaku','PayLater BCA','PayLater Mandiri','Tokopedia','Shopee','Lazada',
+    'Bukalapak','Traveloka','Tiket.com','Blibli','JD.id','Zalora',
+    'Western Union','MoneyGram','Wise','Paypal',
+  ].sort();
+%>
+
+<style>
+  /* ── Account Cards ─────────────────────────────── */
+  .setl-card {
+    position: relative;
+    background:
+      radial-gradient(140% 90% at 50% -20%, rgba(96,165,250,0.12), transparent 55%),
+      linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0) 38%),
+      var(--card);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    overflow: hidden;
+    transition: border-color .35s ease, box-shadow .35s ease, transform .35s cubic-bezier(.22,1,.36,1);
+    animation: setlCardIn .5s cubic-bezier(.22,1,.36,1) both;
+  }
+  .setl-card::before {
+    content: '';
+    position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent 4%, rgba(96,165,250,.85), rgba(167,139,250,.7), rgba(74,222,128,.7), transparent 96%);
+    box-shadow: 0 0 12px rgba(96,165,250,.35);
+    opacity: .9;
+  }
+  .setl-card:hover {
+    border-color: var(--line-hi);
+    box-shadow: 0 16px 44px rgba(0,0,0,0.38), 0 0 0 1px rgba(255,255,255,0.05), 0 0 26px -8px rgba(96,165,250,.28);
+    transform: translateY(-4px);
+  }
+  .setl-card:nth-child(2) { animation-delay: .06s; }
+  .setl-card:nth-child(3) { animation-delay: .12s; }
+  .setl-card:nth-child(4) { animation-delay: .18s; }
+  @keyframes setlCardIn {
+    from { opacity: 0; transform: translateY(16px) scale(.98); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+
+  /* ── Section Labels ────────────────────────────── */
+  .setl-section-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px 7px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    background: linear-gradient(90deg, rgba(22,163,74,0.08) 0%, rgba(21,128,61,0.03) 100%);
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    position: relative;
+  }
+  .setl-section-label::before {
+    content: '';
+    width: 3px;
+    height: 14px;
+    border-radius: 2px;
+    background: var(--accent-grd);
+    flex-shrink: 0;
+  }
+  .setl-section-label.blue {
+    color: var(--blue);
+    background: linear-gradient(90deg, rgba(59,130,246,0.08) 0%, rgba(59,130,246,0.02) 100%);
+  }
+  .setl-section-label.blue::before {
+    background: linear-gradient(180deg, #3b82f6 0%, #60a5fa 100%);
+  }
+
+  /* ── Inputs ────────────────────────────────────── */
+  .setl-input {
+    flex: 1;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 9px 12px;
+    color: var(--ink);
+    font-size: 13px;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+    width: 100%;
+  }
+  .setl-input:focus {
+    border-color: rgba(59,130,246,0.5);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+  .setl-input::placeholder { color: var(--muted); }
+
+  .setl-select {
+    width: 100%;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 9px 12px;
+    color: var(--ink);
+    font-size: 13px;
+    outline: none;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    transition: border-color .2s, box-shadow .2s;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='none'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239a9085' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    padding-right: 32px;
+  }
+  .setl-select:focus {
+    border-color: rgba(59,130,246,0.5);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
+  }
+
+  /* ── Buttons ───────────────────────────────────── */
+  .setl-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 9px 18px;
+    border-radius: 10px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 700;
+    white-space: nowrap;
+    color: #fff;
+    transition: opacity .15s, transform .15s, box-shadow .15s;
+  }
+  .setl-btn:hover { opacity: .88; transform: translateY(-1px); }
+  .setl-btn:active { transform: translateY(0); }
+  .setl-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+
+  .setl-btn-green {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px; border-radius: 10px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 700; white-space: nowrap;
+    background: linear-gradient(135deg, #16a34a, #22c55e);
+    color: #fff;
+    transition: opacity .15s, transform .15s, box-shadow .15s;
+    box-shadow: 0 2px 8px rgba(22,163,74,0.25);
+  }
+  .setl-btn-green:hover { opacity: .88; transform: translateY(-1px); }
+  .setl-btn-green:active { transform: translateY(0); }
+  .setl-btn-green:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .setl-btn-orange {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px; border-radius: 10px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 700; white-space: nowrap;
+    background: linear-gradient(135deg, #ea580c, #f97316);
+    color: #fff;
+    transition: opacity .15s, transform .15s, box-shadow .15s;
+    box-shadow: 0 2px 8px rgba(234,88,12,0.25);
+  }
+  .setl-btn-orange:hover { opacity: .88; transform: translateY(-1px); }
+  .setl-btn-orange:active { transform: translateY(0); }
+  .setl-btn-orange:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  .setl-btn-blue {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 16px; border-radius: 10px; border: none; cursor: pointer;
+    font-size: 13px; font-weight: 700; white-space: nowrap;
+    background: linear-gradient(135deg, #2563eb, #3b82f6);
+    color: #fff;
+    transition: opacity .15s, transform .15s, box-shadow .15s;
+    box-shadow: 0 2px 8px rgba(37,99,235,0.25);
+  }
+  .setl-btn-blue:hover { opacity: .88; transform: translateY(-1px); }
+  .setl-btn-blue:active { transform: translateY(0); }
+  .setl-btn-blue:disabled { opacity: .4; cursor: not-allowed; transform: none; box-shadow: none; }
+
+  /* ── Links & Messages ──────────────────────────── */
+  .setl-link {
+    font-size: 11px;
+    color: var(--accent);
+    cursor: pointer;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color .15s;
+  }
+  .setl-link:hover { text-decoration: underline; color: #f97316; }
+
+  .setl-msg {
+    margin-top: 8px;
+    font-size: 11px;
+    display: none;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-weight: 500;
+  }
+
+  /* ── Balance Row ───────────────────────────────── */
+  .setl-bal-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--line);
+  }
+  .setl-bal-row:last-child { border-bottom: none; }
+  .setl-bal-label { font-size: 12px; color: var(--muted); }
+  .setl-bal-value { font-size: 13px; font-weight: 700; }
+
+  /* ── KIRIM UANG Collapsible ────────────────────── */
+  .setl-kirim-hdr {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 11px 16px;
+    cursor: pointer;
+    border-top: 1px solid var(--line);
+    background: linear-gradient(90deg, rgba(59,130,246,0.04) 0%, transparent 100%);
+    transition: background .2s;
+    user-select: none;
+  }
+  .setl-kirim-hdr:hover {
+    background: linear-gradient(90deg, rgba(59,130,246,0.08) 0%, transparent 100%);
+  }
+  .setl-kirim-body {
+    padding: 0 16px 14px;
+    border-top: 1px solid var(--line);
+  }
+
+  /* ── Card Header ───────────────────────────────── */
+  .setl-card-header {
+    position: relative;
+    padding: 20px 16px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 4px;
+  }
+  .setl-card-acct-num {
+    font-size: 9px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .22em;
+    margin: 0;
+    /* Gold premium + animasi shimmer */
+    background: linear-gradient(90deg, #a67c00 0%, #d4af37 18%, #fceabb 38%, #f9df7b 50%, #fceabb 62%, #d4af37 82%, #a67c00 100%);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+    animation: setlGoldShine 2.8s linear infinite;
+    text-shadow: 0 0 6px rgba(212, 175, 55, 0.25);
+  }
+  @keyframes setlGoldShine {
+    to { background-position: 200% center; }
+  }
+  .setl-card-name {
+    font-size: 19px;
+    font-weight: 800;
+    margin: 0;
+    line-height: 1.15;
+    letter-spacing: .01em;
+    background: linear-gradient(180deg, #ffffff, #b6c2d4);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    transition: filter .3s ease;
+  }
+  /* Warna nama kartu = status sinkron (ok hijau / error merah) */
+  .setl-card-name.setl-name-ok {
+    background: linear-gradient(180deg, #bbf7d0, #22c55e);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .setl-card-name.setl-name-bad {
+    background: linear-gradient(180deg, #fecaca, #ef4444);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+
+  /* ── Toggle On/Off Akun (kanan atas kartu) ─────── */
+  .setl-toggle { position:absolute; top:14px; right:14px; z-index:5; }
+  .setl-toggle label { display:inline-flex; align-items:center; cursor:pointer; }
+  .setl-tog-input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+  .setl-tog-track { width:38px; height:21px; border-radius:999px; position:relative; display:block; transition:background .2s; }
+  .setl-tog-thumb { position:absolute; top:2px; width:17px; height:17px; background:#fff; border-radius:50%; transition:left .2s; box-shadow:0 1px 3px rgba(0,0,0,.4); }
+
+  /* ── Status Badge ──────────────────────────────── */
+  .setl-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    flex-shrink: 0;
+  }
+  .setl-status-badge .setl-dot {
+    width: 5px; height: 5px; border-radius: 50%; display: inline-block;
+  }
+  .setl-status-ok {
+    background: var(--green-dim); color: #4ade80; border: 1px solid var(--green-border);
+  }
+  .setl-status-ok .setl-dot { background: #4ade80; }
+  .setl-status-off {
+    background: rgba(100,116,139,0.14); color: #94a3b8; border: 1px solid rgba(100,116,139,0.25);
+  }
+  .setl-status-off .setl-dot { background: #64748b; }
+
+  /* ── Limit Bar ─────────────────────────────────── */
+  .setl-limit-wrap {
+    padding: 0 16px 12px;
+  }
+  .setl-limit-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+  }
+  .setl-limit-label {
+    font-size: 10px; font-weight: 600; color: var(--muted);
+  }
+  .setl-limit-track {
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden;
+  }
+  .setl-limit-fill {
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #22c55e, #4ade80);
+    transition: width .6s ease;
+  }
+  .setl-indicator-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 0 16px 12px;
+  }
+  .setl-mini-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    border: 1px solid transparent;
+    white-space: nowrap;
+  }
+  .setl-mini-chip::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: .9;
+  }
+  .setl-mini-chip.green { color: #4ade80; background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.2); }
+  .setl-mini-chip.red { color: #f87171; background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.22); }
+  .setl-mini-chip.blue { color: #60a5fa; background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.22); }
+  .setl-mini-chip.orange { color: #fb923c; background: rgba(249,115,22,0.12); border-color: rgba(249,115,22,0.22); }
+  .setl-mini-chip.muted { color: #a8b1bd; background: rgba(148,163,184,0.12); border-color: rgba(148,163,184,0.18); }
+  .setl-mini-note {
+    padding: 0 16px 10px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  /* ── Transfer Section Padding ──────────────────── */
+  .setl-transfer-body {
+    padding: 10px 16px 12px;
+  }
+  .setl-transfer-row {
+    display: flex;
+    gap: 8px;
+  }
+  .setl-transfer-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 7px;
+  }
+  .setl-owner-box {
+    margin-bottom: 8px;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 13px;
+    background: rgba(255,255,255,0.02);
+    transition: border-color .2s, background .2s, box-shadow .2s;
+  }
+  .setl-owner-box.success {
+    border-color: rgba(34,197,94,0.22);
+    background: rgba(34,197,94,0.08);
+    box-shadow: 0 0 0 1px rgba(34,197,94,0.06) inset;
+  }
+  .setl-owner-box.error {
+    border-color: rgba(239,68,68,0.22);
+    background: rgba(239,68,68,0.08);
+  }
+  .setl-owner-box.loading {
+    border-color: rgba(59,130,246,0.22);
+    background: rgba(59,130,246,0.08);
+  }
+  .setl-owner-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .setl-owner-name {
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--ink);
+    line-height: 1.35;
+    word-break: break-word;
+  }
+  .setl-owner-meta {
+    margin-top: 4px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.35;
+    word-break: break-word;
+  }
+  .setl-help-text {
+    margin-top: 7px;
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.4;
+  }
+  .setl-bank-picker { position: relative; }
+  .setl-bank-input-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 10px 0 12px;
+    min-height: 46px;
+    border-radius: 14px;
+    border: 1px solid rgba(96,165,250,0.14);
+    background:
+      linear-gradient(180deg, rgba(30,41,59,0.88) 0%, rgba(15,23,42,0.96) 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.04),
+      0 14px 30px rgba(2,6,23,0.24);
+    transition: border-color .2s, box-shadow .2s, transform .2s;
+  }
+  .setl-bank-input-wrap:focus-within {
+    border-color: rgba(96,165,250,0.45);
+    box-shadow:
+      0 0 0 3px rgba(59,130,246,0.12),
+      0 16px 34px rgba(2,6,23,0.34);
+    transform: translateY(-1px);
+  }
+  .setl-bank-leading {
+    color: #60a5fa;
+    font-size: 13px;
+    flex-shrink: 0;
+    opacity: .95;
+  }
+  .setl-bank-search {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    padding: 0;
+    min-height: 42px;
+  }
+  .setl-bank-search:focus {
+    border: none;
+    box-shadow: none;
+  }
+  .setl-bank-toggle {
+    width: 30px;
+    height: 30px;
+    border-radius: 10px;
+    border: 1px solid rgba(148,163,184,0.18);
+    background: rgba(255,255,255,0.04);
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background .18s, color .18s, border-color .18s;
+  }
+  .setl-bank-toggle:hover {
+    background: rgba(59,130,246,0.12);
+    color: #93c5fd;
+    border-color: rgba(96,165,250,0.22);
+  }
+  .setl-bank-toggle:disabled {
+    opacity: .45;
+    cursor: not-allowed;
+  }
+  .setl-bank-toggle.open i { transform: rotate(180deg); }
+  .setl-bank-toggle i {
+    transition: transform .18s ease;
+    font-size: 11px;
+  }
+  .setl-bank-dropdown {
+    position: absolute;
+    top: calc(100% + 10px);
+    left: 0;
+    right: 0;
+    z-index: 20;
+    border: 1px solid rgba(96,165,250,0.16);
+    border-radius: 18px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at top left, rgba(59,130,246,0.12) 0%, rgba(15,23,42,0) 34%),
+      linear-gradient(180deg, rgba(17,24,39,0.98) 0%, rgba(10,15,28,0.99) 100%);
+    box-shadow:
+      0 26px 50px rgba(2,6,23,0.42),
+      inset 0 1px 0 rgba(255,255,255,0.03);
+  }
+  .setl-bank-dropdown-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid rgba(148,163,184,0.12);
+  }
+  .setl-bank-dropdown-title {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    color: #dbeafe;
+  }
+  .setl-bank-dropdown-sub {
+    margin-top: 3px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.35;
+  }
+  .setl-bank-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    color: #93c5fd;
+    background: rgba(59,130,246,0.12);
+    border: 1px solid rgba(96,165,250,0.18);
+    white-space: nowrap;
+  }
+  .setl-bank-options {
+    max-height: 216px;
+    overflow-y: auto;
+    padding: 6px;
+  }
+  .setl-bank-options::-webkit-scrollbar { width: 7px; }
+  .setl-bank-options::-webkit-scrollbar-thumb {
+    background: rgba(148,163,184,0.18);
+    border-radius: 999px;
+  }
+  /* Baris bank — minimalis, satu baris, kompak (mirip referensi koko) */
+  .setl-bank-option {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 9px 12px;
+    border-radius: 9px;
+    background: transparent;
+    color: #e2e8f0;
+    text-align: left;
+    outline: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.2;
+    border: 0;
+    cursor: pointer;
+    transition: background .14s, color .14s;
+  }
+  .setl-bank-option:hover,
+  .setl-bank-option.active {
+    background: rgba(59,130,246,0.16);
+    color: #ffffff;
+  }
+  .setl-bank-option.active { font-weight: 800; }
+  .setl-bank-option-pinned { color: #bfdbfe; }
+  /* Pemisah halus setelah 6 bank favorit */
+  .setl-bank-sep {
+    border-bottom: 1px solid rgba(148,163,184,0.14);
+    margin-bottom: 4px;
+    padding-bottom: 11px;
+  }
+  .setl-bank-empty {
+    padding: 16px 12px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  /* ── Card Footer ───────────────────────────────── */
+  .setl-card-footer {
+    padding: 8px 16px;
+    border-top: 1px solid var(--line);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: rgba(255,255,255,0.01);
+  }
+  .setl-card-footer-link {
+    font-size: 10px;
+    color: var(--blue);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    text-decoration: none;
+    transition: color .15s;
+  }
+  .setl-card-footer-link:hover { color: #93c5fd; }
+
+  /* ── History Header ────────────────────────────── */
+  .setl-hist-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .setl-hist-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .setl-hist-count {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--muted);
+  }
+  .setl-hist-filter {
+    background: var(--card-hi);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    border-radius: 10px;
+    padding: 6px 12px;
+    font-size: 12px;
+    outline: none;
+    transition: border-color .2s;
+    cursor: pointer;
+  }
+  .setl-hist-filter:focus {
+    border-color: rgba(59,130,246,0.5);
+  }
+  .setl-flow-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 120;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(3, 8, 20, 0.72);
+    backdrop-filter: blur(10px);
+  }
+  .setl-flow-modal.open { display: flex; }
+  .setl-flow-card {
+    width: min(880px, 100%);
+    border-radius: 28px;
+    border: 1px solid rgba(148,163,184,0.16);
+    background:
+      radial-gradient(circle at top right, rgba(37,99,235,0.20) 0%, rgba(15,23,42,0) 35%),
+      linear-gradient(180deg, rgba(15,23,42,0.98) 0%, rgba(8,13,24,0.99) 100%);
+    box-shadow:
+      0 30px 70px rgba(2,6,23,0.55),
+      inset 0 1px 0 rgba(255,255,255,0.04);
+    overflow: hidden;
+  }
+  .setl-flow-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 22px 24px 18px;
+    border-bottom: 1px solid rgba(148,163,184,0.12);
+  }
+  .setl-flow-kicker {
+    font-size: 11px;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .12em;
+    color: #93c5fd;
+  }
+  .setl-flow-title {
+    margin-top: 8px;
+    font-size: 24px;
+    font-weight: 900;
+    color: #f8fafc;
+    line-height: 1.15;
+  }
+  .setl-flow-sub {
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.6;
+    max-width: 560px;
+  }
+  .setl-flow-close {
+    width: 38px;
+    height: 38px;
+    border-radius: 14px;
+    border: 1px solid rgba(148,163,184,0.16);
+    background: rgba(255,255,255,0.03);
+    color: #cbd5e1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background .18s, color .18s, transform .18s;
+  }
+  .setl-flow-close:hover {
+    background: rgba(239,68,68,0.12);
+    color: #fecaca;
+    transform: translateY(-1px);
+  }
+  .setl-flow-grid {
+    display: grid;
+    grid-template-columns: 1.1fr .9fr;
+    gap: 16px;
+    padding: 20px 24px 24px;
+  }
+  .setl-flow-panel {
+    border: 1px solid rgba(148,163,184,0.12);
+    border-radius: 22px;
+    background: rgba(255,255,255,0.02);
+    padding: 18px;
+  }
+  .setl-flow-panel.primary {
+    border-color: rgba(96,165,250,0.20);
+    background: linear-gradient(180deg, rgba(37,99,235,0.10) 0%, rgba(15,23,42,0.10) 100%);
+  }
+  .setl-flow-panel.disabled {
+    opacity: .72;
+    border-style: dashed;
+  }
+  .setl-flow-panel-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 15px;
+    font-weight: 800;
+    color: #f8fafc;
+  }
+  .setl-flow-panel-desc {
+    margin-top: 10px;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.6;
+  }
+  .setl-flow-meta {
+    margin-top: 14px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: rgba(2,6,23,0.42);
+    border: 1px solid rgba(148,163,184,0.10);
+  }
+  .setl-flow-meta-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 6px 0;
+    font-size: 12px;
+  }
+  .setl-flow-meta-row strong {
+    color: #f8fafc;
+    font-weight: 800;
+  }
+  .setl-flow-actions {
+    margin-top: 16px;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .setl-flow-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 11px 16px;
+    border-radius: 14px;
+    border: 1px solid rgba(96,165,250,0.18);
+    background: rgba(37,99,235,0.14);
+    color: #dbeafe;
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+    text-decoration: none;
+    transition: transform .18s, opacity .18s, background .18s;
+  }
+  .setl-flow-btn:hover { transform: translateY(-1px); opacity: .9; }
+  .setl-flow-btn.secondary {
+    border-color: rgba(148,163,184,0.14);
+    background: rgba(255,255,255,0.03);
+    color: #e2e8f0;
+  }
+  .setl-flow-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+    background: rgba(34,197,94,0.12);
+    color: #86efac;
+    border: 1px solid rgba(34,197,94,0.18);
+  }
+  .setl-flow-note {
+    margin-top: 12px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .setl-hist-note-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: flex-start;
+  }
+  .setl-hist-action {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(96,165,250,0.18);
+    background: rgba(37,99,235,0.12);
+    color: #bfdbfe;
+    font-size: 11px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: transform .18s, opacity .18s;
+  }
+  .setl-hist-action:hover {
+    transform: translateY(-1px);
+    opacity: .9;
+  }
+  @media (max-width: 860px) {
+    .setl-flow-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* ── Confirm Modal (premium) ───────────────────── */
+  .setl-confirm-overlay {
+    position: fixed; inset: 0; z-index: 9999;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    background: rgba(3,7,18,0.62); backdrop-filter: blur(6px);
+    opacity: 0; transition: opacity .22s ease;
+  }
+  .setl-confirm-overlay.open { opacity: 1; }
+  .setl-confirm-card {
+    position: relative; width: 100%; max-width: 360px; text-align: center;
+    background:
+      radial-gradient(120% 80% at 50% -10%, rgba(96,165,250,0.14), transparent 55%),
+      var(--card, #0f172a);
+    border: 1px solid var(--line, rgba(255,255,255,0.08));
+    border-radius: 22px; padding: 22px 20px 18px;
+    box-shadow: 0 24px 60px rgba(0,0,0,0.5);
+    transform: translateY(12px) scale(.97);
+    transition: transform .25s cubic-bezier(.22,1,.36,1);
+  }
+  .setl-confirm-overlay.open .setl-confirm-card { transform: translateY(0) scale(1); }
+  .setl-confirm-ico {
+    width: 52px; height: 52px; margin: 0 auto 12px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 16px; font-size: 20px; color: #93c5fd;
+    background: rgba(96,165,250,0.14); border: 1px solid rgba(96,165,250,0.25);
+  }
+  .setl-confirm-title { font-size: 16px; font-weight: 800; color: var(--ink, #f1f5f9); }
+  .setl-confirm-sub { margin-top: 4px; font-size: 12px; color: var(--muted, #94a3b8); }
+  .setl-confirm-rows {
+    margin: 16px 0 4px; text-align: left;
+    border: 1px solid var(--line, rgba(255,255,255,0.08)); border-radius: 14px; overflow: hidden;
+  }
+  .setl-confirm-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 9px 13px; font-size: 12.5px; border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .setl-confirm-row:last-child { border-bottom: 0; }
+  .setl-confirm-row span { color: var(--muted, #94a3b8); }
+  .setl-confirm-row strong { color: var(--ink, #f1f5f9); font-weight: 700; text-align: right; word-break: break-word; }
+  .setl-confirm-row strong.hl { color: #4ade80; font-size: 14px; }
+  .setl-confirm-actions { display: flex; gap: 10px; margin-top: 16px; }
+  .setl-confirm-btn {
+    flex: 1; padding: 11px 12px; border-radius: 13px; border: 0;
+    font-size: 13px; font-weight: 800; cursor: pointer;
+    transition: transform .15s ease, opacity .15s ease;
+  }
+  .setl-confirm-btn:hover { transform: translateY(-1px); }
+  .setl-confirm-btn.cancel { background: rgba(255,255,255,0.06); color: var(--ink, #e2e8f0); }
+  .setl-confirm-btn.ok { background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; }
+  .setl-confirm-btn.ok.green { background: linear-gradient(135deg, #22c55e, #16a34a); }
+  .setl-confirm-btn.ok.orange { background: linear-gradient(135deg, #fb923c, #f97316); }
+  .setl-confirm-btn.ok.blue { background: linear-gradient(135deg, #3b82f6, #2563eb); }
+
+  /* ── Progress transfer (bot memasukkan PIN) ─────── */
+  .setl-progress-overlay { position:fixed; inset:0; z-index:10000; display:flex; align-items:center; justify-content:center; padding:20px; background:rgba(3,7,18,0.68); backdrop-filter:blur(7px); opacity:0; transition:opacity .22s ease; }
+  .setl-progress-overlay.open { opacity:1; }
+  .setl-progress-card { position:relative; width:100%; max-width:380px; text-align:center; background:radial-gradient(120% 80% at 50% -10%, rgba(96,165,250,0.16), transparent 55%), var(--card, #0f172a); border:1px solid var(--line, rgba(255,255,255,0.08)); border-radius:24px; padding:26px 22px 20px; box-shadow:0 28px 70px rgba(0,0,0,0.55); transform:translateY(12px) scale(.97); transition:transform .25s cubic-bezier(.22,1,.36,1); }
+  .setl-progress-overlay.open .setl-progress-card { transform:translateY(0) scale(1); }
+  .setl-progress-spinner { width:64px; height:64px; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; border-radius:20px; font-size:26px; color:#93c5fd; background:rgba(96,165,250,0.14); border:1px solid rgba(96,165,250,0.3); position:relative; }
+  .setl-progress-spinner::after { content:''; position:absolute; inset:-4px; border-radius:22px; border:2px solid transparent; border-top-color:rgba(96,165,250,0.8); animation:spSpin 1s linear infinite; }
+  .setl-progress-spinner.ok { color:#4ade80; background:rgba(34,197,94,0.15); border-color:rgba(34,197,94,0.4); }
+  .setl-progress-spinner.ok::after { display:none; }
+  .setl-progress-spinner.fail { color:#f87171; background:rgba(239,68,68,0.15); border-color:rgba(239,68,68,0.4); }
+  .setl-progress-spinner.fail::after { display:none; }
+  @keyframes spSpin { to { transform:rotate(360deg); } }
+  .setl-progress-title { font-size:17px; font-weight:800; color:var(--ink, #f1f5f9); }
+  .setl-progress-sub { margin-top:5px; font-size:12.5px; color:var(--muted, #94a3b8); min-height:18px; }
+  .setl-progress-steps { margin:18px 0 4px; text-align:left; display:flex; flex-direction:column; gap:9px; }
+  .setl-progress-step { display:flex; align-items:center; gap:10px; font-size:12.5px; color:var(--muted, #94a3b8); transition:color .2s; }
+  .setl-progress-step .dot { width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,0.15); flex-shrink:0; transition:all .2s; }
+  .setl-progress-step.active { color:var(--ink, #e2e8f0); font-weight:700; }
+  .setl-progress-step.active .dot { background:#60a5fa; box-shadow:0 0 0 4px rgba(96,165,250,0.2); animation:spPulse 1s ease-in-out infinite; }
+  .setl-progress-step.done { color:#86efac; }
+  .setl-progress-step.done .dot { background:#22c55e; box-shadow:none; animation:none; }
+  @keyframes spPulse { 0%,100% { opacity:1; } 50% { opacity:.4; } }
+  .setl-progress-result { margin-top:14px; padding:10px 13px; border-radius:12px; font-size:12.5px; }
+  .setl-progress-result.ok { background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.22); color:#86efac; }
+  .setl-progress-result.fail { background:rgba(239,68,68,0.1); border:1px solid rgba(239,68,68,0.22); color:#fca5a5; }
+  .setl-progress-ref { font-family:ui-monospace,monospace; font-weight:800; }
+  .setl-progress-msg { margin-top:4px; opacity:.9; word-break:break-word; }
+  .setl-progress-close { margin-top:16px; width:100%; padding:11px; border:0; border-radius:13px; font-size:13px; font-weight:800; cursor:pointer; background:rgba(255,255,255,0.07); color:var(--ink, #e2e8f0); }
+
+  /* ── Alur Estafet Saldo (QRIS -> Utama -> Madera -> Bank) ─── */
+  .setl-flowchain { display:flex; align-items:stretch; gap:4px; }
+  .setl-flownode { flex:1; min-width:0; display:flex; flex-direction:column; align-items:center; gap:2px; padding:8px 4px; border-radius:12px;
+    background:color-mix(in srgb, var(--fc) 10%, transparent); border:1px solid color-mix(in srgb, var(--fc) 28%, transparent); }
+  .setl-flownode .fl-lbl { font-size:8.5px; font-weight:800; letter-spacing:.1em; text-transform:uppercase; color:var(--fc); opacity:.9; }
+  .setl-flownode .fl-val { font-size:12px; font-weight:900; color:var(--ink,#f1f5f9); font-family:ui-monospace,SFMono-Regular,monospace; white-space:nowrap; will-change:transform; }
+  /* Animasi premium saat saldo berubah: pop-scale + glow (hijau=naik, merah=turun). Warna angka tetap. */
+  .setl-flownode .fl-val.bal-up   { animation: setlBalUp .95s cubic-bezier(.22,1,.36,1); }
+  .setl-flownode .fl-val.bal-down { animation: setlBalDown .95s cubic-bezier(.22,1,.36,1); }
+  @keyframes setlBalUp {
+    0%   { transform: scale(1.26); text-shadow: 0 0 16px rgba(74,222,128,.9); filter: brightness(1.6); }
+    55%  { transform: scale(1.07); text-shadow: 0 0 8px rgba(74,222,128,.5); }
+    100% { transform: scale(1); text-shadow: none; filter: brightness(1); }
+  }
+  @keyframes setlBalDown {
+    0%   { transform: scale(1.26); text-shadow: 0 0 16px rgba(248,113,113,.9); filter: brightness(1.5); }
+    55%  { transform: scale(1.07); text-shadow: 0 0 8px rgba(248,113,113,.5); }
+    100% { transform: scale(1); text-shadow: none; filter: brightness(1); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .setl-flownode .fl-val.bal-up, .setl-flownode .fl-val.bal-down { animation: none; }
+  }
+  .fl-arrow { align-self:center; color:var(--muted,#94a3b8); font-size:11px; flex:0 0 auto; }
+  .setl-src-note { margin-top:7px; text-align:center; font-size:9.5px; color:var(--muted,#94a3b8); letter-spacing:.02em; }
+
+  /* ── Aksi Global: Tarik/Top Up Semua ─────────────── */
+  .setl-bulk { margin: 2px 0 22px; }
+  .setl-bulk-actions { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:640px){ .setl-bulk-actions{ grid-template-columns:1fr; } }
+  .setl-bulk-btn {
+    position:relative; overflow:hidden; display:flex; align-items:center; gap:14px;
+    padding:16px 18px; border-radius:18px; border:1px solid rgba(255,255,255,.08); cursor:pointer;
+    text-align:left; color:#fff; font:inherit;
+    background:linear-gradient(135deg,#16a34a 0%,#15803d 100%);
+    box-shadow:0 14px 30px -8px rgba(22,163,74,.5), inset 0 1px 0 rgba(255,255,255,.15);
+    transition:transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s;
+  }
+  .setl-bulk-btn.topup { background:linear-gradient(135deg,#f59e0b 0%,#ea580c 100%); box-shadow:0 14px 30px -8px rgba(234,88,12,.5), inset 0 1px 0 rgba(255,255,255,.15); }
+  .setl-bulk-btn:hover { transform:translateY(-3px); box-shadow:0 22px 42px -10px rgba(22,163,74,.62), inset 0 1px 0 rgba(255,255,255,.22); }
+  .setl-bulk-btn.topup:hover { box-shadow:0 22px 42px -10px rgba(234,88,12,.62), inset 0 1px 0 rgba(255,255,255,.22); }
+  .setl-bulk-btn:active { transform:translateY(-1px) scale(.99); }
+  .setl-bulk-btn:disabled { opacity:.6; cursor:not-allowed; transform:none; }
+  .setl-bulk-btn::before { content:''; position:absolute; top:0; left:-120%; width:55%; height:100%; background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent); transform:skewX(-20deg); transition:left .7s ease; pointer-events:none; }
+  .setl-bulk-btn:hover::before { left:150%; }
+  .setl-bulk-ic { flex:0 0 auto; width:42px; height:42px; border-radius:13px; display:grid; place-items:center; background:rgba(255,255,255,.18); font-size:17px; box-shadow:inset 0 1px 0 rgba(255,255,255,.2); }
+  .setl-bulk-tx { display:flex; flex-direction:column; gap:2px; min-width:0; flex:1; }
+  .setl-bulk-tx b { font-size:12.5px; font-weight:900; letter-spacing:.02em; line-height:1.2; }
+  .setl-bulk-tx small { font-size:10px; opacity:.85; font-weight:600; }
+  .setl-bulk-go { opacity:.85; font-size:13px; transition:transform .25s; flex:0 0 auto; }
+  .setl-bulk-btn:hover .setl-bulk-go { transform:translateX(4px); }
+  @keyframes setlBulkPulse { 0%{box-shadow:inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 0 rgba(255,255,255,.35);} 70%{box-shadow:inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 9px rgba(255,255,255,0);} 100%{box-shadow:inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 0 rgba(255,255,255,0);} }
+  .setl-bulk-btn:hover .setl-bulk-ic { animation:setlBulkPulse 1.3s infinite; }
+
+  .setl-bulk-toggle { margin-top:12px; width:100%; display:flex; align-items:center; gap:10px; padding:11px 16px; border-radius:13px; cursor:pointer; font:inherit; font-size:12.5px; font-weight:700; color:var(--ink,#e2e8f0); background:rgba(255,255,255,.04); border:1px solid var(--line,rgba(148,163,184,.16)); transition:background .18s, border-color .18s; }
+  .setl-bulk-toggle:hover { background:rgba(255,255,255,.07); border-color:rgba(148,163,184,.28); }
+  .setl-bulk-toggle .setl-bulk-chev { margin-left:auto; transition:transform .25s; font-size:11px; }
+  .setl-bulk-toggle[aria-expanded="true"] .setl-bulk-chev { transform:rotate(180deg); }
+  .setl-bulk-list { margin-top:8px; border:1px solid var(--line,rgba(148,163,184,.14)); border-radius:14px; overflow:hidden; background:rgba(15,23,42,.5); animation:setlBulkDrop .28s ease; }
+  @keyframes setlBulkDrop { from{opacity:0; transform:translateY(-6px);} to{opacity:1; transform:translateY(0);} }
+  .setl-bulk-list-head { padding:10px 14px; border-bottom:1px solid rgba(148,163,184,.12); }
+  .setl-bulk-check { display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size:12px; font-weight:800; color:#cbd5e1; }
+  .setl-bulk-row { display:flex; align-items:center; gap:10px; padding:10px 14px; cursor:pointer; border-bottom:1px solid rgba(148,163,184,.07); transition:background .15s; }
+  .setl-bulk-row:last-child { border-bottom:0; }
+  .setl-bulk-row:hover { background:rgba(255,255,255,.03); }
+  .setl-bulk-check input, .setl-bulk-row input { flex:0 0 auto; width:16px; height:16px; accent-color:#22c55e; cursor:pointer; }
+  .setl-bulk-row-name { font-size:12.5px; font-weight:700; color:#e2e8f0; flex:1; min-width:0; }
+  .setl-bulk-off { font-size:9px; font-weight:800; text-transform:uppercase; color:#94a3b8; background:rgba(100,116,139,.18); padding:1px 6px; border-radius:6px; margin-left:4px; }
+  .setl-bulk-row-bal { font-size:10.5px; color:var(--muted,#94a3b8); font-family:ui-monospace,SFMono-Regular,monospace; white-space:nowrap; }
+
+  /* Progress bulk (daftar per akun) */
+  .setl-bulkp-card { max-width:460px; }
+  .setl-bulkp-list { margin:10px 0 4px; max-height:264px; overflow-y:auto; text-align:left; display:flex; flex-direction:column; gap:6px; }
+  .setl-bulkp-row { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:9px 12px; border-radius:11px; background:rgba(255,255,255,.03); border:1px solid rgba(148,163,184,.1); font-size:12px; }
+  .setl-bulkp-dot { flex:0 0 auto; width:9px; height:9px; border-radius:50%; background:#64748b; transition:background .2s; }
+  @keyframes setlBulkBlink { 0%,100%{opacity:1;} 50%{opacity:.35;} }
+  .setl-bulkp-row.run .setl-bulkp-dot { background:#60a5fa; animation:setlBulkBlink 1s infinite; }
+  .setl-bulkp-row.ok .setl-bulkp-dot { background:#22c55e; }
+  .setl-bulkp-row.fail .setl-bulkp-dot { background:#ef4444; }
+  .setl-bulkp-name { font-weight:700; color:#e2e8f0; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .setl-bulkp-amt { font-family:ui-monospace,SFMono-Regular,monospace; font-weight:800; color:#cbd5e1; white-space:nowrap; }
+  .setl-bulkp-row.ok .setl-bulkp-amt { color:#86efac; }
+  .setl-bulkp-msg { flex-basis:100%; font-size:10.5px; color:#94a3b8; padding-left:17px; }
+  .setl-bulkp-row.fail .setl-bulkp-msg { color:#fca5a5; }
+
+  /* ── Scheduler Otomatis (di dropdown) ────────────── */
+  .setl-sched { padding:12px 14px; border-bottom:1px solid rgba(148,163,184,.12); background:linear-gradient(180deg, rgba(96,165,250,.06), transparent); }
+  .setl-sched-hd { display:flex; align-items:center; gap:7px; font-size:11px; font-weight:800; letter-spacing:.04em; text-transform:uppercase; color:#93c5fd; margin-bottom:10px; }
+  .setl-sched-hd i { font-size:11px; }
+  .setl-sched-hint { margin-left:auto; font-size:9px; font-weight:600; letter-spacing:0; text-transform:none; color:var(--muted,#94a3b8); }
+  .setl-sched-row { display:flex; align-items:center; gap:10px; padding:7px 0; }
+  .setl-sched-row + .setl-sched-row { border-top:1px solid rgba(148,163,184,.07); }
+  .setl-sched-main { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+  .setl-sched-name { font-size:12px; font-weight:700; color:#e2e8f0; }
+  .setl-sched-next { font-size:10px; font-weight:600; color:var(--muted,#94a3b8); display:inline-flex; align-items:center; gap:5px; }
+  .setl-sched-next.on { color:#86efac; }
+  .setl-sched-next.on::before { content:''; width:6px; height:6px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.5); animation:setlSchedPing 1.4s infinite; }
+  @keyframes setlSchedPing { 0%{box-shadow:0 0 0 0 rgba(34,197,94,.5);} 70%{box-shadow:0 0 0 6px rgba(34,197,94,0);} 100%{box-shadow:0 0 0 0 rgba(34,197,94,0);} }
+  .setl-sched-int { display:inline-flex; align-items:center; gap:5px; flex:0 0 auto; }
+  .setl-sched-int input { width:52px; padding:6px 8px; border-radius:9px; border:1px solid var(--line,rgba(148,163,184,.2)); background:rgba(15,23,42,.7); color:#e2e8f0; font:inherit; font-size:12px; font-weight:700; text-align:center; }
+  .setl-sched-int input:focus { outline:none; border-color:rgba(96,165,250,.5); }
+  .setl-sched-int span { font-size:10px; color:var(--muted,#94a3b8); font-weight:700; }
+  /* toggle switch premium */
+  .setl-switch { position:relative; flex:0 0 auto; width:40px; height:22px; cursor:pointer; }
+  .setl-switch input { position:absolute; opacity:0; width:0; height:0; }
+  .setl-switch-tr { position:absolute; inset:0; border-radius:999px; background:#374151; transition:background .22s; box-shadow:inset 0 1px 2px rgba(0,0,0,.4); }
+  .setl-switch-tr::after { content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; transition:left .22s cubic-bezier(.22,1,.36,1); box-shadow:0 1px 3px rgba(0,0,0,.4); }
+  .setl-switch input:checked + .setl-switch-tr { background:linear-gradient(135deg,#22c55e,#16a34a); }
+  .setl-switch input:checked + .setl-switch-tr::after { left:20px; }
+
+  /* ── Riwayat: filter tanggal + pager ─────────────── */
+  .setl-hist-controls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .setl-hist-dates { display:inline-flex; gap:3px; padding:3px; border-radius:11px; background:rgba(15,23,42,.6); border:1px solid var(--line,rgba(148,163,184,.14)); }
+  .setl-hist-datebtn { padding:6px 12px; border:0; border-radius:8px; background:transparent; color:var(--muted,#94a3b8); font:inherit; font-size:11.5px; font-weight:700; cursor:pointer; transition:background .16s, color .16s; }
+  .setl-hist-datebtn:hover { color:#e2e8f0; }
+  .setl-hist-datebtn.active { background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; box-shadow:0 4px 12px -3px rgba(37,99,235,.5); }
+  .setl-hist-custom { display:inline-flex; align-items:center; gap:6px; }
+  .setl-hist-custom input { padding:6px 9px; border-radius:9px; border:1px solid var(--line,rgba(148,163,184,.2)); background:rgba(15,23,42,.7); color:#e2e8f0; font:inherit; font-size:11.5px; color-scheme:dark; }
+  .setl-hist-custom input:focus { outline:none; border-color:rgba(96,165,250,.5); }
+  .setl-hist-custom span { color:var(--muted,#94a3b8); font-size:11px; }
+  .setl-hist-pager { display:flex; align-items:center; justify-content:center; gap:12px; padding:12px; }
+  .setl-hist-pager button { padding:7px 14px; border-radius:10px; border:1px solid var(--line,rgba(148,163,184,.2)); background:rgba(255,255,255,.04); color:#e2e8f0; font:inherit; font-size:12px; font-weight:700; cursor:pointer; transition:background .16s, border-color .16s; }
+  .setl-hist-pager button:hover:not(:disabled) { background:rgba(59,130,246,.14); border-color:rgba(96,165,250,.35); }
+  .setl-hist-pager button:disabled { opacity:.4; cursor:not-allowed; }
+  .setl-hist-pageinfo { font-size:12px; font-weight:700; color:var(--muted,#94a3b8); }
+  .setl-hist-dl { width:30px; height:30px; border-radius:9px; border:1px solid var(--line,rgba(148,163,184,.2)); background:rgba(59,130,246,.08); color:#93c5fd; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:12px; transition:background .16s, color .16s, border-color .16s, transform .16s; }
+  .setl-hist-dl:hover { background:rgba(59,130,246,.2); color:#fff; border-color:rgba(96,165,250,.4); transform:translateY(-1px); }
+  .setl-hist-dl:active { transform:none; }
+  .setl-proof-btn { margin-left:6px; }
+  .setl-proof-btn.ready { color:#86efac; border-color:rgba(34,197,94,.4); background:rgba(34,197,94,.12); }
+  .setl-proof-btn.ready:hover { background:rgba(34,197,94,.22); color:#fff; }
+  .setl-proof-btn.busy { opacity:.6; cursor:wait; }
+  @keyframes setlProofSpin { to { transform:rotate(360deg); } }
+  .setl-proof-btn.busy i { animation:setlProofSpin .8s linear infinite; }
+</style>
+
+<!-- Page Header -->
+<div class="qris-page-header">
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="qris-page-title">Saldo <span>Per Akun</span></h1>
+      <p class="qris-section-sub mt-1">Transfer saldo QRIS → Utama → Madera → Bank</p>
+    </div>
+    <div class="flex items-center gap-3">
+      <style>#setl-site-filter option{background:#141a26;color:#e6ebf5}#setl-site-filter option:checked,#setl-site-filter option:hover{background:#243043;color:#fff}</style>
+      <select id="setl-site-filter" onchange="filterSettlementBySite()"
+              style="height:34px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.14);color:var(--ink);border-radius:9px;padding:0 12px;font-size:12.5px;font-weight:700;cursor:pointer">
+        <option value="">Semua Site</option>
+        <% (typeof sites !== 'undefined' ? sites : []).forEach(function(s){ %>
+          <option value="<%= s.name %>"><%= s.name %></option>
+        <% }); %>
+        <option value="__none__">Tanpa site</option>
+      </select>
+      <span id="upd-badge" style="font-size:11px;color:var(--muted)">Updated: —</span>
+    </div>
+  </div>
+</div>
+
+<% if (typeof flash !== 'undefined' && flash) { %>
+  <div class="qris-alert qris-alert-<%= flash.type === 'success' ? 'success' : 'error' %> mb-5" role="alert">
+    <%= flash.message %>
+  </div>
+<% } %>
+
+<script>
+// Filter Site (client-side): sembunyikan/tampilkan kartu akun per site. '__none__' = tanpa site.
+function filterSettlementBySite(){
+  var sel = document.getElementById('setl-site-filter');
+  if(!sel) return;
+  var val = sel.value;
+  document.querySelectorAll('#account-grid .setl-card').forEach(function(card){
+    var site = (card.getAttribute('data-site') || '').trim();
+    var show = !val ? true : (val === '__none__' ? !site : site === val);
+    card.style.display = show ? '' : 'none';
+  });
+  if (window.recomputeWalletTotals) window.recomputeWalletTotals(true);
+}
+</script>
+
+<!-- ── Kartu Total Saldo (QRIS / Utama / Madera / Grand Total) ──────────────── -->
+<style>
+  .wt-wrap{ display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin:0 0 28px; }
+  @media (max-width:1024px){ .wt-wrap{ grid-template-columns:repeat(2,1fr); } }
+  @media (max-width:560px){ .wt-wrap{ grid-template-columns:1fr; } }
+  .wt-card{ position:relative; overflow:hidden; border-radius:22px; padding:20px 22px;
+    background:linear-gradient(150deg,rgba(255,255,255,.065),rgba(255,255,255,.015));
+    border:1px solid rgba(255,255,255,.10); box-shadow:0 12px 32px rgba(0,0,0,.30);
+    opacity:0; transform:translateY(16px) scale(.98); animation:wt-in .65s cubic-bezier(.2,.85,.25,1) forwards;
+    transition:transform .38s cubic-bezier(.2,.8,.2,1), box-shadow .38s; }
+  .wt-card:nth-child(1){ animation-delay:.05s } .wt-card:nth-child(2){ animation-delay:.14s }
+  .wt-card:nth-child(3){ animation-delay:.23s } .wt-card:nth-child(4){ animation-delay:.32s }
+  @keyframes wt-in{ to{ opacity:1; transform:translateY(0) scale(1); } }
+  .wt-card:hover{ transform:translateY(-6px); box-shadow:0 22px 50px rgba(0,0,0,.42); }
+  .wt-card::before{ content:''; position:absolute; inset:0; border-radius:22px; padding:1px;
+    background:linear-gradient(150deg,var(--wtc,#4ade80),transparent 58%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude; opacity:.6; pointer-events:none; }
+  .wt-shine{ position:absolute; top:0; left:-65%; width:48%; height:100%;
+    background:linear-gradient(105deg,transparent,rgba(255,255,255,.16),transparent);
+    transform:skewX(-18deg); animation:wt-sweep 5s ease-in-out infinite; pointer-events:none; }
+  @keyframes wt-sweep{ 0%,58%{ left:-65%; } 100%{ left:135%; } }
+  .wt-top{ display:flex; align-items:center; gap:11px; margin-bottom:15px; position:relative; z-index:1; }
+  .wt-ico{ width:40px; height:40px; border-radius:13px; display:inline-flex; align-items:center; justify-content:center;
+    font-size:17px; color:#0b0f17; background:var(--wtc,#4ade80); box-shadow:0 8px 20px -5px var(--wtg,rgba(74,222,128,.65)); }
+  .wt-label{ font-size:11px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); }
+  .wt-val{ position:relative; z-index:1; font-size:26px; font-weight:900; letter-spacing:-.01em;
+    color:var(--ink); font-variant-numeric:tabular-nums; line-height:1.12; word-break:break-word; }
+  .wt-sub{ position:relative; z-index:1; margin-top:9px; font-size:10.5px; font-weight:700; color:var(--muted);
+    display:flex; align-items:center; gap:6px; }
+  .wt-qris{ --wtc:#4ade80; --wtg:rgba(74,222,128,.55); }
+  .wt-utama{ --wtc:#60a5fa; --wtg:rgba(96,165,250,.55); }
+  .wt-madera{ --wtc:#fb923c; --wtg:rgba(251,146,60,.55); }
+  .wt-grand{ --wtc:#f5d36b; --wtg:rgba(245,211,107,.55);
+    background:linear-gradient(150deg,rgba(245,211,107,.16),rgba(139,92,246,.10)); border-color:rgba(245,211,107,.32); }
+  .wt-grand .wt-ico{ color:#1a1206; }
+  .wt-grand .wt-val{ font-size:28px; background:linear-gradient(90deg,#fde68a,#fca5f1,#a5b4fc,#fde68a);
+    background-size:220% auto; -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent;
+    animation:wt-grad 5s linear infinite; }
+  @keyframes wt-grad{ to{ background-position:220% center; } }
+  .wt-grand::after{ content:''; position:absolute; inset:0; border-radius:22px; pointer-events:none;
+    animation:wt-pulse 2.8s ease-in-out infinite; }
+  @keyframes wt-pulse{ 0%,100%{ box-shadow:0 0 26px -10px rgba(245,211,107,.20) inset; } 50%{ box-shadow:0 0 40px -6px rgba(245,211,107,.42) inset; } }
+</style>
+<div class="wt-wrap">
+  <div class="wt-card wt-qris">
+    <div class="wt-shine"></div>
+    <div class="wt-top"><span class="wt-ico"><i class="fa-solid fa-qrcode"></i></span><span class="wt-label">Saldo QRIS</span></div>
+    <div class="wt-val" id="wt-qris"><%= fmtRp(walletTotals.qris) %></div>
+    <div class="wt-sub"><i class="fa-solid fa-layer-group" style="font-size:9px"></i> Total seluruh akun</div>
+  </div>
+  <div class="wt-card wt-utama">
+    <div class="wt-shine"></div>
+    <div class="wt-top"><span class="wt-ico"><i class="fa-solid fa-wallet"></i></span><span class="wt-label">Saldo Utama</span></div>
+    <div class="wt-val" id="wt-utama"><%= fmtRp(walletTotals.utama) %></div>
+    <div class="wt-sub"><i class="fa-solid fa-layer-group" style="font-size:9px"></i> Total seluruh akun</div>
+  </div>
+  <div class="wt-card wt-madera">
+    <div class="wt-shine"></div>
+    <div class="wt-top"><span class="wt-ico"><i class="fa-solid fa-vault"></i></span><span class="wt-label">Saldo Madera</span></div>
+    <div class="wt-val" id="wt-madera"><%= fmtRp(walletTotals.madera) %></div>
+    <div class="wt-sub"><i class="fa-solid fa-layer-group" style="font-size:9px"></i> Total seluruh akun</div>
+  </div>
+  <div class="wt-card wt-grand">
+    <div class="wt-shine"></div>
+    <div class="wt-top"><span class="wt-ico"><i class="fa-solid fa-crown"></i></span><span class="wt-label">Grand Total</span></div>
+    <div class="wt-val" id="wt-grand"><%= fmtRp(walletTotals.grand) %></div>
+    <div class="wt-sub"><i class="fa-solid fa-coins" style="font-size:9px"></i> QRIS + Utama + Madera</div>
+  </div>
+</div>
+
+<!-- Account Cards -->
+<div id="account-grid" class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 qris-card-enter">
+  <% accounts.forEach((acct, idx) => { %>
+    <%
+      const qris   = acct.lastQrisBalance   ?? 0;
+      const utama  = acct.lastMainBalance   ?? 0;
+      const madera = acct.lastMaderaBalance ?? 0;
+      const maderaReady = acct.lastMaderaBalance !== null && acct.lastMaderaBalance !== undefined;
+      const transferReady = maderaReady && acct.hasTransferPin;
+      const used   = acct.usedToday         ?? 0;
+      const limit  = acct.dailyLimit        ?? 30000000;
+      const pct    = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+      const CAP     = 29900000;
+      const reached = used >= CAP;
+      const ok     = statusOk(acct);
+    %>
+    <div class="setl-card" id="card-<%= acct.id %>" data-site="<%= acct.siteName || '' %>">
+
+      <!-- Toggle On/Off Akun (kanan atas, di luar area klik-refresh header) -->
+      <div class="setl-toggle">
+        <label title="Aktif/Nonaktif akun QRIS">
+          <input type="checkbox" class="setl-tog-input setl-acc-toggle" data-account-id="<%= acct.id %>" <%= acct.status === 'active' ? 'checked' : '' %> onchange="toggleSettlementAccount('<%= acct.id %>', this.checked)">
+          <span class="setl-tog-track" id="setl-tog-track-<%= acct.id %>" style="background:<%= acct.status === 'active' ? '#34d399' : '#374151' %>">
+            <span class="setl-tog-thumb" id="setl-tog-thumb-<%= acct.id %>" style="left:<%= acct.status === 'active' ? '19px' : '2px' %>"></span>
+          </span>
+        </label>
+      </div>
+
+      <!-- Card Header -->
+      <div class="setl-card-header" onclick="refreshSettlementAccount('<%= acct.id %>')" style="cursor:pointer">
+        <p class="setl-card-acct-num">AKUN <%= idx + 1 %></p>
+        <p class="setl-card-name <%= ok ? 'setl-name-ok' : 'setl-name-bad' %>"><%= acct.merchantName %></p>
+        <% if (acct.siteName) { %>
+          <p style="margin:3px 0 0"><span style="display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:999px;font-size:10.5px;font-weight:800;background:rgba(139,92,246,.16);border:1px solid rgba(139,92,246,.35);color:#c4b5fd"><i class="fa-solid fa-store" style="font-size:9px"></i> <%= acct.siteName %></span></p>
+        <% } else { %>
+          <p style="margin:3px 0 0;font-size:10px;color:var(--muted);font-style:italic">— tanpa site —</p>
+        <% } %>
+      </div>
+
+      <!-- Alur Estafet Saldo: QRIS -> Utama -> Madera -> Bank -->
+      <div style="padding:2px 16px 10px">
+        <div class="setl-flowchain">
+          <div class="setl-flownode" style="--fc:#4ade80">
+            <span class="fl-lbl">QRIS</span>
+            <span class="fl-val" data-field="qris" data-id="<%= acct.id %>"><%= fmtRp(qris) %></span>
+          </div>
+          <i class="fa-solid fa-angle-right fl-arrow"></i>
+          <div class="setl-flownode" style="--fc:#60a5fa">
+            <span class="fl-lbl">Utama</span>
+            <span class="fl-val" data-field="utama" data-id="<%= acct.id %>"><%= fmtRp(utama) %></span>
+          </div>
+          <i class="fa-solid fa-angle-right fl-arrow"></i>
+          <div class="setl-flownode" style="--fc:#fb923c">
+            <span class="fl-lbl">Madera</span>
+            <span class="fl-val" data-field="madera" data-id="<%= acct.id %>"><%= fmtRp(madera) %></span>
+          </div>
+          <i class="fa-solid fa-angle-right fl-arrow"></i>
+          <div class="setl-flownode" style="--fc:#a78bfa">
+            <span class="fl-lbl">Bank</span>
+            <span class="fl-val"><i class="fa-solid fa-building-columns" style="font-size:13px"></i></span>
+          </div>
+        </div>
+        <div class="setl-src-note"><i class="fa-solid fa-lock" style="font-size:8px"></i> Saldo live dari server OrderKuota &middot; Madera dari panel Nobu</div>
+      </div>
+
+      <!-- Limit Harian (batas OrderKuota 30jt/hari; auto-OFF di 29,9jt) -->
+      <div class="setl-limit-wrap">
+        <div class="setl-limit-header">
+          <span class="setl-limit-label">Limit Harian (Diterima)<%= reached ? ' — TERCAPAI' : '' %></span>
+          <span class="setl-limit-label" style="<%= reached ? 'color:#f87171' : '' %>"><%= fmtRp(used) %> / <%= fmtRp(limit) %></span>
+        </div>
+        <div class="setl-limit-track">
+          <div class="setl-limit-fill" style="width:<%= pct %>%;<%= reached ? 'background:#ef4444' : (pct >= 80 ? 'background:#f59e0b' : '') %>"></div>
+        </div>
+        <% if (reached) { %>
+          <div style="margin-top:6px;font-size:10px;font-weight:800;color:#f87171;display:flex;align-items:center;gap:5px">
+            <i class="fa-solid fa-circle-exclamation"></i> AUTO-OFF: batas 30jt/hari tercapai — hidupkan manual saat sudah reset.
+          </div>
+        <% } %>
+      </div>
+      <% if (acct.withdrawMessage) { %>
+        <div class="setl-mini-note"><%= acct.withdrawMessage %></div>
+      <% } %>
+
+      <!-- SALDO QRIS > SALDO UTAMA (tampil hanya jika saldo QRIS >= 10.000) -->
+      <% if (qris >= 10000) { %>
+      <span class="setl-section-label">SALDO QRIS &gt; SALDO UTAMA</span>
+      <div class="setl-transfer-body">
+        <div class="setl-transfer-row">
+          <input type="text" inputmode="numeric" placeholder="Nominal" class="setl-input"
+                 data-input="qris2utama-<%= acct.id %>" data-money="1"
+                 data-min="<%= acct.withdrawMin %>" data-max="<%= acct.withdrawMax %>" />
+          <button class="setl-btn-green" onclick="doTransfer('<%= acct.id %>','qris','utama',this)">
+            <i class="fa-solid fa-right-to-bracket" style="font-size:12px"></i> Tarik
+          </button>
+        </div>
+        <div class="setl-transfer-meta">
+          <a class="setl-link" onclick="fillAll('<%= acct.id %>','qris2utama',<%= qris %>);return false" href="#">Tarik Semua</a>
+          <span style="font-size:10px;color:var(--muted-2)">Kelipatan 1.000</span>
+        </div>
+        <p class="setl-msg" data-msg="qris2utama-<%= acct.id %>"></p>
+      </div>
+      <% } %>
+
+      <!-- SALDO UTAMA > SALDO MADERA (tampil hanya jika saldo Utama >= 10.000) -->
+      <% if (utama >= 10000) { %>
+      <span class="setl-section-label blue">SALDO UTAMA &gt; SALDO MADERA</span>
+      <div class="setl-transfer-body">
+        <div class="setl-transfer-row">
+          <input type="text" inputmode="numeric" placeholder="Nominal" class="setl-input"
+                 data-input="utama2madera-<%= acct.id %>" data-money="1" />
+          <button class="setl-btn-orange" onclick="doTransfer('<%= acct.id %>','utama','madera',this)">
+            <i class="fa-solid fa-circle-arrow-up" style="font-size:12px"></i> Topup
+          </button>
+        </div>
+        <div class="setl-transfer-meta">
+          <a class="setl-link" style="color:var(--blue)" onclick="fillAll('<%= acct.id %>','utama2madera',<%= utama %>);return false" href="#">Topup Semua Saldo</a>
+          <span style="font-size:10px;color:var(--muted-2)">Kelipatan 1.000</span>
+        </div>
+        <p class="setl-msg" data-msg="utama2madera-<%= acct.id %>"></p>
+      </div>
+      <% } %>
+
+      <!-- KIRIM UANG (collapsible) -->
+      <div class="setl-kirim-hdr" onclick="toggleKirim('<%= acct.id %>')" id="kirim-hdr-<%= acct.id %>" style="<%= madera > 15000 ? '' : 'display:none' %>">
+        <i class="fa-solid fa-paper-plane" style="font-size:12px;color:var(--blue)"></i>
+        <span style="font-size:12px;font-weight:800;color:var(--ink);text-transform:uppercase;letter-spacing:.06em">KIRIM UANG</span>
+        <i class="fa-solid fa-chevron-down" id="kirim-chev-<%= acct.id %>" style="margin-left:auto;font-size:10px;color:var(--muted);transition:transform .25s"></i>
+      </div>
+      <div id="kirim-body-<%= acct.id %>" class="setl-kirim-body" style="display:none">
+        <input type="hidden" data-input="bank-source-<%= acct.id %>" value="madera" />
+        <!-- Bank searchable -->
+        <div style="margin-bottom:8px">
+          <div class="setl-bank-picker" data-bank-picker="<%= acct.id %>">
+            <div class="setl-bank-input-wrap">
+              <i class="fa-solid fa-building-columns setl-bank-leading"></i>
+              <input type="text"
+                     class="setl-input setl-bank-search"
+                     autocomplete="off"
+                     placeholder="Ketik nama bank..."
+                     data-input="bank-code-<%= acct.id %>"
+                     data-bank-search="<%= acct.id %>"
+                     <%= transferReady ? '' : 'disabled' %> />
+              <button type="button"
+                      class="setl-bank-toggle"
+                      data-bank-toggle="<%= acct.id %>"
+                      aria-label="Buka daftar bank"
+                      <%= transferReady ? '' : 'disabled' %>>
+                <i class="fa-solid fa-chevron-down"></i>
+              </button>
+            </div>
+            <div class="setl-bank-dropdown" data-bank-dropdown="<%= acct.id %>" hidden>
+              <div class="setl-bank-options" data-bank-options="<%= acct.id %>"></div>
+            </div>
+          </div>
+        </div>
+        <input type="hidden" data-input="bank-swift-<%= acct.id %>" value="" />
+        <!-- Account number + Cek -->
+        <div style="display:flex;gap:8px;margin-bottom:8px">
+          <input type="text" placeholder="No. Rekening" class="setl-input"
+                 inputmode="numeric"
+                 data-input="bank-account-<%= acct.id %>" maxlength="50" <%= transferReady ? '' : 'disabled' %> />
+          <button class="setl-btn-blue" onclick="cekRekening('<%= acct.id %>')" <%= transferReady ? '' : 'disabled' %>>
+            <i class="fa-solid fa-magnifying-glass" style="font-size:11px"></i> Cek
+          </button>
+        </div>
+        <div class="setl-owner-box" data-owner-box="bank-owner-<%= acct.id %>" data-madera-ready="<%= maderaReady ? '1' : '0' %>" data-pin-ready="<%= acct.hasTransferPin ? '1' : '0' %>">
+          <div class="setl-owner-title">Nama Pemilik Rekening</div>
+          <div class="setl-owner-name">Akan muncul otomatis setelah bank dan nomor rekening valid.</div>
+          <div class="setl-owner-meta">Kamu cukup pilih bank, isi nomor rekening, lalu sistem akan cek sendiri.</div>
+        </div>
+        <input type="hidden" data-input="bank-name-<%= acct.id %>" value="" />
+        <!-- Nominal + Kirim -->
+        <div style="display:flex;gap:8px">
+          <input type="text" inputmode="numeric" placeholder="Nominal" class="setl-input"
+                 data-input="madera2bank-<%= acct.id %>" data-money="1" <%= transferReady ? '' : 'disabled' %> />
+          <button class="setl-btn-orange"
+                  onclick="doTransferBank('<%= acct.id %>',this)" <%= transferReady ? '' : 'disabled' %>>
+            <i class="fa-solid fa-building-columns" style="font-size:11px"></i> Kirim
+          </button>
+        </div>
+        <div style="margin-top:7px">
+          <a class="setl-link" style="color:#fb923c"
+             onclick="fillBankAll('<%= acct.id %>');return false" href="#">Kirim Semua Saldo</a>
+        </div>
+        <p class="setl-msg" data-msg="madera2bank-<%= acct.id %>"></p>
+      </div>
+
+      <!-- Card Footer -->
+      <div class="setl-card-footer">
+        <span style="font-size:10px;color:var(--muted)">
+          Sync: <span data-sync-time="<%= acct.id %>"><%= syncLabel(acct) %></span>
+        </span>
+        <a href="<%= url('/dashboard/mutations/qris') %>" class="setl-card-footer-link">
+          <i class="fa-solid fa-list-ul" style="font-size:9px"></i> Riwayat
+        </a>
+      </div>
+    </div>
+  <% }) %>
+
+  <% if (accounts.length === 0) { %>
+    <div style="grid-column:1/-1" class="qris-empty py-16">
+      <i class="fa-solid fa-store qris-empty-icon"></i>
+      <p class="qris-empty-title">Belum ada akun QRIS</p>
+      <p class="qris-empty-sub">Tambahkan akun di menu Kelola Akun terlebih dahulu</p>
+    </div>
+  <% } %>
+</div>
+
+<div id="transfer-flow-modal" class="setl-flow-modal" aria-hidden="true">
+  <div class="setl-flow-card" role="dialog" aria-modal="true" aria-labelledby="transfer-flow-title">
+    <div class="setl-flow-head">
+      <div>
+        <div class="setl-flow-kicker">Madera Transfer</div>
+        <div id="transfer-flow-title" class="setl-flow-title">Lanjutkan PIN untuk selesaikan transfer</div>
+        <div class="setl-flow-sub">
+          Transfer bank dari saldo Madera sudah dibuat dan menunggu langkah lanjutan seperti di aplikasi asli.
+          Kita tampilkan `redirect_url` agar proses tidak berhenti sebagai gagal palsu.
+        </div>
+      </div>
+      <button type="button" class="setl-flow-close" onclick="closeTransferFlowModal()" aria-label="Tutup">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="setl-flow-grid">
+      <div class="setl-flow-panel primary">
+        <div class="setl-flow-panel-title">
+          <i class="fa-solid fa-mobile-screen-button" style="color:#60a5fa"></i>
+          Manual Lanjut
+        </div>
+        <div class="setl-flow-panel-desc">
+          Gunakan opsi ini untuk melanjutkan tahap PIN secara manual. Ini yang paling aman sekarang, karena flow Nobu memang berpindah ke webview setelah `action=send`.
+        </div>
+        <div class="setl-flow-meta">
+          <div class="setl-flow-meta-row"><span>Status</span><strong id="flow-status-label">PROCESSING</strong></div>
+          <div class="setl-flow-meta-row"><span>Ref</span><strong id="flow-ref-label">-</strong></div>
+          <div class="setl-flow-meta-row"><span>Bank</span><strong id="flow-bank-label">-</strong></div>
+          <div class="setl-flow-meta-row"><span>Rekening</span><strong id="flow-account-label">-</strong></div>
+          <div class="setl-flow-meta-row"><span>Nominal</span><strong id="flow-amount-label">-</strong></div>
+        </div>
+        <div class="setl-flow-actions">
+          <a id="flow-open-link" href="#" target="_blank" rel="noopener" class="setl-flow-btn">
+            <i class="fa-solid fa-arrow-up-right-from-square"></i>
+            Buka Redirect URL
+          </a>
+          <button type="button" class="setl-flow-btn secondary" onclick="copyTransferRedirectUrl()">
+            <i class="fa-solid fa-copy"></i>
+            Salin Redirect URL
+          </button>
+        </div>
+        <div class="setl-flow-note" id="flow-message-label">
+          Transfer sudah diterima OrderKuota. Langkah berikutnya adalah menyelesaikan PIN di konteks yang sesuai.
+        </div>
+      </div>
+      <div class="setl-flow-panel" id="auto-pin-panel">
+        <div class="setl-flow-panel-title">
+          <i class="fa-solid fa-robot" style="color:#c084fc"></i>
+          Bot Auto PIN
+        </div>
+        <div class="setl-flow-panel-desc" id="auto-pin-desc">
+          Sistem akan otomatis membuka redirect URL, menemukan form PIN, mengisi PIN merchant yang tersimpan, dan submit. Jika auto PIN pertama sudah dicoba saat transfer, kamu bisa retry di sini.
+        </div>
+        <div class="setl-flow-actions">
+          <button type="button" class="setl-flow-btn" id="auto-pin-btn" onclick="retryAutoPin()">
+            <i class="fa-solid fa-robot"></i>
+            Jalankan Auto PIN
+          </button>
+        </div>
+        <div class="setl-flow-note" id="auto-pin-status" style="display:none">
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Aksi Global: Tarik Semua / Top Up Semua -->
+<div class="setl-bulk">
+  <div class="setl-bulk-actions">
+    <button type="button" class="setl-bulk-btn tarik" id="bulkBtnTarik" onclick="runBulk('qris','utama')">
+      <span class="setl-bulk-ic"><i class="fa-solid fa-download"></i></span>
+      <span class="setl-bulk-tx">
+        <b>TARIK SEMUA SALDO QRIS KE UTAMA</b>
+        <small>Akun tercentang · dibulatkan 1.000 · min 10.000</small>
+      </span>
+      <i class="fa-solid fa-arrow-right setl-bulk-go"></i>
+    </button>
+    <button type="button" class="setl-bulk-btn topup" id="bulkBtnTopup" onclick="runBulk('utama','madera')">
+      <span class="setl-bulk-ic"><i class="fa-solid fa-circle-arrow-up"></i></span>
+      <span class="setl-bulk-tx">
+        <b>TOP UP SEMUA SALDO UTAMA KE MADERA</b>
+        <small>Akun tercentang · dibulatkan 1.000 · min 10.000</small>
+      </span>
+      <i class="fa-solid fa-arrow-right setl-bulk-go"></i>
+    </button>
+  </div>
+
+  <button type="button" class="setl-bulk-toggle" id="bulkToggle" aria-expanded="false" onclick="toggleBulkList()">
+    <i class="fa-solid fa-list-check" style="color:#60a5fa"></i>
+    <span>Pilih akun yang ikut &mdash; <b id="bulkSelCount">0</b>/<span id="bulkTotCount">0</span> dipilih</span>
+    <i class="fa-solid fa-chevron-down setl-bulk-chev" id="bulkChev"></i>
+  </button>
+
+  <div class="setl-bulk-list" id="bulkList" hidden>
+    <div class="setl-bulk-list-head">
+      <label class="setl-bulk-check">
+        <input type="checkbox" id="bulkAll" onchange="toggleBulkAll(this.checked)">
+        <span>Pilih semua akun</span>
+      </label>
+    </div>
+
+    <!-- Scheduler Otomatis -->
+    <div class="setl-sched">
+      <div class="setl-sched-hd">
+        <i class="fa-solid fa-clock-rotate-left"></i> Scheduler Otomatis
+        <span class="setl-sched-hint">jalan selama halaman terbuka</span>
+      </div>
+      <div class="setl-sched-row">
+        <label class="setl-switch"><input type="checkbox" id="schedTarik" onchange="onSchedToggle('tarik', this.checked)"><span class="setl-switch-tr"></span></label>
+        <div class="setl-sched-main">
+          <span class="setl-sched-name">Auto Tarik QRIS &rarr; Utama</span>
+          <span class="setl-sched-next" id="schedTarikNext">nonaktif</span>
+        </div>
+        <div class="setl-sched-int"><input type="number" id="schedTarikMin" min="1" max="1440" value="30" onchange="onSchedIntChange('tarik')"><span>mnt</span></div>
+      </div>
+      <div class="setl-sched-row">
+        <label class="setl-switch"><input type="checkbox" id="schedTopup" onchange="onSchedToggle('topup', this.checked)"><span class="setl-switch-tr"></span></label>
+        <div class="setl-sched-main">
+          <span class="setl-sched-name">Auto Top Up Utama &rarr; Madera</span>
+          <span class="setl-sched-next" id="schedTopupNext">nonaktif</span>
+        </div>
+        <div class="setl-sched-int"><input type="number" id="schedTopupMin" min="1" max="1440" value="30" onchange="onSchedIntChange('topup')"><span>mnt</span></div>
+      </div>
+    </div>
+    <% accounts.forEach(acct => { %>
+      <label class="setl-bulk-row">
+        <input type="checkbox" class="setl-bulk-acc"
+               data-id="<%= acct.id %>"
+               data-name="<%= acct.merchantName %>"
+               data-wmax="<%= acct.withdrawMax ?? 0 %>"
+               <%= acct.status === 'active' ? 'checked' : '' %>
+               onchange="updateBulkCount()">
+        <span class="setl-bulk-row-name"><%= acct.merchantName %><% if (acct.status !== 'active') { %><span class="setl-bulk-off">nonaktif</span><% } %></span>
+        <span class="setl-bulk-row-bal">QRIS <%= fmtRp(acct.lastQrisBalance ?? 0) %> &middot; Utama <%= fmtRp(acct.lastMainBalance ?? 0) %></span>
+      </label>
+    <% }) %>
+  </div>
+</div>
+
+<!-- Settlement History -->
+<div class="qris-table-wrap">
+  <div class="setl-hist-header">
+    <h3 class="setl-hist-title">
+      <i class="fa-solid fa-money-bill-transfer" style="font-size:14px;color:var(--accent)"></i>
+      Riwayat Transfer
+      <span class="setl-hist-count" id="hist-count">(<%= settlements.length %> request)</span>
+    </h3>
+    <div class="setl-hist-controls">
+      <div class="setl-hist-dates" id="hist-date-tabs">
+        <button type="button" class="setl-hist-datebtn active" data-range="all" onclick="setHistRange('all',this)">Semua</button>
+        <button type="button" class="setl-hist-datebtn" data-range="today" onclick="setHistRange('today',this)">Hari ini</button>
+        <button type="button" class="setl-hist-datebtn" data-range="yesterday" onclick="setHistRange('yesterday',this)">Kemarin</button>
+        <button type="button" class="setl-hist-datebtn" data-range="custom" onclick="setHistRange('custom',this)">Custom</button>
+      </div>
+      <div class="setl-hist-custom" id="hist-custom" hidden>
+        <input type="date" id="hist-from" onchange="applyHistFilter()">
+        <span>&mdash;</span>
+        <input type="date" id="hist-to" onchange="applyHistFilter()">
+      </div>
+      <select id="hist-filter" class="setl-hist-filter">
+        <option value="">Semua status</option>
+        <option value="pending">Pending</option>
+        <option value="processing">Processing</option>
+        <option value="done">Done</option>
+        <option value="failed">Failed</option>
+      </select>
+    </div>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="qris-table" id="hist-table">
+      <thead>
+        <tr>
+          <th>Waktu</th>
+          <th>Dari</th>
+          <th>Ke</th>
+          <th class="text-right">Nominal</th>
+          <th class="text-right hidden md:table-cell">Biaya</th>
+          <th class="text-right hidden md:table-cell">Total</th>
+          <th class="text-center">Status</th>
+          <th class="hidden lg:table-cell">Ref</th>
+          <th class="hidden lg:table-cell">Keterangan</th>
+          <th class="text-center">Aksi</th>
+        </tr>
+      </thead>
+      <tbody id="hist-tbody">
+        <% if (settlements.length === 0) { %>
+          <tr><td colspan="10">
+            <div class="qris-empty py-10">
+              <i class="fa-solid fa-money-bill-transfer qris-empty-icon"></i>
+              <p class="qris-empty-title">Belum ada transfer</p>
+            </div>
+          </td></tr>
+        <% } %>
+        <% settlements.forEach(s => {
+          const pillClass = { pending:'qris-pill-warn', processing:'qris-pill-open', done:'qris-pill-paid', failed:'qris-pill-danger' }[s.status] || 'qris-pill-muted';
+          const flowFrom = { qris:'QRIS', utama:'Utama', madera:'Madera' }[s.fromWallet] || s.fromWallet;
+          const flowTo   = { utama:'Utama', madera:'Madera', bank:'Bank' }[s.toWallet] || s.toWallet;
+          const timeStr  = new Date(s.createdAt).toLocaleString('id-ID', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Jakarta' });
+          const redirectUrl = extractSettlementRedirectUrl(s.note);
+          const cleanNote = cleanSettlementNote(s.note);
+          const feeAmount = extractSettlementFee(s.note);
+          const totalAmount = extractSettlementTotal(s.note) ?? (s.amount + Math.max(0, feeAmount || 0));
+        %>
+          <tr data-status="<%= s.status %>" data-ts="<%= new Date(s.createdAt).getTime() %>">
+            <td class="text-xs text-muted whitespace-nowrap"><%= timeStr %></td>
+            <td><span class="qris-pill qris-pill-open uppercase" style="font-size:10px"><%= flowFrom %></span></td>
+            <td><span class="qris-pill qris-pill-violet uppercase" style="font-size:10px"><%= flowTo %></span></td>
+            <td class="text-right font-semibold text-ink text-sm">Rp <%= s.amount.toLocaleString('id-ID') %></td>
+            <td class="text-right font-semibold text-orange-300 text-sm hidden md:table-cell"><%= feeAmount !== null ? `Rp ${feeAmount.toLocaleString('id-ID')}` : '—' %></td>
+            <td class="text-right font-semibold text-emerald-300 text-sm hidden md:table-cell">Rp <%= totalAmount.toLocaleString('id-ID') %></td>
+            <td class="text-center"><span class="qris-pill <%= pillClass %>"><%= s.status %></span></td>
+            <td class="text-xs text-muted hidden lg:table-cell font-mono" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+              <%= s.referenceNo || '—' %>
+            </td>
+            <td class="text-xs text-muted hidden lg:table-cell" style="max-width:280px">
+              <div class="setl-hist-note-wrap">
+                <div style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                  <%= cleanNote || '—' %>
+                </div>
+                <% if (redirectUrl) { %>
+                  <button
+                    type="button"
+                    class="setl-hist-action"
+                    onclick='openTransferFlowModal(<%- JSON.stringify({
+                      settlementId: s.id,
+                      referenceNo: s.referenceNo || null,
+                      redirectUrl,
+                      bankName: s.bankName || null,
+                      bankAccount: s.bankAccount || null,
+                      amount: s.amount,
+                      message: cleanNote || null,
+                      status: s.status,
+                    }) %>)'>
+                    <i class="fa-solid fa-link"></i>
+                    Lanjutkan PIN
+                  </button>
+                <% } %>
+              </div>
+            </td>
+            <td class="text-center">
+              <button type="button" class="setl-hist-dl" title="Download bukti transfer"
+                onclick='downloadReceipt(<%- JSON.stringify({
+                  time: timeStr,
+                  merchant: (accounts.find(a => a.id === s.qrisAccountId) || {}).merchantName || null,
+                  from: flowFrom,
+                  to: flowTo,
+                  amount: s.amount,
+                  fee: feeAmount,
+                  total: totalAmount,
+                  status: s.status,
+                  ref: s.referenceNo || null,
+                  bankName: s.bankName || (s.toWallet === "bank" ? (s.bankCode || null) : null),
+                  bankAccount: s.bankAccount || null,
+                  note: cleanNote || null
+                }) %>)'>
+                <i class="fa-solid fa-download"></i>
+              </button>
+              <% if (s.toWallet === 'bank') { %>
+                <button type="button" class="setl-hist-dl setl-proof-btn" data-id="<%= s.id %>" title="Bukti resmi Nobu (screenshot bot)" onclick="onProofClick('<%= s.id %>', this)">
+                  <i class="fa-solid fa-lock"></i>
+                </button>
+              <% } %>
+            </td>
+          </tr>
+        <% }); %>
+        <tr id="hist-empty-filter" hidden><td colspan="10">
+          <div class="qris-empty py-10">
+            <i class="fa-solid fa-filter-circle-xmark qris-empty-icon"></i>
+            <p class="qris-empty-title">Tidak ada transfer pada filter ini</p>
+          </div>
+        </td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="setl-hist-pager" id="hist-pager" style="display:none">
+    <button type="button" id="hist-prev" onclick="histPage(-1)"><i class="fa-solid fa-chevron-left" style="font-size:10px"></i> Sebelumnya</button>
+    <span class="setl-hist-pageinfo" id="hist-pageinfo">Hal 1</span>
+    <button type="button" id="hist-next" onclick="histPage(1)">Berikutnya <i class="fa-solid fa-chevron-right" style="font-size:10px"></i></button>
+  </div>
+</div>
+
+<script>
+(function () {
+  const transferUrl = '<%= url('/dashboard/settlement/transfer') %>';
+  const inquiryUrl = '<%= url('/dashboard/settlement/inquiry') %>';
+  const retryPinUrl = '<%= url('/dashboard/settlement/retry-pin') %>';
+  const bankListUrl = '<%= url('/dashboard/settlement/banks') %>';
+  const apiRefreshBalanceUrlTemplate = '<%= url('/dashboard/api/qris-accounts/__ACCOUNT_ID__/refresh-balance') %>';
+  const bankOptions = <%- JSON.stringify(BANKS) %>;
+  // 6 bank teratas (sering dipakai) — sisanya alfabet
+  const PINNED_BANK_NAMES = ['BCA', 'Mandiri', 'BNI', 'BRI', 'SeaBank', 'Permata']; // utk daftar statis (fallback)
+  const PINNED_BANK_SWIFT = ['CENAIDJA', 'BMRIIDJA', 'BNINIDJA', 'BRINIDJA', 'SSPIIDJA', 'BBBAIDJA']; // = BCA, Mandiri, BNI, BRI, SeaBank, Permata (daftar dinamis Nobu)
+  let pinnedNameSet = new Set(PINNED_BANK_NAMES.filter((item) => bankOptions.includes(item)));
+  let orderedBankOptions = [
+    ...PINNED_BANK_NAMES.filter((item) => bankOptions.includes(item)),
+    ...bankOptions.filter((item) => !pinnedNameSet.has(item)).sort((a, b) => a.localeCompare(b, 'id')),
+  ];
+  // ── Client-side SWIFT code fallback map (used when dynamic banks not yet loaded) ──
+  const BANK_SWIFT_MAP = {
+    'BCA': 'CENAIDJA', 'BRI': 'BRINIDJA', 'BNI': 'BNINIDJA', 'Mandiri': 'BMRIIDJA',
+    'CIMB Niaga': 'BNIAIDJA', 'Danamon': 'BDINIDJA', 'Permata': 'BBBAIDJA', 'BTN': 'BTANIDJA',
+    'Panin': 'PINBIDJA', 'Maybank': 'IBBKIDJA', 'OCBC NISP': 'NISPIDJA', 'BTPN': 'PUBAIDJ1',
+    'Mega': 'MEGAIDJA', 'Bukopin': 'BBUKIDJA', 'Sinarmas': 'SBJKIDJA', 'Bank Sinarmas': 'SBJKIDJA',
+    'MNC Bank': 'BUMIIDJA', 'Artha Graha': 'MCORIDJA', 'Jago': 'JAGBIDJA', 'Allo Bank': 'ALOBIDJA',
+    'SeaBank': 'SSPIIDJA', 'Bank Neo Commerce': 'YUDBIDJ1', 'Bank Raya': 'AGTBIDJA',
+    'Bank Amar': 'LOMAIDJ1', 'Bank Sahabat Sampoerna': 'SAHMIDJA', 'Bank Index': 'BIDXIDJA',
+    'Bank Ganesha': 'GNESIDJA', 'Bank Ina Perdana': 'IAPTIDJA', 'Bank Maspion': 'MASDIDJ1',
+    'Bank Mestika': 'MEDHIDS1', 'Bank Mitraniaga': 'MGABIDJ1', 'Bank OCBC': 'NISPIDJA',
+    'Bank Prima Master': 'PMASIDJ1', 'Bank Shinhan': 'MEEKIDJ1', 'Bank SBI Indonesia': 'IDMOIDJ1',
+    'Bank UOB': 'BBIJIDJA', 'Jenius': 'PUBAIDJ1',
+    'BJB': 'PDJBIDJA', 'Bank Jateng': 'PDJGIDJ1', 'Bank Jatim': 'PDJTIDJ1', 'Bank DIY': 'PDYKIDJ1',
+    'Bank Sumsel Babel': 'BSSPIDSP', 'Bank Sumut': 'PDSUIDJ1', 'Bank Sumbar': 'PDSBIDJ1',
+    'Bank Aceh': 'PDACIDJ1', 'Bank Riau Kepri': 'PDRIIDJA', 'Bank Lampung': 'PDLPIDJ1',
+    'Bank Bengkulu': 'PDBKIDJ1', 'Bank Kaltim': 'PDKTIDJ1', 'Bank Kalbar': 'PDKBIDJ1',
+    'Bank Kalteng': 'PDKGIDJ1', 'Bank Kalsel': 'PDKSIDJ1', 'Bank Sulteng': 'PDWGIDJ1',
+    'Bank Sulut': 'PDWUIDJ1', 'Bank Sulsel': 'PDWSIDJA', 'Bank Sultra': 'PDWRIDJ1',
+    'Bank Maluku': 'PDMLIDJ1', 'Bank Papua': 'PDIJIDJ1', 'Bank NTB': 'PDNBIDJ1',
+    'Bank Bali': 'ABALIDBS', 'Bank BPD DIY': 'PDYKIDJ1', 'BPD Sultengg': 'PDWGIDJ1',
+  };
+
+  /**
+   * Resolve a bank display name to its SWIFT/BIC code.
+   * Priority: dynamic bank list (from API) → hardcoded BANK_SWIFT_MAP → original name.
+   */
+  function resolveSwiftCode(bankDisplayName) {
+    if (!bankDisplayName) return '';
+    // If already looks like a SWIFT code (all uppercase alphanumeric, 6-15 chars), return as-is
+    if (/^[A-Z0-9]{6,15}$/.test(bankDisplayName)) return bankDisplayName;
+    // 1. Try dynamic banks (from API)
+    const dynamicCode = getSwiftCodeForBank(bankDisplayName);
+    if (dynamicCode) return dynamicCode;
+    // 2. Try hardcoded SWIFT map (exact match)
+    if (BANK_SWIFT_MAP[bankDisplayName]) return BANK_SWIFT_MAP[bankDisplayName];
+    // 3. Try case-insensitive match
+    const lower = bankDisplayName.toLowerCase();
+    for (const [name, code] of Object.entries(BANK_SWIFT_MAP)) {
+      if (name.toLowerCase() === lower) return code;
+    }
+    // 4. Fallback: return display name (backend will try to resolve)
+    return bankDisplayName;
+  }
+
+  const walletLikeBanks = new Set(['DANA', 'GOPAY', 'OVO', 'SHOPEEPAY', 'LINKAJA', 'ISAKU', 'QRIS']);
+  const bankAliasLookup = new Map([
+    ['BANKCENTRALASIA', 'BCA'],
+    ['BCAMOBILE', 'BCA'],
+    ['BANKRAKYATINDONESIA', 'BRI'],
+    ['BANKNEGARAINDONESIA', 'BNI'],
+    ['BANKMANDIRI', 'Mandiri'],
+    ['CIMB', 'CIMB Niaga'],
+    ['CIMBNIAGA', 'CIMB Niaga'],
+    ['SEABANKINDONESIA', 'SeaBank'],
+    ['BANKJAGO', 'Jago'],
+    ['GOPAYINDONESIA', 'GoPay'],
+    ['SHOPEE', 'ShopeePay'],
+    ['SHOPEEPAYINDONESIA', 'ShopeePay'],
+    ['LINKAJAINDONESIA', 'LinkAja'],
+  ]);
+  let bankLookup = new Map(orderedBankOptions.map((item) => [compactBankKey(item), item]));
+  const inquiryTimers = new Map();
+  const inquiryInflight = new Map();
+  const refreshInflight = new Map();
+  let activeTransferFlow = null;
+
+  // ── Dynamic bank list from Madera Transfer API ──────────────────────────
+  let dynamicBanks = null; // Array<{code, name, fee, status}> when loaded
+  let dynamicBanksByCode = new Map(); // swiftCode → entry
+  let dynamicBanksByName = new Map(); // compactName → entry
+  let dynamicBanksFetchPromise = null;
+
+  async function fetchDynamicBanks(qrisAccountId) {
+    if (dynamicBanks) return dynamicBanks;
+    if (dynamicBanksFetchPromise) return dynamicBanksFetchPromise;
+    dynamicBanksFetchPromise = (async () => {
+      try {
+        const res = await fetch(bankListUrl + '?qrisAccountId=' + encodeURIComponent(qrisAccountId));
+        const json = await res.json();
+        if (json.ok && Array.isArray(json.banks) && json.banks.length > 0) {
+          dynamicBanks = json.banks;
+          dynamicBanksByCode = new Map(json.banks.map(b => [b.code, b]));
+          dynamicBanksByName = new Map(json.banks.map(b => [compactBankKey(b.name), b]));
+          rebuildBankOptions(json.banks);
+          // Re-render all open bank dropdowns
+          document.querySelectorAll('[data-bank-search]').forEach(input => {
+            const acctId = input.getAttribute('data-bank-search') || '';
+            if (acctId) renderBankOptions(acctId, input.value);
+          });
+          return json.banks;
+        }
+      } catch (e) { /* fallback to hardcoded */ }
+      return null;
+    })();
+    return dynamicBanksFetchPromise;
+  }
+
+  function rebuildBankOptions(banks) {
+    // 6 bank favorit dipin di atas (cocokkan lewat SWIFT code = paling akurat), urutan sesuai PINNED_BANK_SWIFT
+    const byCode = new Map(banks.map(b => [b.code, b.name]));
+    const pinned = [];
+    PINNED_BANK_SWIFT.forEach(code => {
+      const name = byCode.get(code);
+      if (name) pinned.push(name);
+    });
+    pinnedNameSet = new Set(pinned);
+    const rest = banks
+      .map(b => b.name)
+      .filter(name => !pinnedNameSet.has(name))
+      .sort((a, b) => a.localeCompare(b, 'id'));
+    orderedBankOptions = [...pinned, ...rest];
+    bankLookup = new Map(orderedBankOptions.map(item => [compactBankKey(item), item]));
+    // Also add alias from SWIFT code → name
+    banks.forEach(b => {
+      bankAliasLookup.set(b.code, b.name);
+    });
+  }
+
+  function getSwiftCodeForBank(bankDisplayName) {
+    if (!dynamicBanks) return '';
+    const entry = dynamicBanksByName.get(compactBankKey(bankDisplayName));
+    return entry ? entry.code : '';
+  }
+
+  function getBankFeeText(bankDisplayName) {
+    if (!dynamicBanks) return '';
+    const entry = dynamicBanksByName.get(compactBankKey(bankDisplayName));
+    if (!entry) return '';
+    if (entry.fee === 0) return 'GRATIS';
+    if (!entry.fee) return '';
+    return 'Rp ' + entry.fee.toLocaleString('id-ID');
+  }
+
+  const rp = (amount) => 'Rp ' + (amount || 0).toLocaleString('id-ID');
+
+  // ── Premium confirm modal (Promise<boolean>) ───────────────────────────────
+  function setlConfirm(opts) {
+    return new Promise((resolve) => {
+      const ov = document.createElement('div');
+      ov.className = 'setl-confirm-overlay';
+      const rowsHtml = (opts.rows || []).map((r) =>
+        '<div class="setl-confirm-row"><span>' + r.label + '</span><strong class="' + (r.hl ? 'hl' : '') + '">' + r.value + '</strong></div>'
+      ).join('');
+      ov.innerHTML =
+        '<div class="setl-confirm-card" role="dialog" aria-modal="true">' +
+          '<div class="setl-confirm-ico"><i class="fa-solid ' + (opts.icon || 'fa-circle-question') + '"></i></div>' +
+          '<div class="setl-confirm-title">' + (opts.title || 'Konfirmasi') + '</div>' +
+          (opts.subtitle ? '<div class="setl-confirm-sub">' + opts.subtitle + '</div>' : '') +
+          (rowsHtml ? '<div class="setl-confirm-rows">' + rowsHtml + '</div>' : '') +
+          '<div class="setl-confirm-actions">' +
+            '<button type="button" class="setl-confirm-btn cancel">Batal</button>' +
+            '<button type="button" class="setl-confirm-btn ok ' + (opts.confirmClass || '') + '">' + (opts.confirmText || 'Ya') + '</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(ov);
+      requestAnimationFrame(() => ov.classList.add('open'));
+      const close = (val) => { ov.classList.remove('open'); setTimeout(() => ov.remove(), 220); resolve(val); };
+      ov.querySelector('.cancel').addEventListener('click', () => close(false));
+      ov.querySelector('.ok').addEventListener('click', () => close(true));
+      ov.addEventListener('click', (e) => { if (e.target === ov) close(false); });
+      document.addEventListener('keydown', function esc(e) { if (e.key === 'Escape') { document.removeEventListener('keydown', esc); close(false); } });
+    });
+  }
+  window.setlConfirm = setlConfirm;
+
+  const escP = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+
+  // Bersihkan pesan: buang marker [[FEE/TOTAL/REDIRECT_URL:...]] (base64 panjang) + prefix "Error:".
+  const cleanMsg = (s) => String(s == null ? '' : s)
+    .replace(/\s*\[\[(?:FEE|TOTAL|REDIRECT_URL):[\s\S]*?\]\]/g, '')
+    .replace(/^\s*Error:\s*/i, '')
+    .replace(/\s*\|\s*$/g, '')
+    .trim();
+
+  // ── Progress premium saat bot memasukkan PIN (return controller .done()) ────
+  function setlProgress() {
+    const ov = document.createElement('div');
+    ov.className = 'setl-progress-overlay';
+    ov.innerHTML =
+      '<div class="setl-progress-card" role="dialog" aria-modal="true">' +
+        '<div class="setl-progress-spinner" id="sp-ico"><i class="fa-solid fa-robot"></i></div>' +
+        '<div class="setl-progress-title" id="sp-title">Mengirim Uang</div>' +
+        '<div class="setl-progress-sub" id="sp-sub">Menyiapkan transfer…</div>' +
+        '<div class="setl-progress-steps">' +
+          '<div class="setl-progress-step" data-i="0"><span class="dot"></span> Inisiasi transfer BI-FAST</div>' +
+          '<div class="setl-progress-step" data-i="1"><span class="dot"></span> Bot memasukkan PIN di Nobu</div>' +
+          '<div class="setl-progress-step" data-i="2"><span class="dot"></span> Menunggu status transaksi</div>' +
+        '</div>' +
+        '<div class="setl-progress-result" id="sp-result" style="display:none"></div>' +
+        '<button class="setl-progress-close" id="sp-close" style="display:none">Tutup</button>' +
+      '</div>';
+    document.body.appendChild(ov);
+    requestAnimationFrame(() => ov.classList.add('open'));
+    const steps = ov.querySelectorAll('.setl-progress-step');
+    const sub = ov.querySelector('#sp-sub');
+    const activate = (n) => steps.forEach((s, i) => { s.classList.toggle('active', i === n); s.classList.toggle('done', i < n); });
+    activate(0);
+    const timers = [];
+    timers.push(setTimeout(() => { activate(1); sub.textContent = 'Bot sedang memasukkan PIN…'; }, 2600));
+    timers.push(setTimeout(() => { activate(2); sub.textContent = 'Menunggu status berhasil / gagal…'; }, 8500));
+    return {
+      done(success, message, ref) {
+        timers.forEach(clearTimeout);
+        steps.forEach((s) => { s.classList.remove('active'); s.classList.add('done'); });
+        const ico = ov.querySelector('#sp-ico');
+        ico.className = 'setl-progress-spinner ' + (success ? 'ok' : 'fail');
+        ico.innerHTML = success ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-xmark"></i>';
+        ov.querySelector('#sp-title').textContent = success ? 'Transaksi Berhasil' : 'Transaksi Belum Berhasil';
+        sub.textContent = success ? 'Uang berhasil dikirim.' : 'Silakan cek dan coba lagi.';
+        const result = ov.querySelector('#sp-result');
+        result.className = 'setl-progress-result ' + (success ? 'ok' : 'fail');
+        result.style.display = '';
+        result.innerHTML = (ref ? '<div class="setl-progress-ref">Ref: ' + escP(ref) + '</div>' : '') + (message ? '<div class="setl-progress-msg">' + escP(message) + '</div>' : '');
+        const close = ov.querySelector('#sp-close');
+        close.style.display = '';
+        close.onclick = () => ov.remove();
+        if (success) setTimeout(() => location.reload(), 3800);
+      },
+    };
+  }
+
+  function parseMoney(value) {
+    const normalized = String(value || '').replace(/[^\d]/g, '');
+    return normalized ? Number.parseInt(normalized, 10) : 0;
+  }
+
+  function formatMoney(value) {
+    return value > 0 ? value.toLocaleString('id-ID') : '';
+  }
+
+  function getTransferFlowModal() {
+    return document.getElementById('transfer-flow-modal');
+  }
+
+  function sanitizeText(value) {
+    return value == null || value === '' ? '—' : String(value);
+  }
+
+  function openTransferFlowModal(payload) {
+    activeTransferFlow = payload || null;
+    const modal = getTransferFlowModal();
+    if (!modal || !activeTransferFlow) return;
+
+    document.getElementById('flow-status-label').textContent = sanitizeText(activeTransferFlow.status || 'processing').toUpperCase();
+    document.getElementById('flow-ref-label').textContent = sanitizeText(activeTransferFlow.referenceNo || activeTransferFlow.settlementId);
+    document.getElementById('flow-bank-label').textContent = sanitizeText(activeTransferFlow.bankName);
+    document.getElementById('flow-account-label').textContent = sanitizeText(activeTransferFlow.bankAccount);
+    document.getElementById('flow-amount-label').textContent = activeTransferFlow.amount ? rp(activeTransferFlow.amount) : '—';
+    document.getElementById('flow-message-label').textContent =
+      activeTransferFlow.message
+      || 'Transfer sudah diterima OrderKuota dan menunggu langkah PIN di flow Nobu.';
+
+    const openLink = document.getElementById('flow-open-link');
+    if (openLink) {
+      openLink.href = activeTransferFlow.redirectUrl || '#';
+      openLink.style.pointerEvents = activeTransferFlow.redirectUrl ? '' : 'none';
+      openLink.style.opacity = activeTransferFlow.redirectUrl ? '1' : '.45';
+    }
+
+    // Reset auto-PIN panel state
+    const autoPinBtn = document.getElementById('auto-pin-btn');
+    const autoPinStatus = document.getElementById('auto-pin-status');
+    const autoPinDesc = document.getElementById('auto-pin-desc');
+    const autoPinPanel = document.getElementById('auto-pin-panel');
+    if (autoPinBtn) {
+      autoPinBtn.innerHTML = '<i class="fa-solid fa-robot"></i> Jalankan Auto PIN';
+      autoPinBtn.disabled = false;
+    }
+    if (autoPinStatus) { autoPinStatus.style.display = 'none'; autoPinStatus.textContent = ''; }
+    if (autoPinDesc) autoPinDesc.textContent = 'Sistem akan otomatis membuka redirect URL, menemukan form PIN, mengisi PIN merchant yang tersimpan, dan submit. Klik tombol di bawah untuk menjalankan Auto PIN.';
+    if (autoPinPanel) autoPinPanel.className = 'setl-flow-panel';
+
+    modal.classList.add('open');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeTransferFlowModal() {
+    const modal = getTransferFlowModal();
+    if (!modal) return;
+    modal.classList.remove('open');
+    modal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+
+  async function copyTransferRedirectUrl() {
+    if (!activeTransferFlow?.redirectUrl) return;
+    try {
+      await navigator.clipboard.writeText(activeTransferFlow.redirectUrl);
+      const msg = activeTransferFlow.referenceNo
+        ? `Redirect URL untuk ref ${activeTransferFlow.referenceNo} berhasil disalin.`
+        : 'Redirect URL berhasil disalin.';
+      window.alert(msg);
+    } catch {
+      window.prompt('Salin redirect URL ini secara manual:', activeTransferFlow.redirectUrl);
+    }
+  }
+
+  async function retryAutoPin() {
+    if (!activeTransferFlow?.settlementId) return;
+    const btn = document.getElementById('auto-pin-btn');
+    const statusEl = document.getElementById('auto-pin-status');
+    const descEl = document.getElementById('auto-pin-desc');
+    const panel = document.getElementById('auto-pin-panel');
+    if (!btn) return;
+
+    const origHtml = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Memproses PIN...';
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Menghubungi server...'; }
+
+    try {
+      const response = await fetch(retryPinUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settlementId: activeTransferFlow.settlementId }),
+      });
+      const data = await response.json();
+
+      if (data.ok) {
+        if (panel) panel.className = 'setl-flow-panel primary';
+        if (descEl) descEl.textContent = 'Auto PIN berhasil! Transfer telah selesai.';
+        if (statusEl) {
+          statusEl.style.display = 'block';
+          statusEl.innerHTML = '<i class="fa-solid fa-circle-check" style="color:#22c55e"></i> ' + sanitizeText(data.message || 'Transfer selesai.');
+        }
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Selesai';
+        btn.disabled = true;
+
+        document.getElementById('flow-status-label').textContent = 'DONE';
+        setTimeout(() => location.reload(), 2000);
+      } else {
+        if (statusEl) {
+          statusEl.style.display = 'block';
+          statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:#f59e0b"></i> ' + sanitizeText(data.error || 'Auto PIN gagal.');
+        }
+        btn.innerHTML = origHtml;
+        btn.disabled = false;
+      }
+    } catch {
+      if (statusEl) {
+        statusEl.style.display = 'block';
+        statusEl.innerHTML = '<i class="fa-solid fa-triangle-exclamation" style="color:#ef4444"></i> Koneksi ke server gagal.';
+      }
+      btn.innerHTML = origHtml;
+      btn.disabled = false;
+    }
+  }
+
+  window.openTransferFlowModal = openTransferFlowModal;
+  window.closeTransferFlowModal = closeTransferFlowModal;
+  window.copyTransferRedirectUrl = copyTransferRedirectUrl;
+  window.retryAutoPin = retryAutoPin;
+
+  function getRefreshBalanceUrl(accountId) {
+    return apiRefreshBalanceUrlTemplate.replace('__ACCOUNT_ID__', encodeURIComponent(accountId));
+  }
+
+  async function refreshWalletBalance(accountId, wallet) {
+    const res = await fetch(getRefreshBalanceUrl(accountId), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ wallet }),
+    });
+    return res.json();
+  }
+
+  // Animasi premium saat saldo berubah: angka bergulir (count-up) + pop-scale + glow (hijau naik / merah turun).
+  function animateBal(sel, newNum) {
+    const el = document.querySelector(sel);
+    if (!el) return;
+    newNum = Math.round(Number(newNum) || 0);
+    let prev;
+    if (el.dataset.val !== undefined && el.dataset.val !== '') prev = Number(el.dataset.val) || 0;
+    else prev = Number(String(el.textContent).replace(/[^\d-]/g, '')) || 0;
+    el.dataset.val = String(newNum);
+    // Render pertama (saat menu dibuka) -> set instan, JANGAN animasi.
+    if (!el.dataset.balInit) { el.dataset.balInit = '1'; el.textContent = rp(newNum); return; }
+    if (prev === newNum) { el.textContent = rp(newNum); return; }
+    const up = newNum > prev;
+    // Kilau + pop
+    el.classList.remove('bal-up', 'bal-down');
+    void el.offsetWidth; // reflow -> restart animasi
+    el.classList.add(up ? 'bal-up' : 'bal-down');
+    const _clear = function () { el.classList.remove('bal-up', 'bal-down'); el.removeEventListener('animationend', _clear); };
+    el.addEventListener('animationend', _clear);
+    // Count-up angka (easeOutCubic)
+    const from = prev, to = newNum, dur = 750;
+    const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    function frame(now) {
+      const p = Math.min(1, (((window.performance && performance.now) ? now : Date.now()) - t0) / dur);
+      const eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = rp(Math.round(from + (to - from) * eased));
+      if (p < 1) requestAnimationFrame(frame); else el.textContent = rp(to);
+    }
+    requestAnimationFrame(frame);
+  }
+
+  function updateCardBalanceFields(accountId, account) {
+    if (!account) return;
+    const setEl = (sel, val) => {
+      const el = document.querySelector(sel);
+      if (el) el.textContent = val;
+    };
+    animateBal(`[data-field="qris"][data-id="${accountId}"]`, account.lastQrisBalance ?? 0);
+    animateBal(`[data-field="utama"][data-id="${accountId}"]`, account.lastMainBalance ?? 0);
+    animateBal(`[data-field="madera"][data-id="${accountId}"]`, account.lastMaderaBalance ?? 0);
+
+    // Tombol KIRIM hanya muncul jika saldo madera > 15.000 (ikut update live).
+    const _kirimHdr = document.getElementById('kirim-hdr-' + accountId);
+    if (_kirimHdr) {
+      const _show = Number(account.lastMaderaBalance ?? 0) > 15000;
+      _kirimHdr.style.display = _show ? '' : 'none';
+      if (!_show) {
+        const _body = document.getElementById('kirim-body-' + accountId);
+        if (_body) _body.style.display = 'none';
+      }
+    }
+
+    const syncEl = document.querySelector(`[data-sync-time="${accountId}"]`);
+    if (syncEl && account.lastBalanceSyncAt) {
+      syncEl.textContent = new Date(account.lastBalanceSyncAt).toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        timeZone: 'Asia/Jakarta',
+      });
+    }
+
+    const ownerBox = getOwnerBox(accountId);
+    const hasMadera = account.lastMaderaBalance !== null && account.lastMaderaBalance !== undefined;
+    const hasPin = ownerBox?.dataset.pinReady === '1';
+    const transferReady = Boolean(hasMadera && hasPin);
+    ['bank-code', 'bank-account', 'madera2bank'].forEach((key) => {
+      const input = getInput(key, accountId);
+      if (input) input.disabled = !transferReady;
+    });
+    const bankToggle = getBankToggle(accountId);
+    const checkBtn = document.querySelector(`#kirim-body-${accountId} .setl-btn-blue`);
+    const sendBtn = document.querySelector(`#kirim-body-${accountId} .setl-btn-orange`);
+    if (bankToggle) bankToggle.disabled = !transferReady;
+    if (checkBtn) checkBtn.disabled = !transferReady;
+    if (sendBtn) sendBtn.disabled = !transferReady;
+    if (ownerBox) {
+      ownerBox.dataset.maderaReady = hasMadera ? '1' : '0';
+      resetOwnerState(accountId);
+    }
+    if (!transferReady) {
+      setBankDropdownOpen(accountId, false);
+    }
+    recomputeWalletTotals(true);
+  }
+
+  async function refreshSettlementAccount(accountId) {
+    if (!accountId || refreshInflight.get(accountId)) return;
+    refreshInflight.set(accountId, true);
+    try {
+      const badge = document.getElementById('upd-badge');
+      if (badge) badge.textContent = 'Refreshing akun...';
+
+      const qris = await refreshWalletBalance(accountId, 'qris');
+      if (qris?.ok) updateCardBalanceFields(accountId, qris.account);
+
+      const utama = await refreshWalletBalance(accountId, 'utama');
+      if (utama?.ok) updateCardBalanceFields(accountId, utama.account);
+
+      const madera = await refreshWalletBalance(accountId, 'madera');
+      if (madera?.ok) updateCardBalanceFields(accountId, madera.account);
+
+      if (badge) {
+        badge.textContent = 'Updated: ' + new Date().toLocaleTimeString('id-ID', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          timeZone: 'Asia/Jakarta',
+        });
+      }
+    } catch {
+      // keep settlement usable even if refresh fails
+    } finally {
+      refreshInflight.delete(accountId);
+    }
+  }
+
+  window.refreshSettlementAccount = refreshSettlementAccount;
+
+  // ── Toggle On/Off Akun QRIS (reuse endpoint Pengaturan Akun) ──
+  const MQR_BASE = '<%- url('/merchant-qr') %>';
+  const ACCT_SYNC_KEY = 'qris:acct-status-sync';
+
+  // Update tampilan toggle 1 akun (tanpa memanggil server)
+  function applySettlementToggle(id, active) {
+    const track = document.getElementById('setl-tog-track-' + id);
+    const thumb = document.getElementById('setl-tog-thumb-' + id);
+    const cb = document.querySelector('.setl-acc-toggle[data-account-id="' + id + '"]');
+    if (cb) cb.checked = active;
+    if (track) track.style.background = active ? '#34d399' : '#374151';
+    if (thumb) thumb.style.left = active ? '19px' : '2px';
+  }
+
+  // Siarkan perubahan status ke tab/halaman lain (via localStorage storage event)
+  function broadcastAcctStatus(id, status) {
+    try { localStorage.setItem(ACCT_SYNC_KEY, JSON.stringify({ id: id, status: status, ts: Date.now() })); } catch (e) {}
+  }
+
+  async function toggleSettlementAccount(id, checked) {
+    applySettlementToggle(id, checked); // optimistic
+    try {
+      const resp = await fetch(MQR_BASE + '/' + id + '/toggle-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      const data = await resp.json().catch(() => null);
+      if (!resp.ok || !data || !data.success) throw new Error((data && data.error) || 'Gagal');
+      const active = data.status === 'active';
+      applySettlementToggle(id, active); // reconcile with server truth
+      broadcastAcctStatus(id, active ? 'active' : 'inactive');
+    } catch (e) {
+      applySettlementToggle(id, !checked); // revert
+      if (window.Swal) {
+        Swal.fire({ icon: 'error', title: 'Gagal', text: 'Gagal mengubah status akun.', background: 'var(--card)', color: 'var(--ink)' });
+      } else {
+        alert('Gagal mengubah status akun.');
+      }
+    }
+  }
+  window.toggleSettlementAccount = toggleSettlementAccount;
+
+  // Sinkron lintas-tab: dengar perubahan status dari tab/halaman lain
+  window.addEventListener('storage', function (ev) {
+    if (ev.key !== ACCT_SYNC_KEY || !ev.newValue) return;
+    try {
+      const msg = JSON.parse(ev.newValue);
+      if (msg && msg.id) applySettlementToggle(msg.id, msg.status === 'active');
+    } catch (e) {}
+  });
+
+  function setMoneyInputValue(input, amount) {
+    if (!input) return;
+    input.value = formatMoney(amount);
+  }
+
+  function setCaretToEnd(input) {
+    if (!input || typeof input.setSelectionRange !== 'function') return;
+    try {
+      const length = input.value.length;
+      input.setSelectionRange(length, length);
+    } catch {
+      // ignore unsupported input types
+    }
+  }
+
+  function getInput(key, id) {
+    return document.querySelector(`[data-input="${key}-${id}"]`);
+  }
+
+  function getOwnerBox(id) {
+    return document.querySelector(`[data-owner-box="bank-owner-${id}"]`);
+  }
+
+  function getBankPicker(id) {
+    return document.querySelector(`[data-bank-picker="${id}"]`);
+  }
+
+  function getBankDropdown(id) {
+    return document.querySelector(`[data-bank-dropdown="${id}"]`);
+  }
+
+  function getBankOptionsWrap(id) {
+    return document.querySelector(`[data-bank-options="${id}"]`);
+  }
+
+  function getBankCountEl(id) {
+    return document.querySelector(`[data-bank-count="${id}"]`);
+  }
+
+  function getBankToggle(id) {
+    return document.querySelector(`[data-bank-toggle="${id}"]`);
+  }
+
+  function compactBankKey(value) {
+    return String(value || '').toUpperCase().replace(/[^A-Z0-9]+/g, '');
+  }
+
+  function normalizeBankValue(rawValue) {
+    const raw = String(rawValue || '').trim();
+    if (!raw) return '';
+    const compact = compactBankKey(raw);
+    const aliased = bankAliasLookup.get(compact);
+    if (aliased) return aliased;
+    const exact = bankLookup.get(compact);
+    if (exact) return exact;
+    const partial = orderedBankOptions.find((item) => compactBankKey(item).includes(compact));
+    return partial || '';
+  }
+
+  function inferBankMeta(bankName) {
+    return walletLikeBanks.has(compactBankKey(bankName))
+      ? 'E-wallet / akun digital'
+      : 'Transfer bank antar rekening';
+  }
+
+  function buildBankBadge(bankName) {
+    return String(bankName || '')
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'BK';
+  }
+
+  function filterBankOptions(query) {
+    const compact = compactBankKey(query);
+    if (!compact) return orderedBankOptions.slice(0, 24);
+
+    return orderedBankOptions
+      .map((item) => {
+        const itemKey = compactBankKey(item);
+        const aliasHit = [...bankAliasLookup.entries()].some(([alias, bank]) => bank === item && alias.includes(compact));
+        let score = 0;
+        if (itemKey === compact) score = 400;
+        else if (itemKey.startsWith(compact)) score = 300;
+        else if (itemKey.includes(compact)) score = 200;
+        else if (aliasHit) score = 150;
+        return { item, score };
+      })
+      .filter((entry) => entry.score > 0)
+      .sort((left, right) => right.score - left.score || left.item.localeCompare(right.item))
+      .slice(0, 30)
+      .map((entry) => entry.item);
+  }
+
+  function setBankDropdownOpen(acctId, open) {
+    const dropdown = getBankDropdown(acctId);
+    const toggle = getBankToggle(acctId);
+    if (!dropdown) return;
+    dropdown.hidden = !open;
+    if (toggle) toggle.classList.toggle('open', open);
+  }
+
+  function closeAllBankDropdowns(exceptId = '') {
+    document.querySelectorAll('[data-bank-dropdown]').forEach((dropdown) => {
+      const acctId = dropdown.getAttribute('data-bank-dropdown') || '';
+      if (exceptId && acctId === exceptId) return;
+      setBankDropdownOpen(acctId, false);
+    });
+  }
+
+  function renderBankOptions(acctId, query = '') {
+    const wrap = getBankOptionsWrap(acctId);
+    const countEl = getBankCountEl(acctId);
+    const input = getInput('bank-code', acctId);
+    if (!wrap || !input) return;
+
+    const currentValue = normalizeBankValue(input.value);
+    const results = filterBankOptions(query);
+    wrap.replaceChildren();
+    if (countEl) {
+      countEl.textContent = `${results.length} hasil`;
+    }
+
+    if (results.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'setl-bank-empty';
+      empty.textContent = 'Bank tidak ditemukan. Coba kata kunci lain seperti BCA, Mandiri, atau Dana.';
+      wrap.appendChild(empty);
+      return;
+    }
+
+    const noQuery = !compactBankKey(query);
+    let lastPinnedEl = null;
+    results.forEach((bankName) => {
+      const isPinned = noQuery && pinnedNameSet.has(bankName);
+      const option = document.createElement('button');
+      option.type = 'button';
+      option.className = 'setl-bank-option'
+        + (bankName === currentValue ? ' active' : '')
+        + (isPinned ? ' setl-bank-option-pinned' : '');
+      option.setAttribute('data-value', bankName);
+      option.textContent = bankName;
+
+      option.addEventListener('mousedown', (event) => {
+        event.preventDefault();
+      });
+      option.addEventListener('click', () => {
+        const bankInput = getInput('bank-code', acctId);
+        if (!bankInput) return;
+        bankInput.value = bankName;
+        // Set SWIFT code in hidden input (use resolveSwiftCode for fallback)
+        const swiftInput = getInput('bank-swift', acctId);
+        if (swiftInput) swiftInput.value = resolveSwiftCode(bankName);
+        resetOwnerState(acctId);
+        renderBankOptions(acctId, bankName);
+        setBankDropdownOpen(acctId, false);
+        scheduleBankInquiry(acctId);
+      });
+
+      if (isPinned) lastPinnedEl = option;
+      wrap.appendChild(option);
+    });
+    // Garis pemisah halus setelah 6 bank favorit (hanya saat daftar tak difilter)
+    if (lastPinnedEl) lastPinnedEl.classList.add('setl-bank-sep');
+  }
+
+  // ── Toggle KIRIM UANG ────────────────────────────────────────────────────
+  window.toggleKirim = function(id) {
+    const body = document.getElementById('kirim-body-' + id);
+    const chev = document.getElementById('kirim-chev-' + id);
+    if (!body || !chev) return;
+    const open = body.style.display === 'none';
+    body.style.display = open ? '' : 'none';
+    chev.style.transform = open ? 'rotate(180deg)' : '';
+    if (open && !dynamicBanks) {
+      // Eagerly load dynamic banks so SWIFT codes are available for Cek/Kirim
+      fetchDynamicBanks(id).then(() => {
+        // After dynamic banks load, update SWIFT code for any already-selected bank
+        const swiftInput = getInput('bank-swift', id);
+        const bankInput = getInput('bank-code', id);
+        if (swiftInput && bankInput && bankInput.value && !swiftInput.value) {
+          const resolved = resolveSwiftCode(normalizeBankValue(bankInput.value));
+          if (resolved) swiftInput.value = resolved;
+        }
+      }).catch(() => {});
+    }
+  };
+
+  // ── Fill all ─────────────────────────────────────────────────────────────
+  window.fillAll = function(id, key, amount) {
+    // Bulatkan ke bawah kelipatan 1.000 (mis. 38.827 -> 38.000)
+    var rounded = Math.floor((Number(amount) || 0) / 1000) * 1000;
+    setMoneyInputValue(getInput(key, id), rounded);
+  };
+
+  window.fillBankAll = function(id) {
+    const amountInput = getInput('madera2bank', id);
+    if (amountInput?.disabled) {
+      showMsg('madera2bank', id, 'Kirim Uang belum aktif. Pastikan saldo Madera ada dan PIN merchant sudah diisi.', false);
+      return;
+    }
+    const balEl = document.querySelector(`[data-field="madera"][data-id="${id}"]`);
+    const bal = parseMoney(balEl?.textContent || '0');
+    // Kirim semua = saldo Madera dikurangi biaya transfer 2.500
+    const amount = Math.max(0, bal - 2500);
+    setMoneyInputValue(amountInput, amount);
+  };
+
+  // ── Show message ──────────────────────────────────────────────────────────
+  function showMsg(key, id, text, ok) {
+    const el = document.querySelector(`[data-msg="${key}-${id}"]`);
+    if (!el) return;
+    el.textContent = text;
+    el.style.background = ok ? 'rgba(34,197,94,0.12)' : 'rgba(239,68,68,0.12)';
+    el.style.color = ok ? '#86efac' : '#fca5a5';
+    el.style.display = '';
+    clearTimeout(el._hideTimer);
+    el._hideTimer = setTimeout(() => {
+      el.style.display = 'none';
+    }, 7000);
+  }
+
+  function renderOwnerState(id, state, payload) {
+    const box = getOwnerBox(id);
+    const hiddenBankName = getInput('bank-name', id);
+    if (!box) return;
+
+    box.classList.remove('success', 'error', 'loading');
+    box.dataset.ownerName = '';
+    box.dataset.bankName = '';
+    // Tampil hanya saat proses cek / hasil; disembunyikan saat idle.
+    box.style.display = (state === 'loading' || state === 'success' || state === 'error') ? '' : 'none';
+
+    const titleEl = box.querySelector('.setl-owner-title');
+    const nameEl = box.querySelector('.setl-owner-name');
+    const metaEl = box.querySelector('.setl-owner-meta');
+    if (!titleEl || !nameEl || !metaEl) return;
+
+    if (state === 'loading') {
+      box.classList.add('loading');
+      titleEl.textContent = 'Cek rekening';
+      nameEl.textContent = 'Memeriksa nama pemilik rekening...';
+      metaEl.textContent = 'Mohon tunggu sebentar.';
+      if (hiddenBankName) hiddenBankName.value = '';
+      return;
+    }
+
+    if (state === 'success') {
+      const bankName = payload?.bankName || '';
+      const accountName = payload?.accountName || '';
+      box.classList.add('success');
+      box.dataset.ownerName = accountName;
+      box.dataset.bankName = bankName;
+      titleEl.textContent = 'Nama pemilik rekening';
+      nameEl.textContent = accountName;
+      metaEl.textContent = payload?.meta || bankName || 'Rekening berhasil diverifikasi.';
+      if (hiddenBankName) hiddenBankName.value = bankName;
+      return;
+    }
+
+    if (state === 'error') {
+      box.classList.add('error');
+      titleEl.textContent = 'Nama pemilik rekening';
+      nameEl.textContent = payload?.title || 'Rekening belum valid';
+      metaEl.textContent = payload?.meta || 'Periksa kembali pilihan bank dan nomor rekening.';
+      if (hiddenBankName) hiddenBankName.value = '';
+      return;
+    }
+
+    titleEl.textContent = 'Nama pemilik rekening';
+    nameEl.textContent = 'Akan muncul otomatis setelah bank dan nomor rekening valid.';
+    metaEl.textContent = 'Kamu cukup pilih bank, isi nomor rekening, lalu sistem akan cek sendiri.';
+    if (hiddenBankName) hiddenBankName.value = '';
+  }
+
+  function resetOwnerState(id) {
+    const box = getOwnerBox(id);
+    if (box?.dataset.maderaReady === '0') {
+      renderOwnerState(id, 'error', {
+        title: 'Saldo Madera belum aktif',
+        meta: 'Klik kartu akun untuk refresh saldo Madera setelah aktivasi selesai.',
+      });
+      return;
+    }
+    if (box?.dataset.pinReady === '0') {
+      renderOwnerState(id, 'error', {
+        title: 'PIN merchant belum diisi',
+        meta: 'Buka Merchant QR lalu simpan PIN agar Kirim Uang bisa berjalan otomatis.',
+      });
+      return;
+    }
+    renderOwnerState(id, 'idle');
+  }
+
+  function bindMoneyInputs() {
+    document.querySelectorAll('[data-money="1"]').forEach((input) => {
+      if (input.dataset.moneyBound === '1') return;
+      input.dataset.moneyBound = '1';
+
+      input.addEventListener('input', () => {
+        const amount = parseMoney(input.value);
+        input.value = formatMoney(amount);
+        setCaretToEnd(input);
+        const key = input.dataset.input || '';
+        if (key.startsWith('madera2bank-')) {
+          scheduleBankInquiry(key.replace('madera2bank-', ''));
+        }
+      });
+
+      input.addEventListener('blur', () => {
+        input.value = formatMoney(parseMoney(input.value));
+      });
+    });
+  }
+
+  // ── Generic transfer ──────────────────────────────────────────────────────
+  async function execTransfer(body, msgKey, msgId, btn, origHtml) {
+    try {
+      const res  = await fetch(transferUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        showMsg(msgKey, msgId, `✓ Berhasil! Ref: ${data.referenceNo || data.settlementId}`, true);
+        // Reset input
+        const inp = document.querySelector(`[data-input="${msgKey}-${msgId}"]`);
+        if (inp) inp.value = '';
+        setTimeout(() => location.reload(), 2200);
+      } else {
+        showMsg(msgKey, msgId, `✗ ${data.error || 'Gagal memproses'}`, false);
+      }
+    } catch {
+      showMsg(msgKey, msgId, '✗ Koneksi error', false);
+    } finally {
+      btn.disabled  = false;
+      btn.innerHTML = origHtml;
+    }
+  }
+
+  async function performTransfer(body, msgKey, msgId, btn, origHtml) {
+    const isBank = body.toWallet === 'bank';
+    const prog = isBank ? setlProgress() : null;
+    try {
+      const response = await fetch(transferUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await response.json();
+      if (data.ok) {
+        const isProcessing = data.status === 'processing';
+        const ref = data.referenceNo || data.settlementId;
+        const input = getInput(msgKey, msgId);
+        if (input) input.value = '';
+        if (prog) {
+          // Transfer ke bank: tampilkan hasil di overlay progress (pesan dibersihkan).
+          prog.done(!isProcessing, isProcessing ? (cleanMsg(data.message) || 'Status belum pasti — cek Mutasi untuk memastikan.') : 'Uang berhasil dikirim ke rekening tujuan.', ref);
+        } else {
+          const message = isProcessing
+            ? `Permintaan dikirim. Ref: ${ref}. Lanjutkan PIN untuk menyelesaikan transfer.`
+            : `Berhasil. Ref: ${ref}`;
+          showMsg(msgKey, msgId, message, true);
+          if (isProcessing && data.redirectUrl) {
+            openTransferFlowModal({
+              settlementId: data.settlementId,
+              referenceNo: data.referenceNo || null,
+              redirectUrl: data.redirectUrl,
+              bankName: body.bankName || null,
+              bankAccount: body.bankAccount || null,
+              amount: body.amount || null,
+              message: data.message || 'Auto PIN pertama sudah dicoba.',
+              status: data.status,
+            });
+          } else {
+            setTimeout(() => location.reload(), 1800);
+          }
+        }
+      } else {
+        if (prog) prog.done(false, cleanMsg(data.error) || 'Gagal memproses transfer');
+        else showMsg(msgKey, msgId, cleanMsg(data.error) || 'Gagal memproses transfer', false);
+      }
+    } catch {
+      if (prog) prog.done(false, 'Koneksi ke server gagal.');
+      else showMsg(msgKey, msgId, 'Koneksi ke server gagal.', false);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origHtml;
+    }
+  }
+
+  // ── QRIS → Utama ─────────────────────────────────────────────────────────
+  window.doTransfer = async function(acctId, fromWallet, toWallet, btn) {
+    const key = `${fromWallet}2${toWallet}`;
+    const input = getInput(key, acctId);
+    if (!input) return;
+
+    const amount = parseMoney(input.value);
+    if (!amount || amount < 1000) {
+      showMsg(key, acctId, 'Minimal transfer Rp 1.000.', false);
+      return;
+    }
+
+    if (fromWallet === 'qris' && toWallet === 'utama') {
+      const min = Number.parseInt(input.dataset.min || '1000', 10) || 1000;
+      const max = Number.parseInt(input.dataset.max || '0', 10) || 0;
+      if (amount < min) {
+        showMsg(key, acctId, `Minimal tarik saldo ${rp(min)}.`, false);
+        return;
+      }
+      if (max > 0 && amount > max) {
+        showMsg(key, acctId, `Maksimal tarik saldo ${rp(max)}.`, false);
+        return;
+      }
+    }
+
+    if (fromWallet === 'utama' && toWallet === 'madera' && amount % 1000 !== 0) {
+      showMsg(key, acctId, 'Topup Madera harus kelipatan Rp 1.000.', false);
+      return;
+    }
+
+    const isTopup = fromWallet === 'utama' && toWallet === 'madera';
+    const okConfirm = await setlConfirm({
+      icon: isTopup ? 'fa-circle-arrow-up' : 'fa-right-to-bracket',
+      title: isTopup ? 'Top Up ke Saldo Madera?' : 'Kirim ke Saldo Utama?',
+      subtitle: isTopup ? 'Pindahkan dana dari Saldo Utama.' : 'Tarik dana dari Saldo QRIS.',
+      rows: [
+        { label: 'Dari', value: isTopup ? 'Saldo Utama' : 'Saldo QRIS' },
+        { label: 'Ke', value: isTopup ? 'Saldo Madera' : 'Saldo Utama' },
+        { label: 'Nominal', value: rp(amount), hl: true },
+      ],
+      confirmText: isTopup ? 'Top Up' : 'Kirim',
+      confirmClass: isTopup ? 'orange' : 'green',
+    });
+    if (!okConfirm) return;
+
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    const job = { id: acctId, name: getAcctName(acctId), amount };
+    const panel = setlBulkProgress(isTopup ? 'Top Up ke Madera' : 'Tarik QRIS ke Utama', [job]);
+    const r = await doOneTransfer(panel, job, fromWallet, toWallet);
+    panel.finish(r.ok ? 1 : 0, r.ok ? 0 : 1, r.ok ? amount : 0, []);
+    if (r.ok) { const inp = getInput(key, acctId); if (inp) inp.value = ''; }
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  };
+
+  // ── AKSI GLOBAL: Tarik Semua / Top Up Semua ───────────────────────────────
+  function toggleBulkList() {
+    const list = document.getElementById('bulkList');
+    const toggle = document.getElementById('bulkToggle');
+    if (!list || !toggle) return;
+    const open = list.hasAttribute('hidden');
+    if (open) list.removeAttribute('hidden'); else list.setAttribute('hidden', '');
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  window.toggleBulkList = toggleBulkList;
+
+  function toggleBulkAll(checked) {
+    document.querySelectorAll('.setl-bulk-acc').forEach((cb) => { cb.checked = checked; });
+    updateBulkCount();
+  }
+  window.toggleBulkAll = toggleBulkAll;
+
+  function updateBulkCount() {
+    const all = [...document.querySelectorAll('.setl-bulk-acc')];
+    const sel = all.filter((cb) => cb.checked);
+    const selEl = document.getElementById('bulkSelCount');
+    const totEl = document.getElementById('bulkTotCount');
+    if (selEl) selEl.textContent = String(sel.length);
+    if (totEl) totEl.textContent = String(all.length);
+    const allBox = document.getElementById('bulkAll');
+    if (allBox) allBox.checked = all.length > 0 && sel.length === all.length;
+  }
+  window.updateBulkCount = updateBulkCount;
+
+  // Baca saldo LIVE dari node alur estafet (data-field), bukan snapshot lama
+  function readLiveBal(field, id) {
+    const el = document.querySelector('[data-field="' + field + '"][data-id="' + id + '"]');
+    return el ? (parseMoney(el.textContent) || 0) : 0;
+  }
+
+  function setlBulkProgress(title, jobs) {
+    const ov = document.createElement('div');
+    ov.className = 'setl-progress-overlay';
+    const rowsHtml = jobs.map((j) =>
+      '<div class="setl-bulkp-row" data-id="' + j.id + '">' +
+        '<span class="setl-bulkp-dot"></span>' +
+        '<span class="setl-bulkp-name">' + escP(j.name) + '</span>' +
+        '<span class="setl-bulkp-amt">' + rp(j.amount) + '</span>' +
+        '<span class="setl-bulkp-msg"></span>' +
+      '</div>'
+    ).join('');
+    ov.innerHTML =
+      '<div class="setl-progress-card setl-bulkp-card" role="dialog" aria-modal="true">' +
+        '<div class="setl-progress-spinner" id="bp-ico"><i class="fa-solid fa-layer-group"></i></div>' +
+        '<div class="setl-progress-title">' + escP(title) + '</div>' +
+        '<div class="setl-progress-sub" id="bp-sub">Memproses ' + jobs.length + ' akun…</div>' +
+        '<div class="setl-bulkp-list">' + rowsHtml + '</div>' +
+        '<div class="setl-progress-result" id="bp-result" style="display:none"></div>' +
+        '<button class="setl-progress-close" id="bp-close" style="display:none">Tutup</button>' +
+      '</div>';
+    document.body.appendChild(ov);
+    requestAnimationFrame(() => ov.classList.add('open'));
+    const rowEl = (id) => ov.querySelector('.setl-bulkp-row[data-id="' + id + '"]');
+    return {
+      setRow(id, state, msg) {
+        const el = rowEl(id); if (!el) return;
+        el.classList.remove('run', 'ok', 'fail'); el.classList.add(state);
+        const m = el.querySelector('.setl-bulkp-msg'); if (m && msg != null) m.textContent = msg;
+      },
+      finish(okCount, failCount, okAmt, skipped) {
+        const ico = ov.querySelector('#bp-ico');
+        const allOk = failCount === 0;
+        ico.className = 'setl-progress-spinner ' + (okCount > 0 ? 'ok' : 'fail');
+        ico.innerHTML = allOk ? '<i class="fa-solid fa-check"></i>' : '<i class="fa-solid fa-triangle-exclamation"></i>';
+        ov.querySelector('#bp-sub').textContent = 'Selesai.';
+        const res = ov.querySelector('#bp-result');
+        res.className = 'setl-progress-result ' + (allOk && okCount > 0 ? 'ok' : 'fail');
+        res.style.display = '';
+        res.innerHTML = '<div class="setl-progress-msg"><b>' + okCount + ' berhasil</b> (' + rp(okAmt) + ')' +
+          (failCount ? ' &middot; <b>' + failCount + ' gagal</b>' : '') +
+          (skipped && skipped.length ? ' &middot; ' + skipped.length + ' dilewati (saldo &lt; 10rb)' : '') + '</div>';
+        const close = ov.querySelector('#bp-close');
+        close.style.display = '';
+        close.onclick = () => { ov.remove(); if (okCount > 0) location.reload(); };
+      },
+    };
+  }
+
+  let bulkRunning = false;
+  function getAcctName(id) {
+    const cb = document.querySelector('.setl-bulk-acc[data-id="' + id + '"]');
+    return (cb && cb.getAttribute('data-name')) || 'Akun';
+  }
+  // Satu job transfer (dipakai bersama: single & bulk)
+  async function doOneTransfer(panel, job, fromWallet, toWallet) {
+    panel.setRow(job.id, 'run', 'Memproses…');
+    try {
+      const resp = await fetch(transferUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fromWallet, toWallet, amount: job.amount, qrisAccountId: job.id }),
+      });
+      const data = await resp.json().catch(() => null);
+      if (data && data.ok) {
+        panel.setRow(job.id, 'ok', 'Berhasil' + (data.referenceNo ? ' · Ref ' + data.referenceNo : ''));
+        return { ok: true, amount: job.amount };
+      }
+      panel.setRow(job.id, 'fail', cleanMsg(data && data.error) || 'Gagal memproses');
+      return { ok: false, amount: 0 };
+    } catch (e) {
+      panel.setRow(job.id, 'fail', 'Koneksi ke server gagal');
+      return { ok: false, amount: 0 };
+    }
+  }
+  window.getAcctName = getAcctName;
+
+  async function runBulk(fromWallet, toWallet, opts) {
+    opts = opts || {};
+    const auto = !!opts.auto;
+    if (bulkRunning) return;
+    const isTopup = fromWallet === 'utama' && toWallet === 'madera';
+    const checked = [...document.querySelectorAll('.setl-bulk-acc:checked')];
+    if (checked.length === 0) {
+      if (!auto) await setlConfirm({ icon: 'fa-triangle-exclamation', title: 'Belum ada akun dipilih', subtitle: 'Buka daftar akun di bawah tombol lalu centang minimal satu akun.', confirmText: 'Mengerti' });
+      return;
+    }
+    const jobs = [];
+    const skipped = [];
+    checked.forEach((cb) => {
+      const id = cb.getAttribute('data-id');
+      const name = cb.getAttribute('data-name') || id;
+      const bal = readLiveBal(fromWallet, id);
+      let amt = Math.floor(bal / 1000) * 1000;
+      const wMax = Number(cb.getAttribute('data-wmax') || '0');
+      if (!isTopup && wMax > 0) amt = Math.min(amt, Math.floor(wMax / 1000) * 1000);
+      if (amt >= 10000) jobs.push({ id, name, amount: amt });
+      else skipped.push({ id, name });
+    });
+    if (jobs.length === 0) {
+      if (!auto) await setlConfirm({ icon: 'fa-circle-info', title: 'Tidak ada saldo yang bisa diproses', subtitle: 'Semua akun terpilih saldonya di bawah Rp 10.000 setelah dibulatkan ke 1.000.', confirmText: 'Mengerti' });
+      return;
+    }
+    const totalAmt = jobs.reduce((s, j) => s + j.amount, 0);
+    if (!auto) {
+      const ok = await setlConfirm({
+        icon: isTopup ? 'fa-circle-arrow-up' : 'fa-download',
+        title: isTopup ? 'Top Up SEMUA ke Madera?' : 'Tarik SEMUA QRIS ke Utama?',
+        subtitle: jobs.length + ' akun akan diproses' + (skipped.length ? ' · ' + skipped.length + ' dilewati (saldo < 10rb)' : '') + '.',
+        rows: [
+          { label: 'Jumlah akun', value: jobs.length + ' akun' },
+          { label: 'Alur', value: isTopup ? 'Saldo Utama → Madera' : 'Saldo QRIS → Utama' },
+          { label: 'Total nominal', value: rp(totalAmt), hl: true },
+        ],
+        confirmText: isTopup ? 'Top Up Semua' : 'Tarik Semua',
+        confirmClass: isTopup ? 'orange' : 'green',
+      });
+      if (!ok) return;
+    }
+
+    bulkRunning = true;
+    const btnTarik = document.getElementById('bulkBtnTarik');
+    const btnTopup = document.getElementById('bulkBtnTopup');
+    if (btnTarik) btnTarik.disabled = true;
+    if (btnTopup) btnTopup.disabled = true;
+
+    const baseTitle = isTopup ? 'Top Up Semua ke Madera' : 'Tarik Semua QRIS ke Utama';
+    const panel = setlBulkProgress((auto ? '⏱ ' : '') + baseTitle, jobs);
+    let okCount = 0, failCount = 0, okAmt = 0;
+    for (const job of jobs) {
+      const r = await doOneTransfer(panel, job, fromWallet, toWallet);
+      if (r.ok) { okCount++; okAmt += r.amount; } else failCount++;
+    }
+    panel.finish(okCount, failCount, okAmt, skipped);
+    if (btnTarik) btnTarik.disabled = false;
+    if (btnTopup) btnTopup.disabled = false;
+    bulkRunning = false;
+  }
+  window.runBulk = runBulk;
+
+  // ── Scheduler Otomatis (client-side, jalan selama halaman terbuka) ─────────
+  const SCHED_KEY = 'qris:sched';
+  const schedState = { tarik: { on: false, min: 30 }, topup: { on: false, min: 30 } };
+  const schedTimer = { tarik: null, topup: null };
+  const schedNextAt = { tarik: 0, topup: 0 };
+  function schedEls(kind) {
+    return {
+      box: document.getElementById(kind === 'tarik' ? 'schedTarik' : 'schedTopup'),
+      min: document.getElementById(kind === 'tarik' ? 'schedTarikMin' : 'schedTopupMin'),
+      next: document.getElementById(kind === 'tarik' ? 'schedTarikNext' : 'schedTopupNext'),
+    };
+  }
+  function schedMinOf(kind) {
+    const el = schedEls(kind).min;
+    let v = parseInt((el && el.value) || '30', 10);
+    if (!Number.isFinite(v) || v < 1) v = 1;
+    if (v > 1440) v = 1440;
+    return v;
+  }
+  function saveSched() { try { localStorage.setItem(SCHED_KEY, JSON.stringify(schedState)); } catch (e) {} }
+  function loadSched() {
+    try {
+      const j = JSON.parse(localStorage.getItem(SCHED_KEY) || 'null');
+      if (j) ['tarik', 'topup'].forEach((k) => { if (j[k]) { schedState[k].on = !!j[k].on; schedState[k].min = j[k].min || 30; } });
+    } catch (e) {}
+  }
+  function fireSched(kind) {
+    if (kind === 'tarik') runBulk('qris', 'utama', { auto: true });
+    else runBulk('utama', 'madera', { auto: true });
+  }
+  function startSched(kind) {
+    stopSched(kind);
+    const ms = schedMinOf(kind) * 60000;
+    schedNextAt[kind] = Date.now() + ms;
+    schedTimer[kind] = setInterval(() => { schedNextAt[kind] = Date.now() + ms; fireSched(kind); }, ms);
+    renderSchedNext();
+  }
+  function stopSched(kind) {
+    if (schedTimer[kind]) { clearInterval(schedTimer[kind]); schedTimer[kind] = null; }
+    schedNextAt[kind] = 0;
+    renderSchedNext();
+  }
+  function onSchedToggle(kind, on) { schedState[kind].on = on; schedState[kind].min = schedMinOf(kind); saveSched(); if (on) startSched(kind); else stopSched(kind); }
+  function onSchedIntChange(kind) { schedState[kind].min = schedMinOf(kind); saveSched(); if (schedTimer[kind]) startSched(kind); }
+  window.onSchedToggle = onSchedToggle;
+  window.onSchedIntChange = onSchedIntChange;
+  function renderSchedNext() {
+    ['tarik', 'topup'].forEach((kind) => {
+      const el = schedEls(kind).next;
+      if (!el) return;
+      if (!schedTimer[kind]) { el.textContent = 'nonaktif'; el.classList.remove('on'); return; }
+      const left = Math.max(0, schedNextAt[kind] - Date.now());
+      const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000);
+      el.textContent = 'berikutnya ' + m + ':' + String(s).padStart(2, '0');
+      el.classList.add('on');
+    });
+  }
+  setInterval(renderSchedNext, 1000);
+  function initSched() {
+    loadSched();
+    ['tarik', 'topup'].forEach((kind) => {
+      const els = schedEls(kind);
+      if (els.min) els.min.value = schedState[kind].min;
+      if (els.box) els.box.checked = schedState[kind].on;
+      if (schedState[kind].on) startSched(kind);
+    });
+    renderSchedNext();
+  }
+
+  // Inisialisasi hitungan checklist + scheduler saat halaman siap
+  updateBulkCount();
+  initSched();
+
+  // ── Madera → Bank ─────────────────────────────────────────────────────────
+  async function requestBankInquiry(acctId, options = {}) {
+    const bankInput = getInput('bank-code', acctId);
+    const accountInput = getInput('bank-account', acctId);
+    const sourceInput = getInput('bank-source', acctId);
+    const amountInput = getInput('madera2bank', acctId);
+    if (!bankInput || !accountInput || !sourceInput) return null;
+    if (bankInput.disabled || accountInput.disabled || amountInput?.disabled) return null;
+
+    const swiftInput = getInput('bank-swift', acctId);
+    const bankDisplayName = normalizeBankValue(bankInput.value);
+    // Resolve SWIFT code: prefer hidden input → resolveSwiftCode fallback → display name
+    const resolvedSwift = (swiftInput?.value) || resolveSwiftCode(bankDisplayName);
+    const bankCode = resolvedSwift || bankDisplayName;
+    const bankAccount = String(accountInput.value || '').replace(/[^\d]/g, '');
+    const amount = Math.max(parseMoney(amountInput?.value) || 0, 10000);
+    const fromWallet = 'madera';
+
+    bankInput.value = bankDisplayName || bankInput.value.trim();
+    // Sync SWIFT hidden input if we resolved a code
+    if (swiftInput && !swiftInput.value && resolvedSwift && resolvedSwift !== bankDisplayName) {
+      swiftInput.value = resolvedSwift;
+    }
+    accountInput.value = bankAccount;
+
+    if ((!bankDisplayName && !swiftInput?.value) || !bankAccount) {
+      resetOwnerState(acctId);
+      if (!options.silent) {
+        showMsg('madera2bank', acctId, 'Pilih bank dan isi nomor rekening terlebih dahulu.', false);
+      }
+      return null;
+    }
+
+    renderOwnerState(acctId, 'loading');
+
+    const requestKey = `${fromWallet}|${bankCode}|${bankAccount}|${amount}`;
+    const inflight = inquiryInflight.get(acctId);
+    if (inflight && inflight.key === requestKey) {
+      return inflight.promise;
+    }
+
+    const requestPromise = fetch(inquiryUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        fromWallet,
+        qrisAccountId: acctId,
+        bankCode,
+        bankAccount,
+        amount,
+      }),
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({ ok: false, error: 'Respon inquiry tidak valid.' }));
+        if (!response.ok || !payload.ok) {
+          throw new Error(payload.error || 'Inquiry rekening gagal.');
+        }
+        const current = inquiryInflight.get(acctId);
+        if (!current || current.key !== requestKey) {
+          return null;
+        }
+
+        const result = payload.data || {};
+        const accountName = String(result.accountName || '').trim();
+        if (!accountName) {
+          throw new Error('Nama pemilik rekening belum ditemukan.');
+        }
+        const resolvedBankName = String(result.bankName || bankCode).trim() || bankCode;
+        const feeValue = Number.parseInt(String(result.fee ?? ''), 10);
+        const feeMeta = Number.isFinite(feeValue)
+          ? (feeValue === 0 ? 'Biaya GRATIS' : `Biaya ${rp(feeValue)}`)
+          : '';
+        const meta = [resolvedBankName, bankAccount, feeMeta].filter(Boolean).join(' | ');
+        renderOwnerState(acctId, 'success', {
+          bankName: resolvedBankName,
+          accountName,
+          meta,
+        });
+        if (!options.silent) {
+          showMsg('madera2bank', acctId, `Rekening ${resolvedBankName} berhasil diverifikasi.`, true);
+        }
+        return result;
+      })
+      .catch((error) => {
+        renderOwnerState(acctId, 'error', {
+          title: 'Rekening belum valid',
+          meta: error instanceof Error ? error.message : 'Inquiry rekening gagal.',
+        });
+        if (!options.silent) {
+          showMsg('madera2bank', acctId, error instanceof Error ? error.message : 'Inquiry rekening gagal.', false);
+        }
+        return null;
+      })
+      .finally(() => {
+        const current = inquiryInflight.get(acctId);
+        if (current && current.key === requestKey) {
+          inquiryInflight.delete(acctId);
+        }
+      });
+
+    inquiryInflight.set(acctId, { key: requestKey, promise: requestPromise });
+    return requestPromise;
+  }
+
+  function scheduleBankInquiry(acctId) {
+    // Auto-cek dimatikan: inquiry rekening HANYA dijalankan saat klik tombol "Cek".
+    clearTimeout(inquiryTimers.get(acctId));
+  }
+
+  function bindInquiryInputs() {
+    document.querySelectorAll('[data-input^="bank-account-"]').forEach((input) => {
+      if (input.dataset.inquiryBound === '1') return;
+      input.dataset.inquiryBound = '1';
+      input.addEventListener('input', () => {
+        input.value = String(input.value || '').replace(/[^\d]/g, '');
+        const acctId = (input.dataset.input || '').replace('bank-account-', '');
+        resetOwnerState(acctId);
+        scheduleBankInquiry(acctId);
+      });
+      input.addEventListener('blur', () => {
+        const acctId = (input.dataset.input || '').replace('bank-account-', '');
+        scheduleBankInquiry(acctId);
+      });
+    });
+
+    document.querySelectorAll('[data-input^="bank-source-"]').forEach((input) => {
+      if (input.dataset.inquiryBound === '1') return;
+      input.dataset.inquiryBound = '1';
+      input.addEventListener('change', () => {
+        const acctId = (input.dataset.input || '').replace('bank-source-', '');
+        resetOwnerState(acctId);
+        scheduleBankInquiry(acctId);
+      });
+    });
+  }
+
+  function bindBankPickers() {
+    document.querySelectorAll('[data-bank-search]').forEach((input) => {
+      if (input.dataset.bankPickerBound === '1') return;
+      input.dataset.bankPickerBound = '1';
+      const acctId = input.getAttribute('data-bank-search') || '';
+
+      input.addEventListener('focus', () => {
+        if (input.disabled) return;
+        renderBankOptions(acctId, input.value);
+        closeAllBankDropdowns(acctId);
+        setBankDropdownOpen(acctId, true);
+      });
+
+      input.addEventListener('input', () => {
+        if (input.disabled) return;
+        // Clear SWIFT code when user types (will be re-set on selection)
+        const swiftInput = getInput('bank-swift', acctId);
+        if (swiftInput) swiftInput.value = '';
+        resetOwnerState(acctId);
+        renderBankOptions(acctId, input.value);
+        closeAllBankDropdowns(acctId);
+        setBankDropdownOpen(acctId, true);
+        scheduleBankInquiry(acctId);
+      });
+
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') {
+          setBankDropdownOpen(acctId, false);
+          return;
+        }
+        if (event.key === 'Enter') {
+          const normalized = normalizeBankValue(input.value);
+          if (normalized) {
+            event.preventDefault();
+            input.value = normalized;
+            const swiftInput = getInput('bank-swift', acctId);
+            if (swiftInput) swiftInput.value = resolveSwiftCode(normalized);
+            renderBankOptions(acctId, normalized);
+            setBankDropdownOpen(acctId, false);
+            scheduleBankInquiry(acctId);
+          }
+        }
+        if (event.key === 'ArrowDown') {
+          event.preventDefault();
+          renderBankOptions(acctId, input.value);
+          closeAllBankDropdowns(acctId);
+          setBankDropdownOpen(acctId, true);
+        }
+      });
+
+      input.addEventListener('blur', () => {
+        setTimeout(() => {
+          const normalized = normalizeBankValue(input.value);
+          if (normalized) {
+            input.value = normalized;
+            const swiftInput = getInput('bank-swift', acctId);
+            if (swiftInput) swiftInput.value = resolveSwiftCode(normalized);
+          }
+          setBankDropdownOpen(acctId, false);
+          scheduleBankInquiry(acctId);
+        }, 120);
+      });
+
+      renderBankOptions(acctId, input.value);
+    });
+
+    document.querySelectorAll('[data-bank-toggle]').forEach((button) => {
+      if (button.dataset.bankPickerBound === '1') return;
+      button.dataset.bankPickerBound = '1';
+      const acctId = button.getAttribute('data-bank-toggle') || '';
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        const input = getInput('bank-code', acctId);
+        if (button.disabled || input?.disabled) return;
+        const dropdown = getBankDropdown(acctId);
+        const nextOpen = dropdown?.hidden ?? true;
+        renderBankOptions(acctId, input?.value || '');
+        closeAllBankDropdowns(nextOpen ? acctId : '');
+        setBankDropdownOpen(acctId, nextOpen);
+        if (nextOpen && input) {
+          input.focus();
+        }
+      });
+    });
+
+    document.addEventListener('click', (event) => {
+      if (event.target instanceof Element && event.target.closest('.setl-bank-picker')) return;
+      closeAllBankDropdowns();
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      closeTransferFlowModal();
+    }
+  });
+
+  getTransferFlowModal()?.addEventListener('click', (event) => {
+    if (event.target === getTransferFlowModal()) {
+      closeTransferFlowModal();
+    }
+  });
+
+  window.doTransferBank = async function(acctId, btn) {
+    const bankInput = getInput('bank-code', acctId);
+    const accountInput = getInput('bank-account', acctId);
+    const amountInput = getInput('madera2bank', acctId);
+    const sourceInput = getInput('bank-source', acctId);
+    const bankNameInput = getInput('bank-name', acctId);
+    const swiftInput = getInput('bank-swift', acctId);
+    const ownerBox = getOwnerBox(acctId);
+
+    const bankDisplayName = normalizeBankValue(bankInput?.value || '');
+    // Resolve SWIFT code: prefer hidden input → resolveSwiftCode fallback → display name
+    const resolvedSwift = (swiftInput?.value) || resolveSwiftCode(bankDisplayName);
+    const bankCode = resolvedSwift || bankDisplayName;
+    const bankAccount = String(accountInput?.value || '').replace(/[^\d]/g, '');
+    const amount = parseMoney(amountInput?.value);
+    const fromWallet = 'madera';
+
+    if (bankInput && bankDisplayName) bankInput.value = bankDisplayName;
+    // Sync SWIFT hidden input if we resolved a code
+    if (swiftInput && !swiftInput.value && resolvedSwift && resolvedSwift !== bankDisplayName) {
+      swiftInput.value = resolvedSwift;
+    }
+    if (accountInput) accountInput.value = bankAccount;
+
+    if (!bankCode) {
+      showMsg('madera2bank', acctId, 'Pilih bank dari daftar terlebih dahulu.', false);
+      return;
+    }
+    if (!bankAccount) {
+      showMsg('madera2bank', acctId, 'Masukkan nomor rekening tujuan.', false);
+      return;
+    }
+    if (!amount || amount < 10000) {
+      showMsg('madera2bank', acctId, 'Minimal transfer bank dari Saldo Madera Rp 10.000.', false);
+      return;
+    }
+    if (sourceInput && sourceInput.value !== 'madera') {
+      sourceInput.value = 'madera';
+    }
+    if (bankInput?.disabled || accountInput?.disabled || amountInput?.disabled) {
+      showMsg('madera2bank', acctId, 'Kirim Uang belum aktif. Pastikan saldo Madera ada dan PIN merchant sudah diisi.', false);
+      return;
+    }
+
+    if (!ownerBox?.dataset.ownerName) {
+      const inquiry = await requestBankInquiry(acctId, { silent: false });
+      if (!inquiry) return;
+    }
+
+    const bankName = bankNameInput?.value?.trim() || bankDisplayName || bankCode;
+
+    const feeConfirm = 2500;
+    const ownerName = ownerBox?.dataset.ownerName || '-';
+    const okConfirm = await setlConfirm({
+      icon: 'fa-paper-plane',
+      title: 'Kirim Uang Sekarang?',
+      subtitle: 'Periksa detail transfer sebelum lanjut.',
+      rows: [
+        { label: 'Bank', value: bankName },
+        { label: 'Nama', value: ownerName },
+        { label: 'No. Rekening', value: bankAccount },
+        { label: 'Nominal', value: rp(amount) },
+        { label: 'Biaya', value: rp(feeConfirm) },
+        { label: 'Total', value: rp(amount + feeConfirm), hl: true },
+      ],
+      confirmText: 'Kirim Sekarang',
+      confirmClass: 'blue',
+    });
+    if (!okConfirm) return;
+
+    const orig = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    await performTransfer(
+      {
+        fromWallet,
+        toWallet: 'bank',
+        amount,
+        qrisAccountId: acctId,
+        bankCode,
+        bankAccount,
+        bankName,
+        note: ownerBox?.dataset.ownerName || undefined,
+      },
+      'madera2bank',
+      acctId,
+      btn,
+      orig,
+    );
+  };
+
+  // ── Cek rekening (stub) ───────────────────────────────────────────────────
+  window.cekRekening = async function(acctId) {
+    // Inquiry Nobu kadang gagal sesaat (flaky) -> auto-retry beberapa kali sebelum menyerah.
+    const maxTry = 3;
+    for (let i = 1; i <= maxTry; i++) {
+      renderOwnerState(acctId, 'loading');
+      const res = await requestBankInquiry(acctId, { silent: i < maxTry });
+      if (res) return; // sukses: nama pemilik ditemukan
+      if (i < maxTry) await new Promise((r) => setTimeout(r, 900));
+    }
+  };
+
+  // ── Bukti Transfer (render ke canvas → download PNG) ──────────────────────
+  function prettyBank(nameOrCode) {
+    if (!nameOrCode) return '';
+    for (const k in BANK_SWIFT_MAP) if (BANK_SWIFT_MAP[k] === nameOrCode) return k;
+    if (typeof dynamicBanksByCode !== 'undefined' && dynamicBanksByCode.get) {
+      const e = dynamicBanksByCode.get(nameOrCode);
+      if (e && e.name) return e.name;
+    }
+    return nameOrCode;
+  }
+  function downloadReceipt(d) {
+    const rows = [];
+    rows.push(['Tanggal', d.time || '-']);
+    if (d.merchant) rows.push(['Merchant', d.merchant]);
+    rows.push(['Alur', (d.from || '') + '  →  ' + (d.to || '')]);
+    if (d.bankName) rows.push(['Bank Tujuan', prettyBank(d.bankName)]);
+    if (d.bankAccount) rows.push(['No. Rekening', String(d.bankAccount)]);
+    rows.push(['Nominal', rp(d.amount)]);
+    if (d.fee !== null && d.fee !== undefined) rows.push(['Biaya', rp(d.fee)]);
+    if (d.total !== null && d.total !== undefined) rows.push(['Total', rp(d.total)]);
+    if (d.ref) rows.push(['Referensi', String(d.ref)]);
+    if (d.note) rows.push(['Keterangan', String(d.note)]);
+
+    const W = 640, padX = 40, headerH = 210, rowH = 44, footerH = 92;
+    const H = headerH + rows.length * rowH + footerH;
+    const scale = 2;
+    const canvas = document.createElement('canvas');
+    canvas.width = W * scale; canvas.height = H * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.scale(scale, scale);
+
+    const bg = ctx.createLinearGradient(0, 0, 0, H);
+    bg.addColorStop(0, '#0f172a'); bg.addColorStop(1, '#1e293b');
+    ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+    const ab = ctx.createLinearGradient(0, 0, W, 0);
+    ab.addColorStop(0, '#3b82f6'); ab.addColorStop(.5, '#a78bfa'); ab.addColorStop(1, '#22c55e');
+    ctx.fillStyle = ab; ctx.fillRect(0, 0, W, 5);
+
+    const ok = d.status === 'done';
+    const proc = d.status === 'processing' || d.status === 'pending';
+    const stColor = ok ? '#22c55e' : (proc ? '#f59e0b' : '#ef4444');
+    const stText = ok ? 'BERHASIL' : (proc ? 'DIPROSES' : 'GAGAL');
+
+    ctx.fillStyle = '#e2e8f0'; ctx.font = '800 13px system-ui, -apple-system, sans-serif';
+    ctx.fillText('BUKTI TRANSFER', padX, 46);
+    ctx.fillStyle = '#64748b'; ctx.font = '600 11px system-ui, sans-serif';
+    const brand = 'QRIS ORKUT';
+    ctx.fillText(brand, W - padX - ctx.measureText(brand).width, 46);
+
+    ctx.fillStyle = stColor;
+    ctx.beginPath(); ctx.arc(padX + 9, 80, 10, 0, 2 * Math.PI); ctx.fill();
+    ctx.fillStyle = '#0f172a'; ctx.font = '900 12px system-ui, sans-serif';
+    ctx.fillText(ok ? '✓' : (proc ? '…' : '✕'), padX + (ok ? 4.5 : (proc ? 4 : 5)), 84);
+    ctx.fillStyle = stColor; ctx.font = '800 21px system-ui, sans-serif';
+    ctx.fillText(stText, padX + 28, 88);
+
+    ctx.fillStyle = '#f8fafc'; ctx.font = '800 40px system-ui, sans-serif';
+    ctx.fillText(rp(d.amount), padX, 150);
+    ctx.fillStyle = '#94a3b8'; ctx.font = '600 12px system-ui, sans-serif';
+    ctx.fillText((d.from || '') + '  →  ' + (d.to || ''), padX, 176);
+
+    ctx.strokeStyle = 'rgba(148,163,184,.22)'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(padX, headerH - 14); ctx.lineTo(W - padX, headerH - 14); ctx.stroke();
+
+    let y = headerH + 12;
+    rows.forEach(([label, value]) => {
+      ctx.textAlign = 'left'; ctx.fillStyle = '#94a3b8'; ctx.font = '600 13px system-ui, sans-serif';
+      ctx.fillText(label, padX, y);
+      ctx.textAlign = 'right'; ctx.fillStyle = '#f1f5f9'; ctx.font = '700 13px system-ui, sans-serif';
+      let v = String(value == null ? '' : value);
+      const maxW = W - padX * 2 - 150;
+      if (ctx.measureText(v).width > maxW) {
+        while (v.length > 4 && ctx.measureText(v + '…').width > maxW) v = v.slice(0, -1);
+        v = v + '…';
+      }
+      ctx.fillText(v, W - padX, y);
+      y += rowH;
+      ctx.strokeStyle = 'rgba(148,163,184,.08)'; ctx.beginPath(); ctx.moveTo(padX, y - rowH + 14); ctx.lineTo(W - padX, y - rowH + 14); ctx.stroke();
+    });
+    ctx.textAlign = 'left';
+
+    const fy = H - 46;
+    ctx.strokeStyle = 'rgba(148,163,184,.22)'; ctx.beginPath(); ctx.moveTo(padX, fy - 16); ctx.lineTo(W - padX, fy - 16); ctx.stroke();
+    ctx.fillStyle = '#64748b'; ctx.font = '500 10.5px system-ui, sans-serif';
+    ctx.fillText('Dibuat otomatis • ' + new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' }), padX, fy);
+    ctx.fillText('Bukti ini dibuat dari catatan sistem, bukan dokumen resmi bank.', padX, fy + 16);
+
+    canvas.toBlob(function (blob) {
+      if (!blob) return;
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      const stamp = String(d.ref || d.time || 'bukti').replace(/[^\w-]+/g, '_').slice(0, 40);
+      a.download = 'bukti-transfer-' + stamp + '.png';
+      document.body.appendChild(a); a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1200);
+    }, 'image/png');
+  }
+  window.downloadReceipt = downloadReceipt;
+
+  // ── Bukti Resmi Nobu (screenshot bot dari webview Madera) ─────────────────
+  const PROOF_BASE = '<%- url('/dashboard/api/settlement') %>';
+  const PROOFS_LIST_URL = '<%- url('/dashboard/api/settlement-proofs') %>';
+  const proofReady = new Set();
+  function setProofBtn(btn, state) {
+    if (!btn) return;
+    btn.classList.remove('ready', 'busy');
+    const ic = btn.querySelector('i');
+    if (state === 'ready') { btn.classList.add('ready'); if (ic) ic.className = 'fa-solid fa-file-arrow-down'; btn.title = 'Download bukti resmi Nobu'; }
+    else if (state === 'busy') { btn.classList.add('busy'); if (ic) ic.className = 'fa-solid fa-spinner'; btn.title = 'Mengambil bukti…'; }
+    else { if (ic) ic.className = 'fa-solid fa-lock'; btn.title = 'Bukti belum diambil — klik untuk ambil (butuh ~30 detik)'; }
+  }
+  async function loadProofsList() {
+    try {
+      const resp = await fetch(PROOFS_LIST_URL, { headers: { 'Accept': 'application/json' } });
+      const data = await resp.json().catch(() => null);
+      if (data && data.ok && Array.isArray(data.ids)) {
+        data.ids.forEach((id) => proofReady.add(id));
+        document.querySelectorAll('.setl-proof-btn').forEach((btn) => {
+          if (proofReady.has(btn.getAttribute('data-id'))) setProofBtn(btn, 'ready');
+        });
+      }
+    } catch (e) {}
+  }
+  function pollProof(id, btn) {
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries++;
+      try {
+        const resp = await fetch(PROOFS_LIST_URL, { headers: { 'Accept': 'application/json' } });
+        const data = await resp.json().catch(() => null);
+        const ids = (data && data.ids) || [];
+        const processing = (data && data.processing) || [];
+        if (ids.indexOf(id) !== -1) {
+          clearInterval(timer); proofReady.add(id); setProofBtn(btn, 'ready');
+          if (window.Swal) Swal.fire({ icon: 'success', title: 'Bukti siap', text: 'Bukti resmi Nobu berhasil diambil. Klik lagi untuk download.', background: 'var(--card)', color: 'var(--ink)', timer: 2400, showConfirmButton: false });
+          return;
+        }
+        if (processing.indexOf(id) === -1) {
+          clearInterval(timer); setProofBtn(btn, 'idle');
+          alert('Bukti gagal diambil (Nobu sedang sibuk / "Data Gagal Dimuat"). Tunggu beberapa menit, lalu coba lagi.');
+          return;
+        }
+      } catch (e) {}
+      if (tries >= 45) { clearInterval(timer); setProofBtn(btn, 'idle'); alert('Pengambilan bukti terlalu lama. Coba lagi nanti.'); }
+    }, 5000);
+  }
+  async function onProofClick(id, btn) {
+    if (proofReady.has(id)) {
+      window.location.href = PROOF_BASE + '/' + encodeURIComponent(id) + '/proof';
+      return;
+    }
+    if (btn && btn.classList.contains('busy')) return;
+    setProofBtn(btn, 'busy');
+    try {
+      const resp = await fetch(PROOF_BASE + '/' + encodeURIComponent(id) + '/capture-proof', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+      const data = await resp.json().catch(() => null);
+      if (!data || !data.ok) {
+        setProofBtn(btn, 'idle');
+        alert((data && data.message) || 'Gagal memulai pengambilan bukti. Coba lagi.');
+        return;
+      }
+      if (data.status === 'ready') { proofReady.add(id); setProofBtn(btn, 'ready'); return; }
+      // status 'processing' -> pantau sampai selesai (bot butuh ~30-60 detik)
+      pollProof(id, btn);
+    } catch (e) {
+      setProofBtn(btn, 'idle');
+      alert('Koneksi ke server gagal. Coba lagi.');
+    }
+  }
+  window.onProofClick = onProofClick;
+  loadProofsList();
+
+  // ── History filter (tanggal + status) + pagination (maks 100/hal) ─────────
+  const HIST_PAGE_SIZE = 100;
+  let histRange = 'all', histPageNum = 1, histMatched = [];
+  function histRows() { return [...document.querySelectorAll('#hist-tbody tr[data-status]')]; }
+  function histInRange(ts) {
+    const d = new Date();
+    const startToday = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    if (histRange === 'today') return ts >= startToday;
+    if (histRange === 'yesterday') return ts >= startToday - 86400000 && ts < startToday;
+    if (histRange === 'custom') {
+      const f = document.getElementById('hist-from'), t = document.getElementById('hist-to');
+      const lo = (f && f.value) ? new Date(f.value + 'T00:00:00').getTime() : -Infinity;
+      const hi = (t && t.value) ? new Date(t.value + 'T23:59:59.999').getTime() : Infinity;
+      return ts >= lo && ts <= hi;
+    }
+    return true;
+  }
+  function applyHistFilter() {
+    const sel = document.getElementById('hist-filter');
+    const status = (sel && sel.value) || '';
+    histMatched = histRows().filter((r) => {
+      const ts = Number(r.dataset.ts || '0');
+      return histInRange(ts) && (!status || r.dataset.status === status);
+    });
+    histPageNum = 1;
+    renderHistPage();
+  }
+  function renderHistPage() {
+    const total = histMatched.length;
+    const pages = Math.max(1, Math.ceil(total / HIST_PAGE_SIZE));
+    if (histPageNum > pages) histPageNum = pages;
+    if (histPageNum < 1) histPageNum = 1;
+    const start = (histPageNum - 1) * HIST_PAGE_SIZE, end = start + HIST_PAGE_SIZE;
+    histRows().forEach((r) => { r.style.display = 'none'; });
+    histMatched.forEach((r, i) => { r.style.display = (i >= start && i < end) ? '' : 'none'; });
+    const countEl = document.getElementById('hist-count'); if (countEl) countEl.textContent = '(' + total + ' request)';
+    const emptyEl = document.getElementById('hist-empty-filter'); if (emptyEl) emptyEl.hidden = total !== 0;
+    const info = document.getElementById('hist-pageinfo'); if (info) info.textContent = 'Hal ' + histPageNum + ' / ' + pages + ' · ' + total + ' baris';
+    const prev = document.getElementById('hist-prev'), next = document.getElementById('hist-next');
+    if (prev) prev.disabled = histPageNum <= 1;
+    if (next) next.disabled = histPageNum >= pages;
+    const pager = document.getElementById('hist-pager'); if (pager) pager.style.display = total > HIST_PAGE_SIZE ? '' : 'none';
+  }
+  function histPage(dir) { histPageNum += dir; renderHistPage(); }
+  function setHistRange(range, btn) {
+    histRange = range;
+    document.querySelectorAll('.setl-hist-datebtn').forEach((b) => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+    const custom = document.getElementById('hist-custom');
+    if (custom) { if (range === 'custom') custom.removeAttribute('hidden'); else custom.setAttribute('hidden', ''); }
+    applyHistFilter();
+  }
+  window.applyHistFilter = applyHistFilter;
+  window.histPage = histPage;
+  window.setHistRange = setHistRange;
+  const histFilterSel = document.getElementById('hist-filter');
+  if (histFilterSel) histFilterSel.addEventListener('change', applyHistFilter);
+  applyHistFilter();
+
+  // ── Live balance polling ──────────────────────────────────────────────────
+  bindMoneyInputs();
+  bindBankPickers();
+  bindInquiryInputs();
+  document.querySelectorAll('[data-owner-box]').forEach((box) => {
+    const acctId = String(box.getAttribute('data-owner-box') || '').replace('bank-owner-', '');
+    if (acctId) resetOwnerState(acctId);
+  });
+
+  // ── Total Saldo (kartu QRIS/Utama/Madera/Grand) — hormati filter Site + ikut live-refresh ──
+  function _wtReadBal(card, field) {
+    var el = card.querySelector('.fl-val[data-field="' + field + '"]');
+    if (!el) return 0;
+    if (el.dataset.val !== undefined && el.dataset.val !== '') return Number(el.dataset.val) || 0;
+    return Number(String(el.textContent).replace(/[^\d-]/g, '')) || 0;
+  }
+  function _wtAnimate(id, to) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    to = Math.round(Number(to) || 0);
+    var from = (el.dataset.val !== undefined && el.dataset.val !== '') ? (Number(el.dataset.val) || 0) : 0;
+    el.dataset.val = String(to);
+    if (from === to) { el.textContent = rp(to); return; }
+    var dur = 900, t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    function frame(now) {
+      var p = Math.min(1, (((window.performance && performance.now) ? now : Date.now()) - t0) / dur);
+      var e = 1 - Math.pow(1 - p, 3);
+      el.textContent = rp(Math.round(from + (to - from) * e));
+      if (p < 1) requestAnimationFrame(frame); else el.textContent = rp(to);
+    }
+    requestAnimationFrame(frame);
+  }
+  function recomputeWalletTotals(animate) {
+    var cards = document.querySelectorAll('#account-grid .setl-card');
+    var tq = 0, tu = 0, tm = 0;
+    cards.forEach(function (card) {
+      if (card.style.display === 'none') return; // hormati filter Site
+      tq += _wtReadBal(card, 'qris');
+      tu += _wtReadBal(card, 'utama');
+      tm += _wtReadBal(card, 'madera');
+    });
+    var tg = tq + tu + tm;
+    if (animate) {
+      _wtAnimate('wt-qris', tq); _wtAnimate('wt-utama', tu); _wtAnimate('wt-madera', tm); _wtAnimate('wt-grand', tg);
+    } else {
+      [['wt-qris', tq], ['wt-utama', tu], ['wt-madera', tm], ['wt-grand', tg]].forEach(function (pr) {
+        var el = document.getElementById(pr[0]); if (el) { el.dataset.val = String(Math.round(pr[1])); el.textContent = rp(Math.round(pr[1])); }
+      });
+    }
+  }
+  window.recomputeWalletTotals = recomputeWalletTotals;
+
+  // Live-refresh saldo QRIS/Utama/Madera langsung dari OrderKuota (cek saldo = BEBAS-LIMIT).
+  function refreshAllSettlementAccounts() {
+    Array.from(document.querySelectorAll('.setl-acc-toggle'))
+      .map(function (el) { return el.getAttribute('data-account-id'); })
+      .filter(Boolean)
+      .forEach(function (id) { refreshSettlementAccount(id); });
+  }
+  // 1) Saat menu dibuka/reload.
+  refreshAllSettlementAccounts();
+  recomputeWalletTotals(true);
+  // 2) Otomatis tiap 30 detik TANPA reload -> saldo naik/turun sendiri. Guard in-flight per akun
+  //    mencegah tumpukan. Pause saat tab tak terlihat (document.hidden) supaya hemat panggilan.
+  setInterval(function () {
+    if (document.hidden) return;
+    refreshAllSettlementAccounts();
+  }, 30000);
+  // 3) Begitu tab kembali terlihat, segarkan langsung (biar tak nunggu 30 detik).
+  document.addEventListener('visibilitychange', function () {
+    if (!document.hidden) refreshAllSettlementAccounts();
+  });
+})();
+</script>

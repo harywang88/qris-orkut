@@ -1,0 +1,192 @@
+<%
+  const isEdit = account !== null;
+  const formAction = isEdit ? url(`/qris-accounts/${account.id}`) : url('/qris-accounts');
+%>
+
+<div class="max-w-2xl">
+  <div class="mb-5">
+    <a href="<%= url('/qris-accounts') %>"
+       class="inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink transition-colors">
+      <i class="fa-solid fa-arrow-left text-xs"></i>
+      Kembali ke daftar
+    </a>
+  </div>
+
+  <div class="qris-page-header">
+    <h1 class="qris-page-title">
+      <%= isEdit ? 'Edit Akun QRIS' : 'Tambah <span>Akun QRIS</span>' %>
+    </h1>
+  </div>
+
+  <div class="qris-card p-6">
+    <% if (errors && errors._form) { %>
+      <div class="flash-error mb-4">
+        <i class="fa-solid fa-circle-xmark flex-shrink-0 text-sm"></i>
+        <span class="flex-1 text-sm"><%= errors._form[0] %></span>
+      </div>
+    <% } %>
+
+    <form action="<%= formAction %>" method="POST" class="space-y-4">
+
+      <div>
+        <label class="qris-label">
+          Kode Akun <span style="color:#fca5a5">*</span>
+          <span class="text-muted-2 normal-case font-normal ml-1">(contoh: 01WR, maks 10 karakter)</span>
+        </label>
+        <input type="text" name="code"
+               value="<%= isEdit ? account.code : '' %>"
+               <%= isEdit ? 'readonly' : '' %>
+               required maxlength="10" pattern="[A-Za-z0-9]+"
+               class="qris-input <%= isEdit ? 'opacity-60 cursor-not-allowed' : '' %>"
+               placeholder="Contoh: 01WR" />
+        <% if (errors && errors.code) { %>
+          <p class="text-xs mt-1" style="color:#fca5a5"><%= errors.code[0] %></p>
+        <% } %>
+      </div>
+
+      <div>
+        <label class="qris-label">Nama Merchant <span style="color:#fca5a5">*</span></label>
+        <input type="text" name="merchantName"
+               value="<%= isEdit ? account.merchantName : '' %>"
+               required maxlength="100"
+               class="qris-input"
+               placeholder="Contoh: Warung Ramah" />
+        <% if (errors && errors.merchantName) { %>
+          <p class="text-xs mt-1" style="color:#fca5a5"><%= errors.merchantName[0] %></p>
+        <% } %>
+      </div>
+
+      <div>
+        <label class="qris-label">Nomor Rekening/HP <span style="color:#fca5a5">*</span></label>
+        <input type="text" name="accountNumber"
+               value="<%= isEdit ? account.accountNumber : '' %>"
+               required maxlength="50"
+               class="qris-input"
+               placeholder="Contoh: 081300000001" />
+        <% if (errors && errors.accountNumber) { %>
+          <p class="text-xs mt-1" style="color:#fca5a5"><%= errors.accountNumber[0] %></p>
+        <% } %>
+      </div>
+
+      <div>
+        <label class="qris-label">
+          Index Settlement Orkut
+          <span class="text-muted-2 normal-case font-normal ml-1">opsional</span>
+        </label>
+        <input type="number" name="orkutAccountIndex"
+               value="<%= isEdit && account.orkutAccountIndex ? account.orkutAccountIndex : '' %>"
+               min="1" max="999"
+               class="qris-input"
+               placeholder="Contoh: 1" />
+        <p class="text-[11px] mt-1 text-muted-2">
+          Isi jika akun ini punya index khusus di panel settlement. Kalau kosong, worker pakai urutan akun.
+        </p>
+        <% if (errors && errors.orkutAccountIndex) { %>
+          <p class="text-xs mt-1" style="color:#fca5a5"><%= errors.orkutAccountIndex[0] %></p>
+        <% } %>
+      </div>
+
+      <div>
+        <label class="qris-label">
+          Batas Harian (Rp)
+          <span class="text-muted-2 normal-case font-normal ml-1">0 = tidak terbatas</span>
+        </label>
+        <input type="number" name="dailyLimit"
+               value="<%= isEdit ? account.dailyLimit : 30000000 %>"
+               min="0" step="1000"
+               class="qris-input"
+               placeholder="30000000" />
+        <% if (errors && errors.dailyLimit) { %>
+          <p class="text-xs mt-1" style="color:#fca5a5"><%= errors.dailyLimit[0] %></p>
+        <% } %>
+      </div>
+
+      <div>
+        <label class="qris-label">
+          QRIS Payload (String Statis)
+          <span class="text-muted-2 normal-case font-normal ml-1">opsional</span>
+        </label>
+        <textarea name="qrisPayload" rows="3" maxlength="2000"
+                  class="qris-input qris-textarea"
+                  style="font-family:monospace;font-size:0.8rem;resize:vertical"
+                  placeholder="00020101021226..."><%= isEdit && account.qrisPayload ? account.qrisPayload : '' %></textarea>
+      </div>
+
+      <div>
+        <label class="qris-label">
+          Device ID
+          <span class="text-muted-2 normal-case font-normal ml-1">opsional</span>
+        </label>
+        <input type="text" name="deviceId"
+               value="<%= isEdit && account.deviceId ? account.deviceId : '' %>"
+               maxlength="100"
+               class="qris-input"
+               placeholder="opsional" />
+      </div>
+
+      <% if (isEdit && (account.lastBalanceSyncAt || account.lastMainBalance != null || account.lastQrisBalance != null || account.lastMaderaBalance != null)) { %>
+        <div class="rounded-2xl border p-4" style="border-color:rgba(147,197,253,0.25);background:rgba(59,130,246,0.06)">
+          <p class="text-xs font-semibold mb-2" style="color:#93c5fd">
+            <i class="fa-solid fa-wave-square mr-1.5"></i>
+            Sinkronisasi Saldo Terakhir
+          </p>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+            <div class="rounded-xl border p-3" style="border-color:rgba(255,255,255,0.08);background:rgba(255,255,255,0.03)">
+              <div class="text-muted-2 mb-1">Saldo Utama</div>
+              <div class="font-bold text-ink">Rp <%= (account.lastMainBalance ?? 0).toLocaleString('id-ID') %></div>
+            </div>
+            <div class="rounded-xl border p-3" style="border-color:rgba(255,255,255,0.08);background:rgba(255,255,255,0.03)">
+              <div class="text-muted-2 mb-1">Saldo QRIS</div>
+              <div class="font-bold text-ink">Rp <%= (account.lastQrisBalance ?? 0).toLocaleString('id-ID') %></div>
+            </div>
+            <div class="rounded-xl border p-3" style="border-color:rgba(255,255,255,0.08);background:rgba(255,255,255,0.03)">
+              <div class="text-muted-2 mb-1">Saldo Madera</div>
+              <div class="font-bold text-ink">Rp <%= (account.lastMaderaBalance ?? 0).toLocaleString('id-ID') %></div>
+            </div>
+          </div>
+          <p class="text-[11px] mt-2 text-muted-2">
+            Terakhir sinkron:
+            <%= account.lastBalanceSyncAt ? new Date(account.lastBalanceSyncAt).toLocaleString('id-ID') : '-' %>
+            <% if (account.lastBalanceSyncStatus) { %>
+              · Status: <%= account.lastBalanceSyncStatus %>
+            <% } %>
+          </p>
+          <% if (account.lastBalanceSyncError) { %>
+            <p class="text-[11px] mt-1" style="color:#fca5a5"><%= account.lastBalanceSyncError %></p>
+          <% } %>
+        </div>
+      <% } %>
+
+      <!-- Credentials -->
+      <div class="rounded-2xl border p-4" style="border-color:rgba(245,158,11,0.25);background:rgba(245,158,11,0.05)">
+        <p class="text-xs font-semibold mb-3" style="color:#fcd34d">
+          <i class="fa-solid fa-shield-halved mr-1.5"></i>
+          Kredensial Enkripsi — Isi jika ingin memperbarui
+        </p>
+        <div class="space-y-3">
+          <div>
+            <label class="qris-label">Session Token</label>
+            <input type="password" name="sessionToken" maxlength="1000"
+                   class="qris-input"
+                   placeholder="<%= isEdit ? '(kosongkan jika tidak diubah)' : 'Session token' %>" />
+          </div>
+          <div>
+            <label class="qris-label">Cookies</label>
+            <textarea name="cookies" rows="2" maxlength="5000"
+                      class="qris-input qris-textarea"
+                      style="font-family:monospace;font-size:0.8rem;resize:vertical"
+                      placeholder="<%= isEdit ? '(kosongkan jika tidak diubah)' : 'Cookie string' %>"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="qris-btn qris-btn-accent">
+          <i class="fa-solid fa-floppy-disk text-xs"></i>
+          <%= isEdit ? 'Simpan Perubahan' : 'Tambah Akun' %>
+        </button>
+        <a href="<%= url('/qris-accounts') %>" class="qris-btn qris-btn-ghost">Batal</a>
+      </div>
+    </form>
+  </div>
+</div>

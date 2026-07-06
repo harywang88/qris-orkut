@@ -1,0 +1,292 @@
+<%
+  function fmtRpMn(n) {
+    const v = (n === null || n === undefined) ? null : Number(n);
+    if (v === null || Number.isNaN(v)) return 'Rp -';
+    return 'Rp ' + v.toLocaleString('id-ID');
+  }
+%>
+<style>
+  .mn-wrap { max-width: 1100px; margin: 0 auto; }
+  .mn-head { margin-bottom: 18px; }
+  .mn-title { font-size: 22px; font-weight: 900; color: var(--ink,#f1f5f9); display:flex; align-items:center; gap:10px; }
+  .mn-title i { color:#fbbf24; }
+  .mn-sub { font-size: 12.5px; color: var(--muted,#94a3b8); margin-top:4px; }
+  .mn-info { display:flex; align-items:center; gap:10px; padding:12px 16px; border-radius:14px; margin-bottom:18px;
+    background:linear-gradient(180deg, rgba(96,165,250,.08), rgba(96,165,250,.02)); border:1px solid rgba(96,165,250,.18); color:#bfdbfe; font-size:12.5px; }
+  .mn-info i { color:#60a5fa; }
+
+  .mn-bridge { display:inline-flex; align-items:center; gap:9px; padding:8px 14px; border-radius:12px; margin-bottom:14px; cursor:pointer; font-size:12px; font-weight:700; border:1px solid var(--line,rgba(148,163,184,.18)); transition:background .2s, border-color .2s; }
+  .mn-bridge-dot { width:9px; height:9px; border-radius:50%; flex:0 0 auto; }
+  .mn-bridge-refresh { margin-left:4px; font-size:10px; opacity:.6; }
+  .mn-bridge.checking { background:rgba(148,163,184,.08); color:var(--muted,#94a3b8); }
+  .mn-bridge.checking .mn-bridge-dot { background:#94a3b8; animation:mnPulse 1s infinite; }
+  @keyframes mnPulse { 0%,100%{opacity:1;} 50%{opacity:.3;} }
+  .mn-bridge.ok { background:rgba(34,197,94,.1); color:#86efac; border-color:rgba(34,197,94,.3); }
+  .mn-bridge.ok .mn-bridge-dot { background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.5); animation:mnPing 1.6s infinite; }
+  @keyframes mnPing { 0%{box-shadow:0 0 0 0 rgba(34,197,94,.5);} 70%{box-shadow:0 0 0 6px rgba(34,197,94,0);} 100%{box-shadow:0 0 0 0 rgba(34,197,94,0);} }
+  .mn-bridge.down { background:rgba(239,68,68,.1); color:#fca5a5; border-color:rgba(239,68,68,.35); }
+  .mn-bridge.down .mn-bridge-dot { background:#ef4444; }
+
+  .mn-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; margin-bottom:22px; }
+  .mn-card { position:relative; overflow:hidden; text-align:left; cursor:pointer; font:inherit;
+    padding:16px; border-radius:18px; border:1px solid var(--line,rgba(148,163,184,.16));
+    background:radial-gradient(140% 90% at 50% -20%, rgba(96,165,250,.10), transparent 55%), var(--card,#111827);
+    transition:transform .25s cubic-bezier(.22,1,.36,1), border-color .25s, box-shadow .25s; }
+  .mn-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px;
+    background:linear-gradient(90deg, transparent 4%, #fbbf24, #fb923c, transparent 96%); opacity:.85; }
+  .mn-card:hover { transform:translateY(-4px); border-color:var(--line-hi,rgba(255,255,255,.14));
+    box-shadow:0 16px 40px rgba(0,0,0,.4), 0 0 22px -8px rgba(251,191,36,.3); }
+  .mn-card.active { border-color:rgba(251,191,36,.5); box-shadow:0 0 0 1px rgba(251,191,36,.35); }
+  .mn-card-num { display:inline-flex; width:26px; height:26px; border-radius:9px; align-items:center; justify-content:center;
+    background:rgba(251,191,36,.14); color:#fbbf24; font-weight:900; font-size:12px; margin-bottom:10px; }
+  .mn-card-name { font-size:14px; font-weight:800; color:var(--ink,#f1f5f9); line-height:1.2; }
+  .mn-card-code { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted,#94a3b8); margin-top:2px; }
+  .mn-card-bal { margin-top:12px; font-size:12px; color:var(--muted,#94a3b8); }
+  .mn-card-bal b { color:#fbbf24; font-size:15px; font-family:ui-monospace,SFMono-Regular,monospace; }
+  .mn-card-open { margin-top:12px; display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:700; color:#93c5fd; }
+  .mn-card:hover .mn-card-open { color:#bfdbfe; }
+  .mn-card-quick { margin-top:10px; width:100%; padding:8px; border:1px solid var(--line,rgba(148,163,184,.18)); background:rgba(255,255,255,.03); color:#cbd5e1; border-radius:10px; font:inherit; font-size:11px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:background .15s, color .15s; }
+  .mn-card-quick:hover { background:rgba(96,165,250,.12); color:#fff; }
+  .mn-card-quick:disabled { opacity:.5; cursor:not-allowed; }
+
+  .mn-panel { border:1px solid var(--line,rgba(148,163,184,.16)); border-radius:18px; overflow:hidden; background:var(--card,#111827); }
+  .mn-panel-head { display:flex; align-items:center; gap:12px; padding:16px 18px; border-bottom:1px solid rgba(148,163,184,.12); }
+  .mn-panel-ic { width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background:rgba(251,191,36,.12); color:#fbbf24; font-size:17px; flex:0 0 auto; }
+  .mn-panel-tt { flex:1; min-width:0; }
+  .mn-panel-tt b { font-size:14px; font-weight:800; color:var(--ink,#f1f5f9); display:block; }
+  .mn-panel-tt span { font-size:11.5px; color:var(--muted,#94a3b8); }
+  .mn-refresh { border:1px solid var(--line,rgba(148,163,184,.2)); background:rgba(255,255,255,.04); color:#e2e8f0; cursor:pointer;
+    width:34px; height:34px; border-radius:10px; display:grid; place-items:center; font-size:12px; transition:background .16s; }
+  .mn-refresh:hover { background:rgba(59,130,246,.14); }
+  .mn-refresh:disabled { opacity:.5; cursor:not-allowed; }
+
+  .mn-list { padding:8px; max-height:520px; overflow-y:auto; }
+  .mn-row { display:flex; align-items:center; gap:12px; padding:12px 12px; border-radius:12px; transition:background .14s; }
+  .mn-row:hover { background:rgba(255,255,255,.03); }
+  .mn-row + .mn-row { border-top:1px solid rgba(148,163,184,.06); }
+  .mn-row-ic { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; flex:0 0 auto; font-size:13px; }
+  .mn-row-ic.out { background:rgba(239,68,68,.12); color:#f87171; }
+  .mn-row-ic.in { background:rgba(34,197,94,.12); color:#4ade80; }
+  .mn-row-mid { flex:1; min-width:0; }
+  .mn-row-desc { font-size:13px; font-weight:700; color:var(--ink,#e2e8f0); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .mn-row-date { font-size:11px; color:var(--muted,#94a3b8); margin-top:2px; }
+  .mn-row-amt { font-family:ui-monospace,SFMono-Regular,monospace; font-weight:800; font-size:14px; white-space:nowrap; }
+  .mn-row-amt.out { color:#f87171; }
+  .mn-row-amt.in { color:#4ade80; }
+  .mn-state { padding:40px 20px; text-align:center; color:var(--muted,#94a3b8); }
+  .mn-state i { font-size:30px; opacity:.5; display:block; margin-bottom:12px; }
+  .mn-state.err i { color:#f87171; opacity:.7; }
+  .mn-spin { display:inline-block; width:26px; height:26px; border:3px solid rgba(148,163,184,.25); border-top-color:#fbbf24; border-radius:50%; animation:mnSpin .8s linear infinite; }
+  @keyframes mnSpin { to { transform:rotate(360deg); } }
+</style>
+
+<div class="mn-wrap">
+  <div class="mn-head">
+    <div class="mn-title"><i class="fa-solid fa-building-columns"></i> History Transaksi Nobu</div>
+    <div class="mn-sub">Mutasi Madera (NobuBank) langsung per akun QRIS &mdash; data resmi dari OrderKuota.</div>
+  </div>
+
+  <style>#mn-site-filter option{background:#141a26;color:#e6ebf5}#mn-site-filter option:checked,#mn-site-filter option:hover{background:#243043;color:#fff}</style>
+  <div style="display:flex;justify-content:flex-end;margin:2px 0 6px">
+    <select id="mn-site-filter" onchange="filterNobuBySite()"
+            style="height:34px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.14);color:#e6ebf5;border-radius:9px;padding:0 12px;font-size:12.5px;font-weight:700;cursor:pointer">
+      <option value="">Semua Site</option>
+      <% (typeof sites !== 'undefined' ? sites : []).forEach(function(s){ %>
+        <option value="<%= s.name %>"><%= s.name %></option>
+      <% }); %>
+      <option value="__none__">Tanpa site</option>
+    </select>
+  </div>
+
+  <div class="mn-bridge checking" id="mnBridge" onclick="checkBridge(true)" title="Klik untuk cek ulang status bridge">
+    <span class="mn-bridge-dot"></span>
+    <span id="mnBridgeText">Mengecek status bridge OrderKuota&hellip;</span>
+    <i class="fa-solid fa-rotate-right mn-bridge-refresh"></i>
+  </div>
+
+  <div class="mn-info">
+    <i class="fa-solid fa-circle-info"></i>
+    <span><b>Klik kartu akun</b> &rarr; buka Mutasi Nobu asli (webview) di tab baru. Atau <b>"Lihat cepat di sini"</b> untuk pratinjau langsung di dashboard. Setiap akun punya session sendiri.</span>
+  </div>
+
+  <div class="mn-grid" id="mnGrid">
+    <% accounts.forEach((acct, idx) => { %>
+      <div class="mn-card" data-id="<%= acct.id %>" data-name="<%= acct.merchantName %>" data-site="<%= acct.siteName || '' %>" role="button" tabindex="0" onclick="openNobuWebview('<%= acct.id %>', this)">
+        <span class="mn-card-num"><%= idx + 1 %></span>
+        <div class="mn-card-name"><%= acct.merchantName %></div>
+        <div class="mn-card-code"><%= acct.code %></div>
+        <div class="mn-card-bal">Saldo Madera<br><b><%= fmtRpMn(acct.lastMaderaBalance) %></b></div>
+        <div class="mn-card-open"><i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Mutasi Nobu (tab baru)</div>
+        <button type="button" class="mn-card-quick" onclick="event.stopPropagation(); openMaderaHist('<%= acct.id %>', this.closest('.mn-card'))">
+          <i class="fa-solid fa-table-list"></i> Lihat cepat di sini
+        </button>
+      </div>
+    <% }) %>
+  </div>
+
+  <script>
+  function filterNobuBySite(){
+    var sel=document.getElementById('mn-site-filter'); if(!sel) return;
+    var val=sel.value;
+    document.querySelectorAll('#mnGrid .mn-card').forEach(function(card){
+      var site=(card.getAttribute('data-site')||'').trim();
+      var show=!val?true:(val==='__none__'?!site:site===val);
+      card.style.display=show?'':'none';
+    });
+  }
+  </script>
+
+  <div class="mn-panel" id="mnPanel">
+    <div class="mn-panel-head">
+      <div class="mn-panel-ic"><i class="fa-solid fa-receipt"></i></div>
+      <div class="mn-panel-tt"><b id="mnPanelName">Pilih akun QRIS</b><span id="mnPanelMeta">Mutasi Nobu akan tampil di sini</span></div>
+      <button type="button" class="mn-refresh" id="mnRefresh" title="Muat ulang" onclick="refreshMaderaHist()" disabled><i class="fa-solid fa-rotate-right"></i></button>
+    </div>
+    <div class="mn-list" id="mnList">
+      <div class="mn-state"><i class="fa-solid fa-building-columns"></i>Pilih akun QRIS untuk membuka mutasi Madera NobuBank</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  const API_BASE = '<%- url('/dashboard/api/madera-nobu') %>';
+  const BRIDGE_URL = '<%- url('/dashboard/api/bridge-status') %>';
+  let currentId = null, currentName = '', bridgeOk = null;
+
+  function setBridge(state, html) {
+    const b = document.getElementById('mnBridge'); const t = document.getElementById('mnBridgeText');
+    if (b) b.className = 'mn-bridge ' + state;
+    if (t) t.innerHTML = html;
+  }
+  async function checkBridge(manual) {
+    if (manual) setBridge('checking', 'Mengecek status bridge OrderKuota&hellip;');
+    try {
+      const resp = await fetch(BRIDGE_URL, { headers: { 'Accept': 'application/json' } });
+      const data = await resp.json().catch(() => null);
+      bridgeOk = !!(data && data.ok);
+      if (bridgeOk) setBridge('ok', 'Bridge OrderKuota <b>Aktif</b>' + (data.latencyMs ? ' &middot; ' + data.latencyMs + 'ms' : ''));
+      else setBridge('down', 'Bridge OrderKuota <b>Tidak aktif</b> &mdash; nyalakan proxy di PC, klik untuk cek ulang.');
+    } catch (e) {
+      bridgeOk = false;
+      setBridge('down', 'Bridge OrderKuota <b>Tidak aktif</b> &mdash; klik untuk cek ulang.');
+    }
+    return bridgeOk;
+  }
+  window.checkBridge = checkBridge;
+
+  // Gagal-cepat kalau bridge mati (hindari hang 20 detik). Auto-lanjut kalau bridge pulih.
+  async function ensureBridge() {
+    if (bridgeOk === true) return true;
+    const ok = await checkBridge(true);
+    if (!ok) { alert('Bridge OrderKuota tidak aktif — nyalakan proxy di PC koko, lalu klik lagi.\n(OrderKuota memblokir IP server, jadi wajib lewat bridge PC.)'); return false; }
+    return true;
+  }
+
+  const escMn = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (m) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]));
+
+  function setPanel(name, meta) {
+    const n = document.getElementById('mnPanelName'); if (n) n.textContent = name;
+    const m = document.getElementById('mnPanelMeta'); if (m) m.textContent = meta;
+  }
+  function renderState(html) { const l = document.getElementById('mnList'); if (l) l.innerHTML = html; }
+
+  // Buka webview Nobu asli (history-transaction) di tab baru
+  async function openNobuWebview(id, cardEl) {
+    // Buka tab kosong SYNC dulu (hindari popup blocker), isi loading
+    const w = window.open('about:blank', '_blank');
+    if (w) {
+      try { w.document.write('<title>Membuka Mutasi Nobu…</title><body style="font-family:system-ui;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><div style="font-size:15px;font-weight:700">Membuka Mutasi Nobu…</div><div style="font-size:12px;color:#94a3b8;margin-top:8px">Mengambil sesi aman dari server, mohon tunggu.</div></div></body>'); } catch (e) {}
+    }
+    if (cardEl) cardEl.classList.add('active');
+    try {
+      if (bridgeOk === false) {
+        const ok = await checkBridge(true);
+        if (!ok) {
+          if (w) w.close();
+          alert('Bridge OrderKuota tidak aktif — nyalakan proxy di PC koko, lalu coba lagi.\n(OrderKuota memblokir IP server, jadi wajib lewat bridge PC.)');
+          if (cardEl) cardEl.classList.remove('active');
+          return;
+        }
+      }
+      const resp = await fetch(API_BASE + '/' + encodeURIComponent(id) + '/webview', { headers: { 'Accept': 'application/json' } });
+      const data = await resp.json().catch(() => null);
+      if (data && data.ok && data.url) {
+        if (w) { w.location.href = data.url; } else { window.open(data.url, '_blank'); }
+      } else {
+        if (w) w.close();
+        alert(((data && data.message) || 'Gagal membuka Mutasi Nobu.') + (bridgeOk === false ? '\n\n⚠ Bridge OrderKuota tidak aktif — nyalakan proxy di PC koko lalu coba lagi.' : ' Coba lagi.'));
+        checkBridge();
+      }
+    } catch (e) {
+      if (w) w.close();
+      alert('Koneksi ke server gagal. Coba lagi.');
+    } finally {
+      if (cardEl) setTimeout(() => cardEl.classList.remove('active'), 400);
+    }
+  }
+  window.openNobuWebview = openNobuWebview;
+
+  async function openMaderaHist(id, cardEl) {
+    currentId = id;
+    currentName = (cardEl && cardEl.getAttribute('data-name')) || 'Akun';
+    document.querySelectorAll('.mn-card').forEach((c) => c.classList.remove('active'));
+    if (cardEl) cardEl.classList.add('active');
+    const rb = document.getElementById('mnRefresh'); if (rb) rb.disabled = false;
+    if (bridgeOk === false) {
+      setPanel(currentName, 'Bridge tidak aktif');
+      renderState('<div class="mn-state err"><i class="fa-solid fa-plug-circle-xmark"></i>Bridge OrderKuota tidak aktif. Nyalakan proxy di PC koko, lalu coba lagi.</div>');
+      const ok = await checkBridge(true);
+      if (!ok) return;
+    }
+    await loadMaderaHist();
+  }
+  window.openMaderaHist = openMaderaHist;
+
+  function refreshMaderaHist() { if (currentId) loadMaderaHist(); }
+  window.refreshMaderaHist = refreshMaderaHist;
+
+  async function loadMaderaHist() {
+    if (!currentId) return;
+    setPanel(currentName, 'Memuat mutasi dari server Nobu…');
+    renderState('<div class="mn-state"><span class="mn-spin"></span><div style="margin-top:12px">Mengambil mutasi Madera…</div></div>');
+    const rb = document.getElementById('mnRefresh'); if (rb) rb.disabled = true;
+    try {
+      const resp = await fetch(API_BASE + '/' + encodeURIComponent(currentId), { headers: { 'Accept': 'application/json' } });
+      const data = await resp.json().catch(() => null);
+      if (!data || !data.ok) {
+        setPanel(currentName, 'Gagal memuat');
+        renderState('<div class="mn-state err"><i class="fa-solid fa-triangle-exclamation"></i>' + escMn((data && data.message) || 'Gagal mengambil mutasi. Coba muat ulang.') + '</div>');
+        return;
+      }
+      const items = Array.isArray(data.items) ? data.items : [];
+      const range = (data.fromDate && data.toDate) ? (data.fromDate + ' — ' + data.toDate) : (data.title || 'Mutasi Madera');
+      setPanel(currentName, items.length + ' transaksi · ' + range);
+      if (items.length === 0) {
+        renderState('<div class="mn-state"><i class="fa-solid fa-inbox"></i>Belum ada mutasi Madera pada periode ini.</div>');
+        return;
+      }
+      const rows = items.map((it) => {
+        const dir = it.direction === 'in' ? 'in' : 'out';
+        const sign = dir === 'in' ? '+' : '−';
+        const icon = dir === 'in' ? 'fa-arrow-down' : 'fa-arrow-up';
+        return '<div class="mn-row">' +
+          '<div class="mn-row-ic ' + dir + '"><i class="fa-solid ' + icon + '"></i></div>' +
+          '<div class="mn-row-mid"><div class="mn-row-desc">' + escMn(it.description || '-') + '</div>' +
+          '<div class="mn-row-date">' + escMn(it.date || '') + (it.status ? ' · ' + escMn(it.status) : '') + '</div></div>' +
+          '<div class="mn-row-amt ' + dir + '">' + sign + ' Rp ' + escMn(it.amount || '0') + '</div>' +
+          '</div>';
+      }).join('');
+      renderState(rows);
+    } catch (e) {
+      setPanel(currentName, 'Gagal memuat');
+      renderState('<div class="mn-state err"><i class="fa-solid fa-plug-circle-xmark"></i>Koneksi ke server gagal. Coba muat ulang.</div>');
+    } finally {
+      const rb2 = document.getElementById('mnRefresh'); if (rb2) rb2.disabled = false;
+    }
+  }
+
+  // Cek status bridge OrderKuota saat halaman dibuka
+  checkBridge();
+})();
+</script>

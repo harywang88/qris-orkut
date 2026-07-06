@@ -1,0 +1,96 @@
+import type { Mutation, Prisma } from '@prisma/client';
+import { db } from '../config/database';
+import { publishOutboxEvent } from './outbox.service';
+
+type PrismaLike = typeof db | Prisma.TransactionClient;
+
+export interface MutationIngestInput {
+  qrisAccountId: string;
+  amount: number;
+  type: string;
+  balanceBefore: number;
+  balanceAfter: number;
+  issuerName?: string | null;
+  rrn?: string | null;
+  walletCategory?: string | null;
+  transactionTime: Date;
+  rawHash: string;
+  rawDataJson: string;
+  matchedTransactionId?: string | null;
+}
+
+function buildMutationPayload(mutation: Mutation) {
+  return {
+    mutationId: mutation.id,
+    qrisAccountId: mutation.qrisAccountId,
+    amount: mutation.amount,
+    type: mutation.type,
+    balanceAfter: mutation.balanceAfter,
+    rrn: mutation.rrn,
+    issuerName: mutation.issuerName,
+    walletCategory: mutation.walletCategory,
+    matchedTransactionId: mutation.matchedTransactionId,
+    transactionTime: mutation.transactionTime.toISOString(),
+    createdAt: mutation.createdAt.toISOString(),
+  };
+}
+
+export async function storeMutationIfNew(
+  input: MutationIngestInput,
+  client: PrismaLike = db,
+): Promise<{ created: boolean; mutation: Mutation }> {
+  const existing = await client.mutation.findUnique({ where: { rawHash: input.rawHash } });
+  if (existing) {
+    return { created: false, mutation: existing };
+  }
+
+  const mutation = await client.mutation.create({
+    data: {
+      qrisAccountId: input.qrisAccountId,
+      amount: input.amount,
+      type: input.type,
+      balanceBefore: input.balanceBefore,
+      balanceAfter: input.balanceAfter,
+      issuerName: input.issuerName ?? null,
+      rrn: input.rrn ?? null,
+      walletCategory: input.walletCategory ?? null,
+      transactionTime: input.transactionTime,
+      rawHash: input.rawHash,
+      rawDataJson: input.rawDataJson,
+      matchedTransactionId: input.matchedTransactionId ?? null,
+    },
+  });
+
+  await publishOutboxEvent(
+    {
+      topic: 'mutation.created',
+      aggregateType: 'mutation',
+      aggregateId: mutation.id,
+      qrisAccountId: mutation.qrisAccountId,
+      payload: buildMutationPayload(mutation),
+    },
+    client,
+  );
+
+  return { created: true, mutation };
+}
+
+export async function publishMutationUpdated(
+  mutation: Mutation,
+  reason: 'detail_enriched' | 'matched' | 'manual_update',
+  client: PrismaLike = db,
+): Promise<void> {
+  await publishOutboxEvent(
+    {
+      topic: 'mutation.updated',
+      aggregateType: 'mutation',
+      aggregateId: mutation.id,
+      qrisAccountId: mutation.qrisAccountId,
+      payload: {
+        ...buildMutationPayload(mutation),
+        reason,
+      },
+    },
+    client,
+  );
+}

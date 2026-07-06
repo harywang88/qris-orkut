@@ -1,0 +1,250 @@
+<div class="qris-page-header flex items-start justify-between gap-4">
+  <div>
+    <h1 class="qris-page-title">PostgreSQL <span>Monitor</span></h1>
+    <p class="qris-section-sub mt-1">Pantau koneksi PostgreSQL, session store, row perkiraan, mutasi terbaru, dan outbox event langsung dari dashboard.</p>
+  </div>
+  <div class="flex items-center gap-2">
+    <span class="qris-pill qris-pill-paid" id="pg-monitor-status">Live</span>
+    <button type="button" class="qris-btn qris-btn-accent" id="pg-monitor-refresh">
+      <i class="fa-solid fa-rotate-right text-xs"></i>
+      Refresh
+    </button>
+  </div>
+</div>
+
+<div class="qris-card p-4 mb-4" style="background:rgba(59,130,246,0.06);border-color:rgba(59,130,246,0.22)">
+  <div class="flex items-start gap-3">
+    <div style="width:36px;height:36px;border-radius:12px;background:rgba(59,130,246,0.14);display:flex;align-items:center;justify-content:center;color:#93c5fd;flex-shrink:0">
+      <i class="fa-solid fa-link text-sm"></i>
+    </div>
+    <div class="text-xs text-muted leading-6">
+      <div>Link monitor ini aktif di browser setelah kamu login dashboard.</div>
+      <div>Auto refresh setiap 5 detik dan membaca PostgreSQL lokal yang sedang dipakai aplikasi.</div>
+      <div class="mt-1 text-ink font-medium">API monitor: <span class="qris-code"><%= apiUrl %></span></div>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-4 md:grid-cols-2 gap-4 mb-4">
+  <div class="qris-stat-card">
+    <div class="qris-stat-label">Provider</div>
+    <div class="qris-stat-value" id="pg-provider"><%= snapshot.provider %></div>
+    <div class="qris-stat-sub">Runtime database</div>
+  </div>
+  <div class="qris-stat-card">
+    <div class="qris-stat-label">Database</div>
+    <div class="qris-stat-value" id="pg-database"><%= snapshot.connection.database || '-' %></div>
+    <div class="qris-stat-sub" id="pg-user"><%= snapshot.connection.user || '-' %></div>
+  </div>
+  <div class="qris-stat-card">
+    <div class="qris-stat-label">DB Size</div>
+    <div class="qris-stat-value" id="pg-db-size"><%= snapshot.connection.databaseSize || '-' %></div>
+    <div class="qris-stat-sub" id="pg-latency">Latency <%= snapshot.connection.latencyMs %> ms</div>
+  </div>
+  <div class="qris-stat-card">
+    <div class="qris-stat-label">Session Store</div>
+    <div class="qris-stat-value" id="pg-session-mode"><%= snapshot.sessionStore.mode %></div>
+    <div class="qris-stat-sub" id="pg-session-table">
+      <%= snapshot.sessionStore.tableName || 'belum dibuat' %>
+      <% if (snapshot.sessionStore.rowCount !== null) { %>
+        · <%= snapshot.sessionStore.rowCount %> row
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-4">
+  <div class="qris-card p-5">
+    <p class="text-xs uppercase tracking-[0.25em] text-muted mb-3">Ringkasan</p>
+    <div class="space-y-2 text-sm">
+      <div class="flex items-center justify-between"><span class="text-muted">Table public</span><span class="text-ink font-semibold" id="pg-summary-tables"><%= snapshot.summary.tableCount %></span></div>
+      <div class="flex items-center justify-between"><span class="text-muted">Perkiraan total row</span><span class="text-ink font-semibold" id="pg-summary-rows"><%= snapshot.summary.totalEstimatedRows.toLocaleString('id-ID') %></span></div>
+      <div class="flex items-center justify-between"><span class="text-muted">Mutasi tersimpan</span><span class="text-ink font-semibold" id="pg-summary-mutations"><%= snapshot.summary.mutationCount.toLocaleString('id-ID') %></span></div>
+      <div class="flex items-center justify-between"><span class="text-muted">Outbox pending</span><span class="text-ink font-semibold" id="pg-summary-outbox"><%= snapshot.summary.outboxPendingCount.toLocaleString('id-ID') %></span></div>
+      <div class="flex items-center justify-between"><span class="text-muted">Merchant aktif</span><span class="text-ink font-semibold" id="pg-summary-merchants"><%= snapshot.summary.activeMerchantCount.toLocaleString('id-ID') %></span></div>
+    </div>
+  </div>
+  <div class="qris-card p-5 xl:col-span-2">
+    <p class="text-xs uppercase tracking-[0.25em] text-muted mb-3">Koneksi Aktif</p>
+    <div class="space-y-3 text-sm">
+      <div><span class="text-muted">Host</span><div class="text-ink font-semibold" id="pg-host"><%= snapshot.connection.host || '-' %>:<%= snapshot.connection.port || '-' %></div></div>
+      <div><span class="text-muted">Schema</span><div class="text-ink font-semibold" id="pg-schema"><%= snapshot.connection.schema || '-' %></div></div>
+      <div><span class="text-muted">Connection String</span><div class="qris-code break-all mt-1" id="pg-database-url"><%= snapshot.databaseUrlMasked %></div></div>
+      <div><span class="text-muted">Version</span><div class="text-ink text-xs leading-5 mt-1" id="pg-version"><%= snapshot.connection.version || '-' %></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-4">
+  <div class="qris-card p-0 overflow-hidden">
+    <div class="px-5 py-4 border-b border-line">
+      <p class="text-sm font-semibold text-ink">Statistik Table</p>
+      <p class="text-xs text-muted mt-1">Perkiraan jumlah row dari `pg_stat_user_tables`.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="qris-table">
+        <thead>
+          <tr>
+            <th>Table</th>
+            <th class="text-right">Estimated Rows</th>
+          </tr>
+        </thead>
+        <tbody id="pg-table-stats-body">
+          <% snapshot.tableStats.forEach((row) => { %>
+            <tr>
+              <td><span class="qris-code"><%= row.tableName %></span></td>
+              <td class="text-right text-ink font-semibold"><%= row.estimatedRows.toLocaleString('id-ID') %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="qris-card p-0 overflow-hidden">
+    <div class="px-5 py-4 border-b border-line">
+      <p class="text-sm font-semibold text-ink">Mutasi Terbaru</p>
+      <p class="text-xs text-muted mt-1">10 mutasi terakhir yang sudah masuk ke local PostgreSQL.</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="qris-table">
+        <thead>
+          <tr>
+            <th>Merchant</th>
+            <th>Nominal</th>
+            <th>RRN</th>
+            <th>Waktu</th>
+          </tr>
+        </thead>
+        <tbody id="pg-recent-mutations-body">
+          <% snapshot.recentMutations.forEach((row) => { %>
+            <tr>
+              <td>
+                <div class="font-semibold text-ink"><%= row.accountCode %></div>
+                <div class="text-xs text-muted"><%= row.merchantName %></div>
+              </td>
+              <td class="text-ink font-semibold">Rp <%= row.amount.toLocaleString('id-ID') %></td>
+              <td><span class="qris-code"><%= row.rrn || 'Belum terbaca' %></span></td>
+              <td class="text-xs text-muted"><%= new Date(row.transactionTime).toLocaleString('id-ID') %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="qris-card p-0 overflow-hidden">
+  <div class="px-5 py-4 border-b border-line">
+    <p class="text-sm font-semibold text-ink">Outbox Event Terbaru</p>
+    <p class="text-xs text-muted mt-1">Event yang nanti enak untuk watcher Python baca dari local DB.</p>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="qris-table">
+      <thead>
+        <tr>
+          <th>Topic</th>
+          <th>Status</th>
+          <th>Aggregate</th>
+          <th>Dibuat</th>
+        </tr>
+      </thead>
+      <tbody id="pg-recent-outbox-body">
+        <% snapshot.recentOutboxEvents.forEach((row) => { %>
+          <tr>
+            <td><span class="qris-code"><%= row.topic %></span></td>
+            <td><span class="qris-pill <%= row.status === 'pending' ? 'qris-pill-warn' : 'qris-pill-paid' %>"><%= row.status %></span></td>
+            <td class="text-xs text-muted"><%= row.aggregateType %> · <span class="qris-code"><%= row.aggregateId %></span></td>
+            <td class="text-xs text-muted"><%= new Date(row.createdAt).toLocaleString('id-ID') %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  (() => {
+    const apiUrl = '<%= apiUrl %>';
+    const statusEl = document.getElementById('pg-monitor-status');
+    const refreshBtn = document.getElementById('pg-monitor-refresh');
+
+    function fmtDate(value) {
+      try {
+        return new Date(value).toLocaleString('id-ID');
+      } catch {
+        return value || '-';
+      }
+    }
+
+    function fmtNumber(value) {
+      return Number(value || 0).toLocaleString('id-ID');
+    }
+
+    function render(snapshot) {
+      document.getElementById('pg-provider').textContent = snapshot.provider || '-';
+      document.getElementById('pg-database').textContent = snapshot.connection.database || '-';
+      document.getElementById('pg-user').textContent = snapshot.connection.user || '-';
+      document.getElementById('pg-db-size').textContent = snapshot.connection.databaseSize || '-';
+      document.getElementById('pg-latency').textContent = `Latency ${snapshot.connection.latencyMs} ms`;
+      document.getElementById('pg-session-mode').textContent = snapshot.sessionStore.mode || '-';
+      document.getElementById('pg-session-table').textContent =
+        snapshot.sessionStore.tableName
+          ? `${snapshot.sessionStore.tableName}${snapshot.sessionStore.rowCount !== null ? ` · ${fmtNumber(snapshot.sessionStore.rowCount)} row` : ''}`
+          : 'belum dibuat';
+      document.getElementById('pg-summary-tables').textContent = fmtNumber(snapshot.summary.tableCount);
+      document.getElementById('pg-summary-rows').textContent = fmtNumber(snapshot.summary.totalEstimatedRows);
+      document.getElementById('pg-summary-mutations').textContent = fmtNumber(snapshot.summary.mutationCount);
+      document.getElementById('pg-summary-outbox').textContent = fmtNumber(snapshot.summary.outboxPendingCount);
+      document.getElementById('pg-summary-merchants').textContent = fmtNumber(snapshot.summary.activeMerchantCount);
+      document.getElementById('pg-host').textContent = `${snapshot.connection.host || '-'}:${snapshot.connection.port || '-'}`;
+      document.getElementById('pg-schema').textContent = snapshot.connection.schema || '-';
+      document.getElementById('pg-database-url').textContent = snapshot.databaseUrlMasked || '-';
+      document.getElementById('pg-version').textContent = snapshot.connection.version || '-';
+
+      document.getElementById('pg-table-stats-body').innerHTML = snapshot.tableStats.map((row) => `
+        <tr>
+          <td><span class="qris-code">${row.tableName}</span></td>
+          <td class="text-right text-ink font-semibold">${fmtNumber(row.estimatedRows)}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('pg-recent-mutations-body').innerHTML = snapshot.recentMutations.map((row) => `
+        <tr>
+          <td>
+            <div class="font-semibold text-ink">${row.accountCode}</div>
+            <div class="text-xs text-muted">${row.merchantName}</div>
+          </td>
+          <td class="text-ink font-semibold">Rp ${fmtNumber(row.amount)}</td>
+          <td><span class="qris-code">${row.rrn || 'Belum terbaca'}</span></td>
+          <td class="text-xs text-muted">${fmtDate(row.transactionTime)}</td>
+        </tr>
+      `).join('');
+
+      document.getElementById('pg-recent-outbox-body').innerHTML = snapshot.recentOutboxEvents.map((row) => `
+        <tr>
+          <td><span class="qris-code">${row.topic}</span></td>
+          <td><span class="qris-pill ${row.status === 'pending' ? 'qris-pill-warn' : 'qris-pill-paid'}">${row.status}</span></td>
+          <td class="text-xs text-muted">${row.aggregateType} · <span class="qris-code">${row.aggregateId}</span></td>
+          <td class="text-xs text-muted">${fmtDate(row.createdAt)}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function refreshSnapshot() {
+      statusEl.textContent = 'Sync...';
+      try {
+        const res = await fetch(apiUrl, { cache: 'no-store' });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'Monitor gagal diperbarui');
+        render(data.snapshot);
+        statusEl.textContent = 'Live';
+      } catch (_) {
+        statusEl.textContent = 'Error';
+      }
+    }
+
+    refreshBtn.addEventListener('click', refreshSnapshot);
+    setInterval(refreshSnapshot, 5000);
+  })();
+</script>
