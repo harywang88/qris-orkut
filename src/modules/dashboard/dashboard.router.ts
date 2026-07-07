@@ -11,6 +11,7 @@ import {
   getMaderaNobuHistoryApi,
   getMaderaNobuWebviewApi,
   getMaderaManualBanksApi,
+  showManualSendPage,
   postMaderaManualInquiryApi,
   postMaderaManualInitiateApi,
   handleCaptureSettlementProofApi,
@@ -69,6 +70,7 @@ router.post('/api/pending-money/:mutationId/tag', requireMenu('mutasi-qris'), ha
 router.post('/api/pending-money/:mutationId/untag', requireMenu('mutasi-qris'), handleUntagPendingMoney);
 router.get('/reconcile', requireMenu('mutasi-utama'), showReconcile);
 router.get('/madera-nobu', showMaderaNobuHistory);
+router.get('/manual-send/:accountId', showManualSendPage);
 router.get('/api/madera-nobu/:accountId', getMaderaNobuHistoryApi);
 router.get('/api/madera-nobu/:accountId/webview', getMaderaNobuWebviewApi);
 router.get('/api/madera-nobu/:accountId/manual-banks', getMaderaManualBanksApi);

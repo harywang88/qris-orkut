@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+<title>Send Money Manual — BI-Fast Madera</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,system-ui,sans-serif;background:#f4f5f7;color:#1f2430;min-height:100vh;padding-bottom:100px}
+  .ms-head{background:#ffe100;padding:16px 18px 64px;position:relative}
+  .ms-back{position:absolute;left:14px;top:14px;width:36px;height:36px;border:none;background:transparent;font-size:24px;cursor:pointer;color:#1a1a1a;line-height:1}
+  .ms-htitle{text-align:center;font-size:17px;font-weight:800;color:#1a1a1a;padding-top:5px}
+  .ms-wrap{max-width:480px;margin:0 auto;padding:0 16px}
+  .ms-card{background:#fff;border-radius:16px;box-shadow:0 6px 20px rgba(0,0,0,.06)}
+  .ms-saldo{margin-top:-46px;display:flex;align-items:center;gap:14px;padding:15px}
+  .ms-saldo-ic{width:46px;height:46px;border-radius:14px;background:linear-gradient(135deg,#ffe100,#ffb300);display:grid;place-items:center;font-size:22px;flex:0 0 auto}
+  .ms-saldo-l{font-size:12px;color:#8a90a0}
+  .ms-saldo-v{font-size:19px;font-weight:800;font-family:ui-monospace,SFMono-Regular,monospace;margin-top:2px;color:#1f2430}
+  .ms-form{margin-top:16px;display:flex;flex-direction:column;gap:12px}
+  .ms-field{background:#fff;border-radius:14px;box-shadow:0 4px 14px rgba(0,0,0,.05);padding:12px 15px}
+  .ms-field label{display:block;font-size:11px;font-weight:700;color:#9aa0ae;margin-bottom:5px;letter-spacing:.02em}
+  .ms-field select,.ms-field input{width:100%;border:none;outline:none;font-size:16px;font-weight:700;color:#1f2430;background:transparent}
+  .ms-field select{cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'><path fill='%239aa0ae' d='M1 1l5 5 5-5'/></svg>");background-repeat:no-repeat;background-position:right 2px center}
+  .ms-amt input{font-size:24px;font-weight:800}
+  .ms-info{background:#e8f2ff;color:#3b6fb0;border-radius:12px;padding:12px 14px;font-size:12.5px;line-height:1.55;margin-top:2px}
+  .ms-foot{position:fixed;left:0;right:0;bottom:0;padding:12px 16px calc(14px + env(safe-area-inset-bottom));background:linear-gradient(180deg,rgba(244,245,247,0),#f4f5f7 28%)}
+  .ms-foot-in{max-width:480px;margin:0 auto}
+  .ms-go{width:100%;height:54px;border:none;border-radius:16px;background:#ffe100;color:#1a1a1a;font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 10px 26px -8px rgba(255,193,7,.75);transition:transform .15s,filter .15s}
+  .ms-go:hover{filter:brightness(1.03);transform:translateY(-1px)}
+  .ms-go:disabled{opacity:.55;cursor:not-allowed;transform:none}
+  .ms-ov{position:fixed;inset:0;background:rgba(15,23,42,.55);-webkit-backdrop-filter:blur(4px);backdrop-filter:blur(4px);display:none;align-items:flex-end;justify-content:center;z-index:50}
+  .ms-ov.open{display:flex;animation:msF .2s}
+  @keyframes msF{from{opacity:0}to{opacity:1}}
+  .ms-sheet{background:#fff;width:100%;max-width:480px;border-radius:22px 22px 0 0;padding:22px 20px calc(22px + env(safe-area-inset-bottom));animation:msUp .3s cubic-bezier(.22,1,.36,1)}
+  @keyframes msUp{from{transform:translateY(34px);opacity:.5}to{transform:none;opacity:1}}
+  .ms-sheet h3{font-size:16.5px;font-weight:800;margin-bottom:4px}
+  .ms-sheet .sub{font-size:12.5px;color:#8a90a0;margin-bottom:16px}
+  .ms-recip{background:#f4f5f7;border-radius:14px;padding:14px;margin-bottom:12px}
+  .ms-recip .nm{font-size:18px;font-weight:800;letter-spacing:.02em}
+  .ms-recip .dt{font-size:12.5px;color:#6b7280;margin-top:4px}
+  .ms-total{display:flex;justify-content:space-between;font-size:14px;padding:5px 2px;color:#4b5563}
+  .ms-total b{font-family:ui-monospace,monospace;color:#1f2430}
+  .ms-btns{display:flex;gap:10px;margin-top:16px}
+  .ms-btns button{flex:1;height:50px;border-radius:14px;border:none;font-size:14px;font-weight:800;cursor:pointer;transition:filter .15s}
+  .ms-edit{background:#eef0f4;color:#4b5563}
+  .ms-conf{background:#12b76a;color:#fff;box-shadow:0 8px 20px -6px rgba(18,183,106,.6)}
+  .ms-conf:hover{filter:brightness(1.05)}
+  .ms-conf:disabled{opacity:.6;cursor:not-allowed}
+  .ms-toast{position:fixed;left:50%;top:16px;transform:translateX(-50%);background:#111827;color:#fff;padding:10px 16px;border-radius:12px;font-size:13px;z-index:60;display:none;box-shadow:0 10px 30px rgba(0,0,0,.3);max-width:90%;text-align:center}
+  .ms-toast.show{display:block;animation:msF .2s}
+  .ms-spin{width:16px;height:16px;border:2px solid rgba(0,0,0,.2);border-top-color:currentColor;border-radius:50%;display:inline-block;vertical-align:-3px;animation:msSp .7s linear infinite}
+  @keyframes msSp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+  <div class="ms-head">
+    <button class="ms-back" onclick="window.close()" title="Tutup" aria-label="Tutup">&larr;</button>
+    <div class="ms-htitle">BI-Fast Madera</div>
+  </div>
+  <div class="ms-wrap">
+    <div class="ms-card ms-saldo">
+      <div class="ms-saldo-ic">👛</div>
+      <div><div class="ms-saldo-l">Saldo Madera &mdash; <%= merchantName %></div><div class="ms-saldo-v" id="msSaldo">••••••</div></div>
+    </div>
+    <div class="ms-form">
+      <div class="ms-field">
+        <label>Bank Tujuan</label>
+        <select id="msBank"><option value="">Memuat daftar bank…</option></select>
+      </div>
+      <div class="ms-field">
+        <label>No. Rekening</label>
+        <input id="msRek" inputmode="numeric" autocomplete="off" placeholder="Masukkan nomor rekening">
+      </div>
+      <div class="ms-field ms-amt">
+        <label>Jumlah Transfer</label>
+        <input id="msAmt" inputmode="numeric" placeholder="Rp 0" oninput="msFmt(this)">
+      </div>
+      <div class="ms-info">Layanan BI-Fast gratis transfer dengan syarat &amp; ketentuan berlaku. Minimal Rp 10.000. <b>PIN dimasukkan sendiri</b> di halaman Nobu setelah menekan Lanjutkan.</div>
+    </div>
+  </div>
+  <div class="ms-foot"><div class="ms-foot-in"><button class="ms-go" id="msGo" onclick="msLanjut()">Lanjutkan</button></div></div>
+
+  <div class="ms-ov" id="msOv">
+    <div class="ms-sheet">
+      <h3>Konfirmasi Transfer</h3>
+      <div class="sub">Periksa detail sebelum lanjut ke halaman PIN Nobu.</div>
+      <div class="ms-recip"><div class="nm" id="msNm">—</div><div class="dt" id="msDt">—</div></div>
+      <div class="ms-total"><span>Nominal</span><b id="msTa">Rp 0</b></div>
+      <div class="ms-total"><span>Biaya</span><b id="msTf">Gratis</b></div>
+      <div class="ms-btns">
+        <button class="ms-edit" onclick="msCloseOv()">Ubah</button>
+        <button class="ms-conf" id="msConf" onclick="msKonfirmasi()">Konfirmasi &amp; Buka PIN Nobu</button>
+      </div>
+    </div>
+  </div>
+  <div class="ms-toast" id="msToast"></div>
+
+<script>
+  var API = '<%- url('/dashboard/api/madera-nobu') %>';
+  var ACC = '<%= accountId %>';
+  var st = { name:'', bankCode:'', bankName:'', fee:0 };
+  function $(i){ return document.getElementById(i); }
+  function toast(m){ var t=$('msToast'); t.textContent=m; t.classList.add('show'); setTimeout(function(){ t.classList.remove('show'); },2800); }
+  function msFmt(el){ var v=el.value.replace(/[^0-9]/g,''); el.value = v ? 'Rp '+Number(v).toLocaleString('id-ID') : ''; }
+  function amt(){ return Number(($('msAmt').value||'').replace(/[^0-9]/g,''))||0; }
+
+  (async function load(){
+    try{
+      var r=await fetch(API+'/'+encodeURIComponent(ACC)+'/manual-banks',{headers:{Accept:'application/json'}});
+      var d=await r.json();
+      if(d && d.ok){
+        $('msSaldo').textContent='Rp '+Number(d.balance||0).toLocaleString('id-ID');
+        var o='<option value="">— Pilih bank tujuan —</option>';
+        d.banks.forEach(function(b){ o+='<option value="'+b.code+'" data-name="'+String(b.name).replace(/"/g,'&quot;')+'">'+b.name+'</option>'; });
+        $('msBank').innerHTML=o;
+      } else { $('msBank').innerHTML='<option value="">Gagal memuat bank</option>'; toast((d&&d.message)||'Gagal memuat bank'); }
+    }catch(e){ $('msBank').innerHTML='<option value="">Gagal koneksi</option>'; toast('Gagal koneksi ke server'); }
+  })();
+
+  async function msLanjut(){
+    var bankSel=$('msBank'), bankCode=bankSel.value, rek=$('msRek').value.trim(), a=amt();
+    if(!bankCode){ toast('Pilih bank tujuan dulu'); return; }
+    if(!rek){ toast('Isi nomor rekening'); return; }
+    if(a<10000){ toast('Nominal minimal Rp 10.000'); return; }
+    st.bankName=(bankSel.options[bankSel.selectedIndex] && bankSel.options[bankSel.selectedIndex].getAttribute('data-name'))||'';
+    var go=$('msGo'); go.disabled=true; go.innerHTML='<span class="ms-spin"></span> Mengecek rekening…';
+    try{
+      var r=await fetch(API+'/'+encodeURIComponent(ACC)+'/manual-inquiry',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({bankCode:bankCode,accountNumber:rek,amount:a})});
+      var d=await r.json();
+      if(d && d.ok){
+        st.name=d.accountName; st.bankCode=bankCode; st.fee=Number(d.fee||0); if(!st.bankName) st.bankName=d.bankName||'';
+        $('msNm').textContent=d.accountName;
+        $('msDt').textContent=st.bankName+' · '+rek;
+        $('msTa').textContent='Rp '+a.toLocaleString('id-ID');
+        $('msTf').textContent=st.fee?('Rp '+st.fee.toLocaleString('id-ID')):'Gratis';
+        $('msOv').classList.add('open');
+      } else { toast((d&&d.message)||'Nama rekening tidak terbaca. Periksa lagi.'); }
+    }catch(e){ toast('Gagal koneksi ke server'); }
+    finally{ go.disabled=false; go.textContent='Lanjutkan'; }
+  }
+  function msCloseOv(){ $('msOv').classList.remove('open'); }
+
+  async function msKonfirmasi(){
+    var rek=$('msRek').value.trim(), a=amt();
+    var c=$('msConf'); c.disabled=true; c.innerHTML='<span class="ms-spin"></span> Menyiapkan…';
+    try{
+      var r=await fetch(API+'/'+encodeURIComponent(ACC)+'/manual-initiate',{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({bankCode:st.bankCode,accountNumber:rek,accountName:st.name,bankName:st.bankName,amount:a})});
+      var d=await r.json();
+      if(d && d.ok && d.redirectUrl){
+        c.innerHTML='Membuka Nobu…';
+        window.location.href=d.redirectUrl;
+      } else {
+        toast((d&&d.message)||'Gagal memulai transfer. Coba lagi.');
+        c.disabled=false; c.textContent='Konfirmasi & Buka PIN Nobu';
+      }
+    }catch(e){ toast('Gagal koneksi ke server'); c.disabled=false; c.textContent='Konfirmasi & Buka PIN Nobu'; }
+  }
+</script>
+</body>
+</html>

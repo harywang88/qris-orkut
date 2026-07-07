@@ -3388,3 +3388,22 @@ export async function postMaderaManualInitiateApi(req: Request, res: Response): 
     res.status(500).json({ ok: false, message: 'Gagal memulai transfer manual.' });
   }
 }
+
+// ── Halaman Send Money Manual (form gaya Nobu, dibuka di tab baru dari card) ──
+export async function showManualSendPage(req: Request, res: Response): Promise<void> {
+  try {
+    const account = await db.qrisAccount.findUnique({ where: { id: req.params.accountId } });
+    if (!account) { res.status(404).send('Akun tidak ditemukan.'); return; }
+    if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(403).send('Akun di luar akses Anda.'); return; }
+    res.render('manual-send/index', {
+      layout: false,
+      title: 'Send Money Manual',
+      accountId: account.id,
+      accountCode: account.code,
+      merchantName: (account as any).merchantName || account.code,
+    });
+  } catch (err) {
+    logger.error({ err }, 'showManualSendPage error');
+    res.status(500).send('Gagal memuat halaman Send Money Manual.');
+  }
+}
