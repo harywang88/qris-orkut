@@ -1355,7 +1355,7 @@ function filterSettlementBySite(){
       <% } %>
 
       <!-- KIRIM UANG (collapsible) -->
-      <div class="setl-kirim-hdr" onclick="toggleKirim('<%= acct.id %>')" id="kirim-hdr-<%= acct.id %>" style="<%= madera > 15000 ? '' : 'display:none' %>">
+      <div class="setl-kirim-hdr" onclick="toggleKirim('<%= acct.id %>')" id="kirim-hdr-<%= acct.id %>" style="<%= madera > 12500 ? '' : 'display:none' %>">
         <i class="fa-solid fa-paper-plane" style="font-size:12px;color:var(--blue)"></i>
         <span style="font-size:12px;font-weight:800;color:var(--ink);text-transform:uppercase;letter-spacing:.06em">KIRIM UANG</span>
         <i class="fa-solid fa-chevron-down" id="kirim-chev-<%= acct.id %>" style="margin-left:auto;font-size:10px;color:var(--muted);transition:transform .25s"></i>
@@ -2149,7 +2149,7 @@ function filterSettlementBySite(){
     // Tombol KIRIM hanya muncul jika saldo madera > 15.000 (ikut update live).
     const _kirimHdr = document.getElementById('kirim-hdr-' + accountId);
     if (_kirimHdr) {
-      const _show = Number(account.lastMaderaBalance ?? 0) > 15000;
+      const _show = Number(account.lastMaderaBalance ?? 0) > 12500;
       _kirimHdr.style.display = _show ? '' : 'none';
       if (!_show) {
         const _body = document.getElementById('kirim-body-' + accountId);
