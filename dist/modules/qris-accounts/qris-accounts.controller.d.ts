@@ -1,0 +1,10 @@
+import { Request, Response } from 'express';
+export declare function showAccountList(req: Request, res: Response): Promise<void>;
+export declare function showNewAccountForm(req: Request, res: Response): Promise<void>;
+export declare function handleCreateAccount(req: Request, res: Response): Promise<void>;
+export declare function showEditAccountForm(req: Request, res: Response): Promise<void>;
+export declare function handleUpdateAccount(req: Request, res: Response): Promise<void>;
+export declare function handleDeleteAccount(req: Request, res: Response): Promise<void>;
+export declare function handleToggleStatus(req: Request, res: Response): Promise<void>;
+export declare function handleSetHealth(req: Request, res: Response): Promise<void>;
+export declare function handleResetDailyUsage(req: Request, res: Response): Promise<void>;

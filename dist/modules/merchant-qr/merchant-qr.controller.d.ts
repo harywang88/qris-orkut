@@ -1,0 +1,15 @@
+import { Request, Response } from 'express';
+export declare function showMerchantQrList(req: Request, res: Response): Promise<void>;
+export declare function showNewMerchantQrForm(req: Request, res: Response): Promise<void>;
+export declare function handleCreateMerchantQr(req: Request, res: Response): Promise<void>;
+export declare function showEditMerchantQrForm(req: Request, res: Response): Promise<void>;
+export declare function handleUpdateMerchantQr(req: Request, res: Response): Promise<void>;
+export declare function handleDeleteMerchantQr(req: Request, res: Response): Promise<void>;
+export declare function handleToggleMerchantQrStatus(req: Request, res: Response): Promise<void>;
+export declare function handleSetMerchantQrHealth(req: Request, res: Response): Promise<void>;
+export declare function handleResetMerchantQrDailyUsage(req: Request, res: Response): Promise<void>;
+export declare function handleTestMerchantQrConnection(req: Request, res: Response): Promise<void>;
+export declare function handleSyncMerchantQrNow(req: Request, res: Response): Promise<void>;
+export declare function handleTestMerchantQrReportLogin(req: Request, res: Response): Promise<void>;
+export declare function handleCompareMerchantQrSources(req: Request, res: Response): Promise<void>;
+export declare function getMerchantQrStatusApi(req: Request, res: Response): Promise<void>;

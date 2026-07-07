@@ -1,0 +1,386 @@
+"use strict";
+/**
+ * Orkut Fetch Scheduler
+ *
+ * Arsitektur baru:
+ * - Local DB adalah sumber utama untuk dashboard + Python worker.
+ * - OrderKuota hanya dipoll oleh worker scheduler ini.
+ * - Setiap merchant punya interval custom sendiri dari menu Merchant QR.
+ * - Akun aktif (punya transaksi open) diprioritaskan lebih cepat.
+ * - Jika provider membalas 469, akun langsung cooldown 5 menit.
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.startOrkutFetchLoop = startOrkutFetchLoop;
+const database_1 = require("../../config/database");
+const logger_1 = require("../../config/logger");
+const app_orkut_gateway_1 = require("../../shared/gateways/app-orkut.gateway");
+const real_orkut_gateway_1 = require("../../shared/gateways/real-orkut.gateway");
+const mutation_ingest_service_1 = require("../../shared/mutation-ingest.service");
+const orkut_app_detail_service_1 = require("../../shared/orkut-app-detail.service");
+const orkut_panel_service_1 = require("../../shared/orkut-panel.service");
+const MASTER_TICK_MS = 1000;
+const ACTIVE_ACCOUNT_REFRESH_MS = 3000;
+const DETAIL_CANDIDATE_LOOKBACK_MS = 48 * 60 * 60 * 1000;
+const DETAIL_RESULT_BACKOFF_MS = 60000;
+const DETAIL_BATCH_SIZE = 2;
+const providerCooldownUntil = new Map();
+const detailRetryUntil = new Map();
+const schedulerState = new Map();
+let activeAccountIds = new Set();
+let nextActiveRefreshAt = 0;
+let masterTimer = null;
+function getRetryAfterSeconds(untilMs) {
+    return Math.max(1, Math.ceil((untilMs - Date.now()) / 1000));
+}
+function clampPollSeconds(value, fallback) {
+    if (!Number.isFinite(value) || !value || value < 5)
+        return fallback;
+    return Math.min(300, Math.max(5, Math.floor(value)));
+}
+function secondsToMs(value, fallback) {
+    return clampPollSeconds(value, fallback) * 1000;
+}
+function getState(accountId) {
+    const existing = schedulerState.get(accountId);
+    if (existing)
+        return existing;
+    const created = {
+        qris: { running: false, nextAt: 0 },
+        balance: { running: false, nextAt: 0 },
+        detail: { running: false, nextAt: 0 },
+    };
+    schedulerState.set(accountId, created);
+    return created;
+}
+function isAccountCoolingDown(accountId) {
+    return (providerCooldownUntil.get(accountId) ?? 0) > Date.now();
+}
+async function refreshActiveAccounts(now) {
+    if (now < nextActiveRefreshAt)
+        return;
+    const activeRows = await database_1.db.transaction.findMany({
+        where: {
+            statusPay: 'open',
+            expiresAt: { gt: new Date(now) },
+        },
+        select: { qrisAccountId: true },
+    });
+    activeAccountIds = new Set(activeRows.map((row) => row.qrisAccountId));
+    nextActiveRefreshAt = now + ACTIVE_ACCOUNT_REFRESH_MS;
+}
+function getQrisLaneInterval(account) {
+    return activeAccountIds.has(account.id)
+        ? secondsToMs(account.qrisActivePollSeconds, 15)
+        : secondsToMs(account.qrisIdlePollSeconds, 30);
+}
+function getBalanceLaneInterval(account) {
+    return secondsToMs(account.balancePollSeconds, 30);
+}
+function getDetailLaneInterval(account) {
+    return secondsToMs(account.detailPollSeconds, 300);
+}
+async function setProviderCooldown(account, err) {
+    const retryAt = Date.now() + app_orkut_gateway_1.APP_QRIS_RATE_LIMIT_COOLDOWN_MS;
+    const state = getState(account.id);
+    providerCooldownUntil.set(account.id, retryAt);
+    state.qris.nextAt = Math.max(state.qris.nextAt, retryAt);
+    state.balance.nextAt = Math.max(state.balance.nextAt, retryAt);
+    state.detail.nextAt = Math.max(state.detail.nextAt, retryAt);
+    await database_1.db.qrisAccount.update({
+        where: { id: account.id },
+        data: {
+            lastBalanceSyncAt: new Date(),
+            lastBalanceSyncStatus: 'rate_limited',
+            lastBalanceSyncError: err.message,
+        },
+    });
+    logger_1.logger.warn({
+        accountCode: account.code,
+        retryAfterSeconds: getRetryAfterSeconds(retryAt),
+    }, 'Orkut scheduler: account paused because provider returned rate limit');
+}
+async function ingestMutationBatch(account, mutations, walletCategoryOverride) {
+    let newCount = 0;
+    for (const mutation of mutations) {
+        const result = await (0, mutation_ingest_service_1.storeMutationIfNew)({
+            qrisAccountId: account.id,
+            amount: mutation.amount,
+            type: mutation.type,
+            balanceBefore: mutation.balanceBefore,
+            balanceAfter: mutation.balanceAfter,
+            issuerName: mutation.issuerName ?? null,
+            rrn: mutation.rrn ?? null,
+            walletCategory: walletCategoryOverride ?? mutation.walletCategory ?? null,
+            transactionTime: mutation.transactionTime,
+            rawHash: mutation.rawHash,
+            rawDataJson: mutation.rawDataJson,
+        });
+        if (result.created)
+            newCount += 1;
+    }
+    return newCount;
+}
+async function runAppQrisLane(account, state) {
+    state.qris.running = true;
+    try {
+        const recentKnownQris = await database_1.db.mutation.findMany({
+            where: {
+                qrisAccountId: account.id,
+                walletCategory: 'qris',
+            },
+            orderBy: { transactionTime: 'desc' },
+            take: 40,
+            select: { rawHash: true, transactionTime: true },
+        });
+        const latestKnownTime = recentKnownQris[0]?.transactionTime ?? null;
+        const result = await app_orkut_gateway_1.appGateway.fetchIncrementalMutationsAndBalance(account, {
+            knownRawHashes: recentKnownQris.map((row) => row.rawHash),
+            fromTime: latestKnownTime ? new Date(latestKnownTime.getTime() - 120000) : null,
+            maxPages: 3,
+        });
+        providerCooldownUntil.delete(account.id);
+        const newCount = await ingestMutationBatch(account, result.mutations);
+        const { mainBalance: qrisMain, qrisBalance } = result.balance;
+        const qrisLaneOk = qrisMain !== null || qrisBalance !== null;
+        await database_1.db.qrisAccount.update({
+            where: { id: account.id },
+            data: {
+                lastQrisBalance: qrisBalance ?? account.lastQrisBalance,
+                lastMainBalance: qrisMain ?? account.lastMainBalance,
+                lastBalanceSyncAt: new Date(),
+                lastBalanceSyncStatus: qrisLaneOk ? 'synced' : 'partial',
+                lastBalanceSyncError: qrisLaneOk
+                    ? null
+                    : 'Provider belum mengirim data QRIS baru. Biasanya ini tanda 469 / rate limit sementara.',
+                lastBalanceSyncRawJson: JSON.stringify(result.balance),
+            },
+        });
+        if (newCount > 0) {
+            logger_1.logger.info({
+                accountCode: account.code,
+                lane: 'qris',
+                active: activeAccountIds.has(account.id),
+                newMutations: newCount,
+            }, 'Orkut scheduler: new QRIS mutations stored');
+        }
+    }
+    catch (err) {
+        if (err instanceof app_orkut_gateway_1.AppOrkutRateLimitError) {
+            await setProviderCooldown(account, err);
+        }
+        else {
+            logger_1.logger.error({ err, accountCode: account.code, lane: 'qris' }, 'Orkut scheduler: app qris lane error');
+        }
+    }
+    finally {
+        state.qris.running = false;
+        state.qris.nextAt = Date.now() + getQrisLaneInterval(account);
+    }
+}
+async function runAppBalanceLane(account, state) {
+    state.balance.running = true;
+    try {
+        const result = await app_orkut_gateway_1.appGateway.fetchBalanceHistory(account);
+        const newCount = await ingestMutationBatch(account, result.mutations);
+        await database_1.db.qrisAccount.update({
+            where: { id: account.id },
+            data: {
+                lastMainBalance: result.mainBalance ?? account.lastMainBalance,
+                lastBalanceSyncAt: new Date(),
+            },
+        });
+        if (newCount > 0) {
+            logger_1.logger.info({ accountCode: account.code, lane: 'balance', newMutations: newCount }, 'Orkut scheduler: new utama mutations stored');
+        }
+    }
+    catch (err) {
+        logger_1.logger.error({ err, accountCode: account.code, lane: 'balance' }, 'Orkut scheduler: app balance lane error');
+    }
+    finally {
+        state.balance.running = false;
+        state.balance.nextAt = Date.now() + getBalanceLaneInterval(account);
+    }
+}
+function needsDetailEnrichment(rrn, rawId) {
+    const normalizedRrn = typeof rrn === 'string' ? rrn.trim() : '';
+    if (!normalizedRrn)
+        return true;
+    return normalizedRrn === rawId;
+}
+async function runAppDetailLane(account, state) {
+    state.detail.running = true;
+    try {
+        const candidates = await database_1.db.mutation.findMany({
+            where: {
+                qrisAccountId: account.id,
+                type: 'credit',
+                transactionTime: { gte: new Date(Date.now() - DETAIL_CANDIDATE_LOOKBACK_MS) },
+            },
+            orderBy: { transactionTime: 'desc' },
+            take: 20,
+        });
+        const targets = candidates
+            .map((mutation) => ({
+            mutation,
+            rawId: (0, orkut_app_detail_service_1.readPresentedMutationRawId)(mutation.rawDataJson),
+        }))
+            .filter(({ mutation, rawId }) => {
+            if (!rawId)
+                return false;
+            if (!needsDetailEnrichment(mutation.rrn, rawId))
+                return false;
+            const retryAt = detailRetryUntil.get(mutation.id) ?? 0;
+            return retryAt <= Date.now();
+        })
+            .slice(0, DETAIL_BATCH_SIZE);
+        for (const target of targets) {
+            try {
+                const detail = await app_orkut_gateway_1.appGateway.fetchQrisMutationDetail(account, target.rawId);
+                if (!detail) {
+                    detailRetryUntil.set(target.mutation.id, Date.now() + DETAIL_RESULT_BACKOFF_MS);
+                    continue;
+                }
+                const nextIssuerName = [detail.brandName, detail.senderName?.split('/')[0]?.trim()]
+                    .filter(Boolean)
+                    .join(' / ') || target.mutation.issuerName;
+                const updatedMutation = await database_1.db.mutation.update({
+                    where: { id: target.mutation.id },
+                    data: {
+                        issuerName: nextIssuerName ?? undefined,
+                        rawDataJson: (0, orkut_app_detail_service_1.mergeRawMutationWithAppDetail)(target.mutation.rawDataJson, detail),
+                        rrn: detail.rrn ?? undefined,
+                    },
+                });
+                await (0, mutation_ingest_service_1.publishMutationUpdated)(updatedMutation, 'detail_enriched');
+                detailRetryUntil.delete(target.mutation.id);
+            }
+            catch (err) {
+                if (err instanceof app_orkut_gateway_1.AppOrkutRateLimitError) {
+                    await setProviderCooldown(account, err);
+                    break;
+                }
+                logger_1.logger.error({ err, accountCode: account.code, mutationId: target.mutation.id, lane: 'detail' }, 'Orkut scheduler: app detail lane error');
+                detailRetryUntil.set(target.mutation.id, Date.now() + DETAIL_RESULT_BACKOFF_MS);
+            }
+        }
+    }
+    finally {
+        state.detail.running = false;
+        state.detail.nextAt = Date.now() + getDetailLaneInterval(account);
+    }
+}
+async function runWebQrisLane(account, state) {
+    state.qris.running = true;
+    try {
+        const mutations = await real_orkut_gateway_1.realGateway.fetchMutations(account);
+        const newCount = await ingestMutationBatch(account, mutations);
+        if (newCount > 0) {
+            logger_1.logger.info({
+                accountCode: account.code,
+                lane: 'web-qris',
+                active: activeAccountIds.has(account.id),
+                newMutations: newCount,
+            }, 'Orkut scheduler: new web QRIS mutations stored');
+        }
+    }
+    catch (err) {
+        logger_1.logger.error({ err, accountCode: account.code, lane: 'web-qris' }, 'Orkut scheduler: web qris lane error');
+    }
+    finally {
+        state.qris.running = false;
+        state.qris.nextAt = Date.now() + getQrisLaneInterval(account);
+    }
+}
+async function runWebBalanceLane(account, state, activeAccounts) {
+    state.balance.running = true;
+    try {
+        const fallbackIndex = activeAccounts.findIndex((item) => item.id === account.id) + 1;
+        const resolvedIndex = (0, orkut_panel_service_1.resolveOrkutAccountIndex)(account, fallbackIndex > 0 ? fallbackIndex : 1);
+        const balanceSnapshot = await (0, orkut_panel_service_1.syncOrkutBalanceSnapshot)(account, resolvedIndex);
+        if (balanceSnapshot) {
+            const updateData = {
+                lastBalanceSyncAt: new Date(balanceSnapshot.fetchedAt),
+                lastBalanceSyncStatus: balanceSnapshot.status,
+                lastBalanceSyncError: balanceSnapshot.errorMessage ?? null,
+                lastBalanceSyncRawJson: balanceSnapshot.rawJson,
+            };
+            if (balanceSnapshot.mainBalance !== undefined)
+                updateData.lastMainBalance = balanceSnapshot.mainBalance;
+            if (balanceSnapshot.qrisBalance !== undefined)
+                updateData.lastQrisBalance = balanceSnapshot.qrisBalance;
+            if (balanceSnapshot.maderaBalance !== undefined)
+                updateData.lastMaderaBalance = balanceSnapshot.maderaBalance;
+            await database_1.db.qrisAccount.update({ where: { id: account.id }, data: updateData });
+            if (balanceSnapshot.status !== 'synced') {
+                logger_1.logger.warn({
+                    accountCode: account.code,
+                    lane: 'web-balance',
+                    status: balanceSnapshot.status,
+                    error: balanceSnapshot.errorMessage,
+                }, 'Orkut scheduler: web balance sync finished with partial data');
+            }
+        }
+    }
+    catch (err) {
+        logger_1.logger.error({ err, accountCode: account.code, lane: 'web-balance' }, 'Orkut scheduler: web balance lane error');
+    }
+    finally {
+        state.balance.running = false;
+        state.balance.nextAt = Date.now() + getBalanceLaneInterval(account);
+    }
+}
+async function schedulerTick() {
+    const now = Date.now();
+    await refreshActiveAccounts(now);
+    const accounts = await database_1.db.qrisAccount.findMany({
+        where: {
+            status: 'active',
+            OR: [
+                { sessionTokenEncrypted: { not: null } },
+                { cookiesEncrypted: { not: null } },
+                { webCookiesEncrypted: { not: null } },
+            ],
+        },
+        orderBy: { code: 'asc' },
+    });
+    if (accounts.length === 0)
+        return;
+    for (const account of accounts) {
+        const state = getState(account.id);
+        const useAppApi = !!account.sessionTokenEncrypted;
+        if (useAppApi) {
+            if (!state.qris.running && state.qris.nextAt <= now && !isAccountCoolingDown(account.id)) {
+                void runAppQrisLane(account, state);
+            }
+            if (!state.balance.running && state.balance.nextAt <= now && !isAccountCoolingDown(account.id)) {
+                void runAppBalanceLane(account, state);
+            }
+            if (!state.detail.running && state.detail.nextAt <= now && !isAccountCoolingDown(account.id)) {
+                void runAppDetailLane(account, state);
+            }
+            continue;
+        }
+        if (!state.qris.running && state.qris.nextAt <= now) {
+            void runWebQrisLane(account, state);
+        }
+        if (!state.balance.running && state.balance.nextAt <= now) {
+            void runWebBalanceLane(account, state, accounts);
+        }
+    }
+}
+function startOrkutFetchLoop() {
+    if (masterTimer)
+        return;
+    logger_1.logger.info({
+        masterTickMs: MASTER_TICK_MS,
+        activeRefreshMs: ACTIVE_ACCOUNT_REFRESH_MS,
+        pythonWatcherDefaultSeconds: 2,
+        fallbackSyncDefaultSeconds: 180,
+        detailDefaultSeconds: 20,
+    }, 'Orkut fetch scheduler started');
+    void schedulerTick().catch((err) => logger_1.logger.error({ err }, 'Orkut scheduler: initial tick error'));
+    masterTimer = setInterval(() => {
+        void schedulerTick().catch((err) => logger_1.logger.error({ err }, 'Orkut scheduler: tick error'));
+    }, MASTER_TICK_MS);
+}
+//# sourceMappingURL=orkut-fetch.loop.js.map

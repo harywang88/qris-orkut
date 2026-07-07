@@ -1,0 +1,109 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.requirePermission = requirePermission;
+exports.requirePermissions = requirePermissions;
+exports.requireMenu = requireMenu;
+exports.requireMaster = requireMaster;
+const config_1 = require("../config");
+const base_path_1 = require("./base-path");
+const alias_access_service_1 = require("../shared/alias-access.service");
+function denyAccess(req, res, message) {
+    const isApi = req.originalUrl.split('?')[0].includes('/api/');
+    if (isApi) {
+        res.status(403).json({ ok: false, success: false, error: message });
+        return;
+    }
+    res.status(403).render('error/403', { title: 'Akses Ditolak', message, layout: 'layouts/main' });
+}
+/**
+ * Gating per-menu (Akun Alias). Master lolos. Alias/user dicek menuPerms.
+ *   requireMenu('settlement')            -> butuh izin buka menu (settlement.view)
+ *   requireMenu('settlement','transfer') -> butuh sub-aksi (settlement.transfer)
+ */
+function requireMenu(menuKey, subKey) {
+    return (req, res, next) => {
+        const user = req.session.user;
+        if (!user) {
+            res.redirect((0, base_path_1.withBasePath)('/login', config_1.config.APP_BASE_PATH));
+            return;
+        }
+        try {
+            if (alias_access_service_1.isMasterUser(user))
+                return next();
+            const perms = alias_access_service_1.getMenuPermsForUser(user);
+            const ok = subKey
+                ? alias_access_service_1.canDo(perms, menuKey, subKey)
+                : alias_access_service_1.canViewMenu(perms, menuKey);
+            if (!ok) {
+                denyAccess(req, res, 'Anda tidak memiliki akses ke menu/fitur ini.');
+                return;
+            }
+        }
+        catch (err) {
+            // Bila layer alias error, jangan kunci total: izinkan (fail-open) supaya tak memblok kerja.
+            return next();
+        }
+        next();
+    };
+}
+/** Hanya master (harywang / setting:manage). */
+function requireMaster(req, res, next) {
+    const user = req.session.user;
+    if (!user) {
+        res.redirect((0, base_path_1.withBasePath)('/login', config_1.config.APP_BASE_PATH));
+        return;
+    }
+    if (!alias_access_service_1.isMasterUser(user)) {
+        denyAccess(req, res, 'Menu ini khusus akun master.');
+        return;
+    }
+    next();
+}
+/**
+ * Creates a middleware that checks whether the logged-in user
+ * has the specified permission. Returns 403 if not.
+ *
+ * Usage:
+ *   router.get('/clients', requireAuth, requirePermission('client:manage'), handler)
+ */
+function requirePermission(permission) {
+    return (req, res, next) => {
+        const user = req.session.user;
+        if (!user) {
+            res.redirect((0, base_path_1.withBasePath)('/login', config_1.config.APP_BASE_PATH));
+            return;
+        }
+        if (!user.permissions.includes(permission)) {
+            res.status(403).render('error/403', {
+                title: 'Akses Ditolak',
+                message: `Anda tidak memiliki izin untuk fitur ini (${permission}).`,
+                layout: 'layouts/main',
+            });
+            return;
+        }
+        next();
+    };
+}
+/**
+ * Checks multiple permissions (all must be present).
+ */
+function requirePermissions(...permissions) {
+    return (req, res, next) => {
+        const user = req.session.user;
+        if (!user) {
+            res.redirect((0, base_path_1.withBasePath)('/login', config_1.config.APP_BASE_PATH));
+            return;
+        }
+        const missing = permissions.filter((p) => !user.permissions.includes(p));
+        if (missing.length > 0) {
+            res.status(403).render('error/403', {
+                title: 'Akses Ditolak',
+                message: `Anda tidak memiliki izin yang dibutuhkan: ${missing.join(', ')}.`,
+                layout: 'layouts/main',
+            });
+            return;
+        }
+        next();
+    };
+}
+//# sourceMappingURL=rbac.middleware.js.map

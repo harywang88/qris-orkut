@@ -1,0 +1,24 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.qrisAccountsRouter = void 0;
+const express_1 = require("express");
+const rbac_middleware_1 = require("../../core/rbac.middleware");
+const qris_accounts_controller_1 = require("./qris-accounts.controller");
+const router = (0, express_1.Router)();
+exports.qrisAccountsRouter = router;
+const canManage = (0, rbac_middleware_1.requirePermission)('qris:manage');
+// Kelola Site — DIDAFTARKAN DULU agar '/sites' & '/accounts/..' tak tertangkap '/:id'
+router.post('/sites', canManage, qris_accounts_controller_1.handleCreateSite);
+router.post('/sites/:sid/delete', canManage, qris_accounts_controller_1.handleDeleteSite);
+router.post('/sites/:sid', canManage, qris_accounts_controller_1.handleUpdateSite);
+router.post('/accounts/:id/site', canManage, qris_accounts_controller_1.handleAssignSite);
+router.get('/', canManage, qris_accounts_controller_1.showAccountList);
+router.get('/new', canManage, qris_accounts_controller_1.showNewAccountForm);
+router.post('/', canManage, qris_accounts_controller_1.handleCreateAccount);
+router.get('/:id/edit', canManage, qris_accounts_controller_1.showEditAccountForm);
+router.post('/:id', canManage, qris_accounts_controller_1.handleUpdateAccount);
+router.post('/:id/delete', canManage, qris_accounts_controller_1.handleDeleteAccount);
+router.post('/:id/toggle-status', canManage, qris_accounts_controller_1.handleToggleStatus);
+router.post('/:id/set-health', canManage, qris_accounts_controller_1.handleSetHealth);
+router.post('/:id/reset-daily', canManage, qris_accounts_controller_1.handleResetDailyUsage);
+//# sourceMappingURL=qris-accounts.router.js.map

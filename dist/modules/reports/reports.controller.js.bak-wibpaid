@@ -1,0 +1,224 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.showReports = showReports;
+exports.getReportsSummary = getReportsSummary;
+const database_1 = require("../../config/database");
+const logger_1 = require("../../config/logger");
+function startOfDay(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+}
+function endOfDay(d) {
+    return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+}
+/**
+ * GET /reports — Full report page with date filters and per-client breakdown.
+ */
+async function showReports(req, res) {
+    try {
+        const today = new Date();
+        const range = req.query.range || 'today';
+        let from;
+        let to;
+        if (range === 'yesterday') {
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            from = startOfDay(yesterday);
+            to = endOfDay(yesterday);
+        }
+        else if (range === 'custom' && req.query.from && req.query.to) {
+            from = startOfDay(new Date(req.query.from));
+            to = endOfDay(new Date(req.query.to));
+            if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+                from = startOfDay(today);
+                to = endOfDay(today);
+            }
+        }
+        else {
+            // default: today
+            from = startOfDay(today);
+            to = endOfDay(today);
+        }
+        const clients = await database_1.db.client.findMany({
+            orderBy: { name: 'asc' },
+            select: { id: true, name: true, panelCode: true },
+        });
+        // Per-client breakdown
+        const clientBreakdown = await Promise.all(clients.map(async (client) => {
+            const baseWhere = {
+                clientId: client.id,
+                createdAt: { gte: from, lte: to },
+            };
+            const [total, paid, expired, depositSuccess, depositFailed, manualReview, paidAgg] = await Promise.all([
+                database_1.db.transaction.count({ where: baseWhere }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusPay: 'paid' } }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusPay: 'expired' } }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusBot: 'deposit_success' } }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusBot: 'deposit_failed' } }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusBot: 'manual_review' } }),
+                database_1.db.transaction.aggregate({
+                    where: { ...baseWhere, statusPay: 'paid' },
+                    _sum: { finalAmount: true, feeAmount: true },
+                }),
+            ]);
+            const totalPaid = paidAgg._sum.finalAmount ?? 0;
+            const totalFee = paidAgg._sum.feeAmount ?? 0;
+            return {
+                client,
+                total,
+                paid,
+                expired,
+                open: total - paid - expired,
+                depositSuccess,
+                depositFailed,
+                manualReview,
+                totalPaid,
+                totalFee,
+                netAmount: totalPaid - totalFee,
+            };
+        }));
+        // Overall totals
+        const overallWhere = { createdAt: { gte: from, lte: to } };
+        const [totalAll, paidAll, expiredAll, paidAggAll] = await Promise.all([
+            database_1.db.transaction.count({ where: overallWhere }),
+            database_1.db.transaction.count({ where: { ...overallWhere, statusPay: 'paid' } }),
+            database_1.db.transaction.count({ where: { ...overallWhere, statusPay: 'expired' } }),
+            database_1.db.transaction.aggregate({
+                where: { ...overallWhere, statusPay: 'paid' },
+                _sum: { finalAmount: true, feeAmount: true },
+            }),
+        ]);
+        const overallTotalPaid = paidAggAll._sum.finalAmount ?? 0;
+        const overallTotalFee = paidAggAll._sum.feeAmount ?? 0;
+        // Daily chart data for the selected range (max 31 days)
+        const dayCount = Math.min(31, Math.ceil((to.getTime() - from.getTime()) / 86400000) + 1);
+        const chartLabels = [];
+        const chartAmounts = [];
+        const chartCounts = [];
+        for (let i = 0; i < dayCount; i++) {
+            const d = new Date(from);
+            d.setDate(d.getDate() + i);
+            const dayStart = startOfDay(d);
+            const dayEnd = endOfDay(d);
+            const [cnt, agg] = await Promise.all([
+                database_1.db.transaction.count({ where: { statusPay: 'paid', paidAt: { gte: dayStart, lte: dayEnd } } }),
+                database_1.db.transaction.aggregate({
+                    where: { statusPay: 'paid', paidAt: { gte: dayStart, lte: dayEnd } },
+                    _sum: { finalAmount: true },
+                }),
+            ]);
+            chartLabels.push(`${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`);
+            chartCounts.push(cnt);
+            chartAmounts.push(agg._sum.finalAmount ?? 0);
+        }
+        res.render('reports/index', {
+            title: 'Laporan',
+            range,
+            from,
+            to,
+            fromStr: req.query.from ?? '',
+            toStr: req.query.to ?? '',
+            clientBreakdown,
+            overall: {
+                total: totalAll,
+                paid: paidAll,
+                expired: expiredAll,
+                open: totalAll - paidAll - expiredAll,
+                totalPaid: overallTotalPaid,
+                totalFee: overallTotalFee,
+                netAmount: overallTotalPaid - overallTotalFee,
+            },
+            chartData: {
+                labels: JSON.stringify(chartLabels),
+                counts: JSON.stringify(chartCounts),
+                amounts: JSON.stringify(chartAmounts),
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'showReports error');
+        res.status(500).render('error/500', { title: 'Error' });
+    }
+}
+/**
+ * GET /api/v1/reports/summary
+ *
+ * JSON API with date range + optional clientId filter.
+ * Includes per-client breakdown in the response.
+ */
+async function getReportsSummary(req, res) {
+    try {
+        const today = new Date();
+        const defaultFrom = startOfDay(today);
+        const defaultTo = endOfDay(today);
+        const from = req.query.from ? new Date(req.query.from) : defaultFrom;
+        const to = req.query.to ? new Date(req.query.to) : defaultTo;
+        if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+            res.status(400).json({ success: false, error: 'Parameter from/to tidak valid' });
+            return;
+        }
+        const where = { createdAt: { gte: from, lte: to } };
+        if (req.query.clientId)
+            where.clientId = req.query.clientId;
+        const [totalCount, paidCount, expiredCount, openCount] = await Promise.all([
+            database_1.db.transaction.count({ where }),
+            database_1.db.transaction.count({ where: { ...where, statusPay: 'paid' } }),
+            database_1.db.transaction.count({ where: { ...where, statusPay: 'expired' } }),
+            database_1.db.transaction.count({ where: { ...where, statusPay: 'open' } }),
+        ]);
+        const paidAggregate = await database_1.db.transaction.aggregate({
+            where: { ...where, statusPay: 'paid' },
+            _sum: { finalAmount: true, feeAmount: true },
+        });
+        const [depositSuccess, depositFailed, manualReview] = await Promise.all([
+            database_1.db.transaction.count({ where: { ...where, statusBot: 'deposit_success' } }),
+            database_1.db.transaction.count({ where: { ...where, statusBot: 'deposit_failed' } }),
+            database_1.db.transaction.count({ where: { ...where, statusBot: 'manual_review' } }),
+        ]);
+        // Per-client breakdown (only if no clientId filter)
+        let perClient = [];
+        if (!req.query.clientId) {
+            const clients = await database_1.db.client.findMany({
+                select: { id: true, name: true, panelCode: true },
+            });
+            perClient = await Promise.all(clients.map(async (client) => {
+                const cWhere = { ...where, clientId: client.id };
+                const [cnt, paidCnt, agg] = await Promise.all([
+                    database_1.db.transaction.count({ where: cWhere }),
+                    database_1.db.transaction.count({ where: { ...cWhere, statusPay: 'paid' } }),
+                    database_1.db.transaction.aggregate({
+                        where: { ...cWhere, statusPay: 'paid' },
+                        _sum: { finalAmount: true, feeAmount: true },
+                    }),
+                ]);
+                return {
+                    clientId: client.id,
+                    clientName: client.name,
+                    panelCode: client.panelCode,
+                    total: cnt,
+                    paid: paidCnt,
+                    totalPaid: agg._sum.finalAmount ?? 0,
+                    totalFee: agg._sum.feeAmount ?? 0,
+                };
+            }));
+        }
+        res.json({
+            success: true,
+            data: {
+                period: { from: from.toISOString(), to: to.toISOString() },
+                transactions: { total: totalCount, paid: paidCount, expired: expiredCount, open: openCount },
+                amounts: {
+                    totalPaid: paidAggregate._sum.finalAmount ?? 0,
+                    totalFee: paidAggregate._sum.feeAmount ?? 0,
+                    netAmount: (paidAggregate._sum.finalAmount ?? 0) - (paidAggregate._sum.feeAmount ?? 0),
+                },
+                deposits: { success: depositSuccess, failed: depositFailed, manualReview },
+                perClient,
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'getReportsSummary error');
+        res.status(500).json({ success: false, error: 'Terjadi kesalahan internal' });
+    }
+}
+//# sourceMappingURL=reports.controller.js.map
