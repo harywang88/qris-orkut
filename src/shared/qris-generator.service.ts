@@ -89,7 +89,7 @@ export async function generateQr(
       const account = await selectQrisAccount(tx);
 
       // 3b: Find unique code (read-only — no DB write yet)
-      const { uniqueCode, finalAmount } = await findUniqueCode(
+      const { uniqueCode, finalAmount, base } = await findUniqueCode(
         tx,
         account.id,
         account.code,
@@ -128,7 +128,11 @@ export async function generateQr(
           statusPay: 'open',
           statusBot: 'pending',
           expiresAt,
-          metadataJson: input.metadata ? JSON.stringify(input.metadata) : null,
+          metadataJson: JSON.stringify({
+            ...(input.metadata ?? {}),
+            originalAmount: input.amount,
+            roundedBase: base,
+          }),
         },
       });
 

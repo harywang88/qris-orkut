@@ -113,7 +113,7 @@ export async function generateDashboardQrTransaction(
   const transactionId = crypto.randomUUID();
 
   const result = await db.$transaction(async (tx) => {
-    const { uniqueCode, finalAmount } = await findUniqueCode(
+    const { uniqueCode, finalAmount, base } = await findUniqueCode(
       tx,
       account.id,
       account.code,
@@ -147,6 +147,8 @@ export async function generateDashboardQrTransaction(
           source: 'dashboard_generate',
           site: '-',
           createdBy: input.createdBy,
+          originalAmount: input.amount,
+          roundedBase: base,
         }),
       },
     });

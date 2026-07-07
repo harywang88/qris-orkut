@@ -31,26 +31,60 @@ interface ReserveResult {
   lockId: string;
 }
 
+const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+/** Awal hari (00:00 WIB) dalam UTC — dasar reset harian nominal unik. */
+function wibDayStart(now: Date): Date {
+  return new Date(
+    Math.floor((now.getTime() + WIB_OFFSET_MS) / 86400000) * 86400000 - WIB_OFFSET_MS,
+  );
+}
+
+/** Kunci hari (YYYY-MM-DD WIB) — dilekatkan ke activeKey agar nominal boleh dipakai ulang besok. */
+function wibDayKey(now: Date): string {
+  return new Date(now.getTime() + WIB_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** Bulatkan KE ATAS ke kelipatan 1.000 (10.000->10.000; 10.123->11.000; 51.216->52.000). */
+function roundUpToThousand(amount: number): number {
+  return Math.ceil(amount / 1000) * 1000;
+}
+
+/** Batas maksimal nominal QR (plafon). Di batas ini QR TIDAK diberi kode unik agar tak melewati batas. */
+const MAX_QR_AMOUNT = 10_000_000;
+
 /**
- * Phase 1: Find an available unique code for the account (read-only).
- * Must be called inside a Prisma $transaction before the Transaction record is created.
+ * Phase 1: Cari kode unik (read-only). Wajib di dalam Prisma $transaction.
+ * MODEL BARU (koko): base = nominal DIBULATKAN KE ATAS ke kelipatan 1.000; kode = urutan harian
+ * per (akun, base), dihitung dari SEMUA lock hari ini (WIB) — tidak dibebaskan saat expired/paid,
+ * sehingga 1 finalAmount = 1 member sepanjang hari (deteksi bayar-2x 100% akurat). Reset otomatis 00:00 WIB.
+ * Anti-tabrakan: tiap base punya blok [base+1 .. base+999] eksklusif (karena kelipatan 1.000).
  */
 export async function findUniqueCode(
   tx: TxClient,
   qrisAccountId: string,
   accountCode: string,
   requestedAmount: number,
-): Promise<{ uniqueCode: number; finalAmount: number }> {
-  const activeLocks = await tx.amountLock.findMany({
+): Promise<{ uniqueCode: number; finalAmount: number; base: number }> {
+  const base = roundUpToThousand(requestedAmount);
+  // Perlakuan khusus batas maksimal: nominal yang membulat ke >= 10.000.000 (mis. 9.999.001-10.000.000)
+  // TETAP 10.000.000 TANPA kode unik (menambah kode akan melewati plafon). Konsekuensi: QR 10jt tidak
+  // ber-nominal-unik (tak bisa dibedakan antar-member) — diterima karena ini plafon & sangat jarang.
+  if (base >= MAX_QR_AMOUNT) {
+    return { uniqueCode: 0, finalAmount: MAX_QR_AMOUNT, base: MAX_QR_AMOUNT };
+  }
+
+  const dayStart = wibDayStart(new Date());
+  const todayLocks = await tx.amountLock.findMany({
     where: {
       qrisAccountId,
-      status: 'active',
-      expiresAt: { gt: new Date() },
+      createdAt: { gte: dayStart },
+      finalAmount: { gte: base + 1, lte: base + 999 },
     },
-    select: { uniqueCode: true },
+    select: { finalAmount: true },
   });
 
-  const occupiedCodes = new Set(activeLocks.map((l) => l.uniqueCode));
+  const occupiedCodes = new Set(todayLocks.map((l) => l.finalAmount - base));
 
   let uniqueCode: number | null = null;
   for (let code = 1; code <= 999; code++) {
@@ -64,7 +98,7 @@ export async function findUniqueCode(
     throw new AccountFullError(accountCode);
   }
 
-  return { uniqueCode, finalAmount: requestedAmount + uniqueCode };
+  return { uniqueCode, finalAmount: base + uniqueCode, base };
 }
 
 /**
@@ -84,7 +118,8 @@ export async function createAmountLock(
       requestedAmount,
       uniqueCode,
       finalAmount,
-      activeKey: `${qrisAccountId}:${finalAmount}`,
+      activeKey:
+        uniqueCode > 0 ? `${qrisAccountId}:${finalAmount}:${wibDayKey(new Date())}` : null,
       transactionId,
       expiresAt,
       status: 'active',
