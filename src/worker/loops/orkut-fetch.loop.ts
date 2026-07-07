@@ -35,6 +35,14 @@ const DETAIL_CANDIDATE_LOOKBACK_MS = 48 * 60 * 60 * 1_000;
 const DETAIL_RESULT_BACKOFF_MS = 60_000;
 const DETAIL_BATCH_SIZE = 2;
 
+// ── System B: deteksi bayar via poll SALDO (endpoint /api/v2/get BEBAS-LIMIT) ──
+// Poll saldo tiap 2s (akun aktif) / 15s (idle). Saat qrisBalance BERUBAH → tarik mutasi 1x
+// (endpoint mutasi sensitif 469 hanya disentuh saat ADA bayar). Teruji 22/22 bayar ~2s, 0x469.
+const SALDO_ACTIVE_MS = 2_000;
+const SALDO_IDLE_MS = 15_000;
+// qrisBalance terakhir yang DILIHAT proses ini per akun (deteksi perubahan saldo).
+const qrisBalanceSeen = new Map<string, number>();
+
 type LaneState = {
   running: boolean;
   nextAt: number;
@@ -103,6 +111,10 @@ function getQrisLaneInterval(account: QrisAccount): number {
   return activeAccountIds.has(account.id)
     ? secondsToMs(account.qrisActivePollSeconds, 15)
     : secondsToMs(account.qrisIdlePollSeconds, 30);
+}
+
+function getSaldoLaneInterval(account: QrisAccount): number {
+  return activeAccountIds.has(account.id) ? SALDO_ACTIVE_MS : SALDO_IDLE_MS;
 }
 
 function getBalanceLaneInterval(account: QrisAccount): number {
@@ -224,6 +236,92 @@ async function runAppQrisLane(account: QrisAccount, state: SchedulerState): Prom
   } finally {
     state.qris.running = false;
     state.qris.nextAt = Date.now() + getQrisLaneInterval(account);
+  }
+}
+
+// System B inti: tarik mutasi QRIS 1x (maxPages:1). Dipanggil HANYA saat saldo QRIS berubah.
+async function pullQrisMutationsOnce(account: QrisAccount): Promise<void> {
+  const recentKnownQris = await db.mutation.findMany({
+    where: { qrisAccountId: account.id, walletCategory: 'qris' },
+    orderBy: { transactionTime: 'desc' },
+    take: 40,
+    select: { rawHash: true, transactionTime: true },
+  });
+  const latestKnownTime = recentKnownQris[0]?.transactionTime ?? null;
+  const result = await appGateway.fetchIncrementalMutationsAndBalance(account, {
+    knownRawHashes: recentKnownQris.map((row) => row.rawHash),
+    fromTime: latestKnownTime ? new Date(latestKnownTime.getTime() - 120_000) : null,
+    maxPages: 1,
+  });
+  providerCooldownUntil.delete(account.id);
+
+  const newCount = await ingestMutationBatch(account, result.mutations);
+  const { mainBalance: qrisMain, qrisBalance } = result.balance;
+  await db.qrisAccount.update({
+    where: { id: account.id },
+    data: {
+      lastQrisBalance: qrisBalance ?? account.lastQrisBalance,
+      lastMainBalance: qrisMain ?? account.lastMainBalance,
+      lastBalanceSyncAt: new Date(),
+      lastBalanceSyncStatus: 'synced',
+      lastBalanceSyncError: null,
+    },
+  });
+
+  if (qrisBalance !== null && qrisBalance !== undefined) {
+    qrisBalanceSeen.set(account.id, qrisBalance);
+  }
+
+  if (newCount > 0) {
+    logger.info(
+      { accountCode: account.code, lane: 'qris-pull', newMutations: newCount },
+      'System B: mutasi QRIS baru tersimpan setelah saldo berubah',
+    );
+  }
+}
+
+// System B: lane SALDO — poll endpoint saldo (bebas limit) tiap 2s/15s, deteksi perubahan qrisBalance.
+async function runAppSaldoLane(account: QrisAccount, state: SchedulerState): Promise<void> {
+  state.qris.running = true;
+
+  try {
+    const summary = await appGateway.fetchAccountSummary(account);
+    providerCooldownUntil.delete(account.id);
+
+    const newQris = summary.qrisBalance;
+    const newMain = summary.mainBalance;
+    const prev = qrisBalanceSeen.has(account.id) ? qrisBalanceSeen.get(account.id) : undefined;
+
+    await db.qrisAccount.update({
+      where: { id: account.id },
+      data: {
+        lastQrisBalance: newQris ?? account.lastQrisBalance,
+        lastMainBalance: newMain ?? account.lastMainBalance,
+        lastBalanceSyncAt: new Date(),
+        lastBalanceSyncStatus: 'synced',
+        lastBalanceSyncError: null,
+      },
+    });
+
+    if (newQris !== null && newQris !== undefined) {
+      const changed = prev !== undefined && newQris !== prev;
+      // Setelah restart, kalau akun aktif (ada QR nunggu), rekonsiliasi 1x untuk tangkap
+      // pembayaran yang mungkin masuk saat worker mati.
+      const firstSeenActive = prev === undefined && activeAccountIds.has(account.id);
+      qrisBalanceSeen.set(account.id, newQris);
+      if (changed || firstSeenActive) {
+        await pullQrisMutationsOnce(account);
+      }
+    }
+  } catch (err) {
+    if (err instanceof AppOrkutRateLimitError) {
+      await setProviderCooldown(account, err);
+    } else {
+      logger.error({ err, accountCode: account.code, lane: 'saldo' }, 'System B: saldo lane error');
+    }
+  } finally {
+    state.qris.running = false;
+    state.qris.nextAt = Date.now() + getSaldoLaneInterval(account);
   }
 }
 
@@ -429,7 +527,7 @@ async function schedulerTick(): Promise<void> {
 
     if (useAppApi) {
       if (!state.qris.running && state.qris.nextAt <= now && !isAccountCoolingDown(account.id)) {
-        void runAppQrisLane(account, state);
+        void runAppSaldoLane(account, state); // System B: saldo-lane (bebas limit) gantikan poll mutasi periodik
       }
 
       if (!state.balance.running && state.balance.nextAt <= now && !isAccountCoolingDown(account.id)) {
