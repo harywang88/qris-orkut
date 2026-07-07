@@ -1,0 +1,189 @@
+"use strict";
+/**
+ * Site (Website) registry + pemetaan Akun QRIS -> Site.
+ *
+ * Tujuan: memisahkan mutasi/laporan per "site" (mis. Pempek Samudra, Sulebet).
+ * Disimpan sebagai JSON sidecar (tanpa migrasi DB):
+ *   - data/sites.json         -> [{ id, name, createdAt }]
+ *   - data/account-sites.json -> { "<qrisAccountId>": "<siteId>" }
+ *
+ * Dipakai oleh:
+ *   - modul qris-accounts (kelola site + assign akun)
+ *   - dashboard controller (enrich mutasi dgn siteName) -> menyusul
+ *   - reports controller (grup per site) -> menyusul
+ */
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.listSites = listSites;
+exports.getSiteById = getSiteById;
+exports.createSite = createSite;
+exports.updateSite = updateSite;
+exports.deleteSite = deleteSite;
+exports.getAccountSiteMap = getAccountSiteMap;
+exports.setAccountSite = setAccountSite;
+exports.siteIdForAccount = siteIdForAccount;
+exports.siteNameForAccount = siteNameForAccount;
+exports.attachSiteInfo = attachSiteInfo;
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+let logger;
+try {
+    logger = require("../config/logger").logger;
+}
+catch (e) {
+    logger = { error: () => { }, warn: () => { }, info: () => { } };
+}
+const DATA_DIR = path.join(process.cwd(), 'data');
+const SITES_FILE = path.join(DATA_DIR, 'sites.json');
+const MAP_FILE = path.join(DATA_DIR, 'account-sites.json');
+function ensureDir() {
+    try {
+        fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    catch (e) { }
+}
+function readJson(file, fallback) {
+    try {
+        if (!fs.existsSync(file))
+            return fallback;
+        const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+        return raw == null ? fallback : raw;
+    }
+    catch (err) {
+        logger.error({ err, file }, 'site.service: gagal baca ' + file);
+        return fallback;
+    }
+}
+function writeJson(file, data) {
+    ensureDir();
+    const tmp = file + '.tmp';
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf8');
+    fs.renameSync(tmp, file);
+}
+function loadSites() {
+    const raw = readJson(SITES_FILE, []);
+    return Array.isArray(raw) ? raw : [];
+}
+function saveSites(list) {
+    writeJson(SITES_FILE, list);
+}
+function loadMap() {
+    const raw = readJson(MAP_FILE, {});
+    return (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+}
+function saveMap(map) {
+    writeJson(MAP_FILE, map);
+}
+// ── Site CRUD ────────────────────────────────────────────────────────────────
+function listSites() {
+    return loadSites()
+        .slice()
+        .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'id'));
+}
+function getSiteById(id) {
+    if (!id)
+        return null;
+    return loadSites().find((s) => s.id === id) || null;
+}
+function createSite(name) {
+    const clean = String(name || '').trim();
+    if (!clean)
+        throw new Error('Nama site wajib diisi');
+    if (clean.length > 60)
+        throw new Error('Nama site maksimal 60 karakter');
+    const list = loadSites();
+    if (list.some((s) => String(s.name || '').toLowerCase() === clean.toLowerCase()))
+        throw new Error('Nama site sudah dipakai');
+    const site = {
+        id: 'site_' + crypto.randomBytes(6).toString('hex'),
+        name: clean,
+        createdAt: Math.floor(Date.now() / 1000),
+    };
+    list.push(site);
+    saveSites(list);
+    return site;
+}
+function updateSite(id, name) {
+    const clean = String(name || '').trim();
+    if (!clean)
+        throw new Error('Nama site wajib diisi');
+    if (clean.length > 60)
+        throw new Error('Nama site maksimal 60 karakter');
+    const list = loadSites();
+    const s = list.find((x) => x.id === id);
+    if (!s)
+        throw new Error('Site tidak ditemukan');
+    if (list.some((x) => x.id !== id && String(x.name || '').toLowerCase() === clean.toLowerCase()))
+        throw new Error('Nama site sudah dipakai');
+    s.name = clean;
+    saveSites(list);
+    return s;
+}
+function deleteSite(id) {
+    const before = loadSites();
+    const after = before.filter((s) => s.id !== id);
+    if (after.length === before.length)
+        throw new Error('Site tidak ditemukan');
+    saveSites(after);
+    // lepaskan akun yang tertaut ke site ini
+    const map = loadMap();
+    let changed = false;
+    for (const key of Object.keys(map)) {
+        if (map[key] === id) {
+            delete map[key];
+            changed = true;
+        }
+    }
+    if (changed)
+        saveMap(map);
+}
+// ── Pemetaan Akun -> Site ────────────────────────────────────────────────────
+function getAccountSiteMap() {
+    return loadMap();
+}
+function siteIdForAccount(accountId) {
+    if (!accountId)
+        return null;
+    const map = loadMap();
+    return map[accountId] || null;
+}
+function siteNameForAccount(accountId) {
+    const sid = siteIdForAccount(accountId);
+    if (!sid)
+        return null;
+    const s = getSiteById(sid);
+    return s ? s.name : null;
+}
+function setAccountSite(accountId, siteId) {
+    if (!accountId)
+        throw new Error('accountId wajib diisi');
+    const map = loadMap();
+    const sid = String(siteId || '').trim();
+    if (!sid) {
+        delete map[accountId];
+    }
+    else {
+        if (!getSiteById(sid))
+            throw new Error('Site tidak ditemukan');
+        map[accountId] = sid;
+    }
+    saveMap(map);
+}
+/**
+ * Kembalikan salinan array akun dengan tambahan { siteId, siteName }.
+ * Aman untuk objek Prisma (shallow copy).
+ */
+function attachSiteInfo(accounts) {
+    if (!Array.isArray(accounts))
+        return accounts;
+    const map = loadMap();
+    const byId = {};
+    for (const s of loadSites())
+        byId[s.id] = s;
+    return accounts.map((a) => {
+        const sid = (a && a.id && map[a.id]) || null;
+        const s = sid ? byId[sid] : null;
+        return Object.assign({}, a, { siteId: sid, siteName: s ? s.name : null });
+    });
+}
+//# sourceMappingURL=site.service.js.map

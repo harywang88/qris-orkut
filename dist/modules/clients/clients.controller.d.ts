@@ -1,0 +1,11 @@
+import { Request, Response } from 'express';
+export declare function showClientList(req: Request, res: Response): Promise<void>;
+export declare function showNewClientForm(req: Request, res: Response): Promise<void>;
+export declare function handleCreateClient(req: Request, res: Response): Promise<void>;
+export declare function showClientDetail(req: Request, res: Response): Promise<void>;
+export declare function showEditClientForm(req: Request, res: Response): Promise<void>;
+export declare function handleUpdateClient(req: Request, res: Response): Promise<void>;
+export declare function handleDeleteClient(req: Request, res: Response): Promise<void>;
+export declare function handleRotateSecret(req: Request, res: Response): Promise<void>;
+export declare function handleRotateWidgetKey(req: Request, res: Response): Promise<void>;
+export declare function handleRevealSecret(req: Request, res: Response): Promise<void>;

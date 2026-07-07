@@ -1,0 +1,242 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.showReports = showReports;
+exports.getReportsSummary = getReportsSummary;
+const database_1 = require("../../config/database");
+const logger_1 = require("../../config/logger");
+// FIX #1: Batas hari dihitung dalam WIB (Asia/Jakarta, UTC+7), BUKAN zona server (UTC).
+// Server VPS = UTC, jadi dulu "Hari Ini" = hari UTC (geser 7 jam dari WIB). Sekarang hasilnya
+// = instant UTC dari 00:00 WIB s/d 23:59:59.999 WIB pada hari (WIB) yang memuat `d`.
+const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
+function startOfDayWib(d) {
+    const wib = new Date(d.getTime() + WIB_OFFSET_MS);
+    const wibMidnightUtc = Date.UTC(wib.getUTCFullYear(), wib.getUTCMonth(), wib.getUTCDate(), 0, 0, 0, 0);
+    return new Date(wibMidnightUtc - WIB_OFFSET_MS);
+}
+function endOfDayWib(d) {
+    return new Date(startOfDayWib(d).getTime() + 86400000 - 1);
+}
+// Label DD/MM dalam WIB untuk sumbu grafik.
+function wibDayLabel(instant) {
+    const wib = new Date(instant.getTime() + WIB_OFFSET_MS);
+    return `${String(wib.getUTCDate()).padStart(2, '0')}/${String(wib.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+/**
+ * GET /reports — Full report page with date filters and per-client breakdown.
+ */
+async function showReports(req, res) {
+    try {
+        const today = new Date();
+        const range = req.query.range || 'today';
+        let from;
+        let to;
+        if (range === 'yesterday') {
+            const yesterday = new Date(today);
+            yesterday.setDate(yesterday.getDate() - 1);
+            from = startOfDayWib(yesterday);
+            to = endOfDayWib(yesterday);
+        }
+        else if (range === 'custom' && req.query.from && req.query.to) {
+            from = startOfDayWib(new Date(req.query.from));
+            to = endOfDayWib(new Date(req.query.to));
+            if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+                from = startOfDayWib(today);
+                to = endOfDayWib(today);
+            }
+        }
+        else {
+            // default: today
+            from = startOfDayWib(today);
+            to = endOfDayWib(today);
+        }
+        const clients = await database_1.db.client.findMany({
+            orderBy: { name: 'asc' },
+            select: { id: true, name: true, panelCode: true },
+        });
+        // Per-client breakdown
+        const clientBreakdown = await Promise.all(clients.map(async (client) => {
+            const baseWhere = {
+                clientId: client.id,
+                createdAt: { gte: from, lte: to },
+            };
+            const [total, paid, expired, depositSuccess, depositFailed, manualReview, paidAgg] = await Promise.all([
+                database_1.db.transaction.count({ where: baseWhere }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusPay: 'paid' } }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusPay: 'expired' } }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusBot: 'deposit_success' } }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusBot: 'deposit_failed' } }),
+                database_1.db.transaction.count({ where: { ...baseWhere, statusBot: 'manual_review' } }),
+                // FIX #2: uang (nominal + fee) dihitung by paidAt (tanggal DIBAYAR) agar COCOK dgn grafik
+                // & berarti "pemasukan periode ini", bukan by createdAt (tanggal QR dibuat).
+                database_1.db.transaction.aggregate({
+                    where: { clientId: client.id, statusPay: 'paid', paidAt: { gte: from, lte: to } },
+                    _sum: { finalAmount: true, feeAmount: true },
+                }),
+            ]);
+            const totalPaid = paidAgg._sum.finalAmount ?? 0;
+            const totalFee = paidAgg._sum.feeAmount ?? 0;
+            return {
+                client,
+                total,
+                paid,
+                expired,
+                open: total - paid - expired,
+                depositSuccess,
+                depositFailed,
+                manualReview,
+                totalPaid,
+                totalFee,
+                netAmount: totalPaid - totalFee,
+            };
+        }));
+        // Overall totals
+        const overallWhere = { createdAt: { gte: from, lte: to } };
+        const [totalAll, paidAll, expiredAll, paidAggAll] = await Promise.all([
+            database_1.db.transaction.count({ where: overallWhere }),
+            database_1.db.transaction.count({ where: { ...overallWhere, statusPay: 'paid' } }),
+            database_1.db.transaction.count({ where: { ...overallWhere, statusPay: 'expired' } }),
+            // FIX #2: uang keseluruhan by paidAt (cocok grafik).
+            database_1.db.transaction.aggregate({
+                where: { statusPay: 'paid', paidAt: { gte: from, lte: to } },
+                _sum: { finalAmount: true, feeAmount: true },
+            }),
+        ]);
+        const overallTotalPaid = paidAggAll._sum.finalAmount ?? 0;
+        const overallTotalFee = paidAggAll._sum.feeAmount ?? 0;
+        // Grafik harian (per HARI WIB, maks 31 hari). dayCount pakai floor -> jumlah hari inklusif
+        // yang benar (dulu Math.ceil+1 -> kelebihan 1 hari kosong). WIB tak ada DST -> 1 hari = 86400000ms.
+        const dayCount = Math.min(31, Math.floor((to.getTime() - from.getTime()) / 86400000) + 1);
+        const chartLabels = [];
+        const chartAmounts = [];
+        const chartCounts = [];
+        for (let i = 0; i < dayCount; i++) {
+            const dayStart = new Date(from.getTime() + i * 86400000);
+            const dayEnd = new Date(dayStart.getTime() + 86400000 - 1);
+            const [cnt, agg] = await Promise.all([
+                database_1.db.transaction.count({ where: { statusPay: 'paid', paidAt: { gte: dayStart, lte: dayEnd } } }),
+                database_1.db.transaction.aggregate({
+                    where: { statusPay: 'paid', paidAt: { gte: dayStart, lte: dayEnd } },
+                    _sum: { finalAmount: true },
+                }),
+            ]);
+            chartLabels.push(wibDayLabel(dayStart));
+            chartCounts.push(cnt);
+            chartAmounts.push(agg._sum.finalAmount ?? 0);
+        }
+        res.render('reports/index', {
+            title: 'Laporan',
+            range,
+            from,
+            to,
+            fromStr: req.query.from ?? '',
+            toStr: req.query.to ?? '',
+            clientBreakdown,
+            overall: {
+                total: totalAll,
+                paid: paidAll,
+                expired: expiredAll,
+                open: totalAll - paidAll - expiredAll,
+                totalPaid: overallTotalPaid,
+                totalFee: overallTotalFee,
+                netAmount: overallTotalPaid - overallTotalFee,
+            },
+            chartData: {
+                labels: JSON.stringify(chartLabels),
+                counts: JSON.stringify(chartCounts),
+                amounts: JSON.stringify(chartAmounts),
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'showReports error');
+        res.status(500).render('error/500', { title: 'Error' });
+    }
+}
+/**
+ * GET /api/v1/reports/summary
+ *
+ * JSON API with date range + optional clientId filter.
+ * Includes per-client breakdown in the response.
+ */
+async function getReportsSummary(req, res) {
+    try {
+        const today = new Date();
+        const defaultFrom = startOfDayWib(today);
+        const defaultTo = endOfDayWib(today);
+        // FIX #1: batas custom pakai WIB start/end of day (sekalian benerin hari terakhir yg dulu terpotong).
+        const from = req.query.from ? startOfDayWib(new Date(req.query.from)) : defaultFrom;
+        const to = req.query.to ? endOfDayWib(new Date(req.query.to)) : defaultTo;
+        if (isNaN(from.getTime()) || isNaN(to.getTime())) {
+            res.status(400).json({ success: false, error: 'Parameter from/to tidak valid' });
+            return;
+        }
+        const where = { createdAt: { gte: from, lte: to } };
+        if (req.query.clientId)
+            where.clientId = req.query.clientId;
+        // FIX #2: uang by paidAt (pemasukan periode), bukan createdAt.
+        const paidMoneyWhere = { statusPay: 'paid', paidAt: { gte: from, lte: to } };
+        if (req.query.clientId)
+            paidMoneyWhere.clientId = req.query.clientId;
+        const [totalCount, paidCount, expiredCount, openCount] = await Promise.all([
+            database_1.db.transaction.count({ where }),
+            database_1.db.transaction.count({ where: { ...where, statusPay: 'paid' } }),
+            database_1.db.transaction.count({ where: { ...where, statusPay: 'expired' } }),
+            database_1.db.transaction.count({ where: { ...where, statusPay: 'open' } }),
+        ]);
+        const paidAggregate = await database_1.db.transaction.aggregate({
+            where: paidMoneyWhere,
+            _sum: { finalAmount: true, feeAmount: true },
+        });
+        const [depositSuccess, depositFailed, manualReview] = await Promise.all([
+            database_1.db.transaction.count({ where: { ...where, statusBot: 'deposit_success' } }),
+            database_1.db.transaction.count({ where: { ...where, statusBot: 'deposit_failed' } }),
+            database_1.db.transaction.count({ where: { ...where, statusBot: 'manual_review' } }),
+        ]);
+        // Per-client breakdown (only if no clientId filter)
+        let perClient = [];
+        if (!req.query.clientId) {
+            const clients = await database_1.db.client.findMany({
+                select: { id: true, name: true, panelCode: true },
+            });
+            perClient = await Promise.all(clients.map(async (client) => {
+                const cWhere = { ...where, clientId: client.id };
+                const [cnt, paidCnt, agg] = await Promise.all([
+                    database_1.db.transaction.count({ where: cWhere }),
+                    database_1.db.transaction.count({ where: { ...cWhere, statusPay: 'paid' } }),
+                    database_1.db.transaction.aggregate({
+                        where: { clientId: client.id, statusPay: 'paid', paidAt: { gte: from, lte: to } },
+                        _sum: { finalAmount: true, feeAmount: true },
+                    }),
+                ]);
+                return {
+                    clientId: client.id,
+                    clientName: client.name,
+                    panelCode: client.panelCode,
+                    total: cnt,
+                    paid: paidCnt,
+                    totalPaid: agg._sum.finalAmount ?? 0,
+                    totalFee: agg._sum.feeAmount ?? 0,
+                };
+            }));
+        }
+        res.json({
+            success: true,
+            data: {
+                period: { from: from.toISOString(), to: to.toISOString() },
+                transactions: { total: totalCount, paid: paidCount, expired: expiredCount, open: openCount },
+                amounts: {
+                    totalPaid: paidAggregate._sum.finalAmount ?? 0,
+                    totalFee: paidAggregate._sum.feeAmount ?? 0,
+                    netAmount: (paidAggregate._sum.finalAmount ?? 0) - (paidAggregate._sum.feeAmount ?? 0),
+                },
+                deposits: { success: depositSuccess, failed: depositFailed, manualReview },
+                perClient,
+            },
+        });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'getReportsSummary error');
+        res.status(500).json({ success: false, error: 'Terjadi kesalahan internal' });
+    }
+}
+//# sourceMappingURL=reports.controller.js.map

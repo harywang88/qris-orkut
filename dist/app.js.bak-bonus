@@ -1,0 +1,197 @@
+"use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.createApp = createApp;
+const express_1 = __importStar(require("express"));
+const express_ejs_layouts_1 = __importDefault(require("express-ejs-layouts"));
+const path_1 = __importDefault(require("path"));
+const config_1 = require("./config");
+const session_1 = require("./config/session");
+const logger_1 = require("./config/logger");
+const base_path_1 = require("./core/base-path");
+const alias_access_service_1 = require("./shared/alias-access.service");
+const rbac_middleware_1 = require("./core/rbac.middleware");
+const auth_middleware_1 = require("./core/auth.middleware");
+const auth_router_1 = require("./modules/auth/auth.router");
+const dashboard_router_1 = require("./modules/dashboard/dashboard.router");
+const qris_accounts_router_1 = require("./modules/qris-accounts/qris-accounts.router");
+const merchant_qr_router_1 = require("./modules/merchant-qr/merchant-qr.router");
+const clients_router_1 = require("./modules/clients/clients.router");
+const transactions_router_1 = require("./modules/transactions/transactions.router");
+const reports_router_1 = require("./modules/reports/reports.router");
+const webhook_router_1 = require("./modules/webhooks/webhook.router");
+function mountRouter(app, mountPath, router) {
+    app.use(mountPath, router);
+    const basePath = (0, base_path_1.normalizeBasePath)(config_1.config.APP_BASE_PATH);
+    if (basePath) {
+        app.use(`${basePath}${mountPath === '/' ? '' : mountPath}`, router);
+    }
+}
+function mountRedirect(app, mountPath, targetPath, middleware = []) {
+    const handler = (req, res) => {
+        const queryIndex = req.originalUrl.indexOf('?');
+        const query = queryIndex >= 0 ? req.originalUrl.slice(queryIndex) : '';
+        res.redirect((0, base_path_1.withBasePath)(targetPath, config_1.config.APP_BASE_PATH) + query);
+    };
+    app.use(mountPath, ...middleware, handler);
+    const basePath = (0, base_path_1.normalizeBasePath)(config_1.config.APP_BASE_PATH);
+    if (basePath) {
+        app.use(`${basePath}${mountPath}`, ...middleware, handler);
+    }
+}
+function createApp() {
+    const app = (0, express_1.default)();
+    const publicDir = path_1.default.join(process.cwd(), 'public');
+    const basePath = (0, base_path_1.normalizeBasePath)(config_1.config.APP_BASE_PATH);
+    const healthHandler = (_req, res) => {
+        res.status(200).json({
+            ok: true,
+            service: 'qris-app',
+            pid: process.pid,
+            uptimeSeconds: Math.floor(process.uptime()),
+            timestamp: new Date().toISOString(),
+        });
+    };
+    // Required in production behind Nginx/Cloudflare so secure session cookies
+    // and req.secure work correctly when TLS is terminated before Node.
+    app.set('trust proxy', 1);
+    app.use(express_1.default.json({
+        verify: (req, _res, buf) => {
+            req.rawBody = buf;
+        },
+    }));
+    app.use(express_1.default.urlencoded({ extended: true }));
+    app.use(express_1.default.static(publicDir));
+    if (basePath) {
+        app.use(basePath, express_1.default.static(publicDir));
+    }
+    app.set('view engine', 'ejs');
+    app.set('views', path_1.default.join(process.cwd(), 'views'));
+    app.use(express_ejs_layouts_1.default);
+    app.set('layout', 'layouts/main');
+    app.use((0, session_1.createSessionMiddleware)());
+    app.get('/healthz', healthHandler);
+    if (basePath) {
+        app.get(`${basePath}/healthz`, healthHandler);
+    }
+    app.use((req, res, next) => {
+        const sessUser = req.session.user ?? null;
+        // Perkaya user utk view/gating dgn isMaster + menuPerms (per-request, TANPA ubah session).
+        if (sessUser) {
+            let isMaster = false;
+            let menuPerms = {};
+            try {
+                isMaster = alias_access_service_1.isMasterUser(sessUser);
+                menuPerms = alias_access_service_1.getMenuPermsForUser(sessUser);
+            }
+            catch (err) {
+                logger_1.logger.error({ err }, 'gagal hitung menuPerms');
+            }
+            res.locals.user = { ...sessUser, isMaster, menuPerms };
+        }
+        else {
+            res.locals.user = null;
+        }
+        res.locals.flash = req.session.flash ?? null;
+        res.locals.basePath = basePath;
+        res.locals.url = (pathname) => (0, base_path_1.withBasePath)(pathname, basePath);
+        res.locals.currentPath = req.originalUrl.split('?')[0];
+        if (req.session.flash) {
+            delete req.session.flash;
+        }
+        next();
+    });
+    mountRouter(app, '/', auth_router_1.authRouter);
+    const rootRedirect = (req, res) => {
+        if (req.session.user) {
+            res.redirect((0, base_path_1.withBasePath)('/dashboard', config_1.config.APP_BASE_PATH));
+            return;
+        }
+        res.redirect((0, base_path_1.withBasePath)('/login', config_1.config.APP_BASE_PATH));
+    };
+    app.get('/', rootRedirect);
+    if (basePath) {
+        app.get(basePath, rootRedirect);
+        app.get(`${basePath}/`, rootRedirect);
+    }
+    mountRouter(app, '/dashboard', (0, express_1.Router)().use(auth_middleware_1.requireAuth, dashboard_router_1.dashboardRouter));
+    mountRedirect(app, '/history', '/dashboard/history', [auth_middleware_1.requireAuth]);
+    mountRedirect(app, '/mutations', '/dashboard/mutations/qris', [auth_middleware_1.requireAuth]);
+    mountRedirect(app, '/settlement', '/dashboard/settlement', [auth_middleware_1.requireAuth]);
+    mountRedirect(app, '/transactions', '/dashboard/transactions', [auth_middleware_1.requireAuth]);
+    mountRedirect(app, '/wallet/saldo-utama', '/dashboard/wallet/saldo-utama', [auth_middleware_1.requireAuth]);
+    mountRedirect(app, '/wallet/madera', '/dashboard/wallet/madera', [auth_middleware_1.requireAuth]);
+    mountRouter(app, '/qris-accounts', (0, express_1.Router)().use(auth_middleware_1.requireAuth, qris_accounts_router_1.qrisAccountsRouter));
+    mountRouter(app, '/merchant-qr', (0, express_1.Router)().use(auth_middleware_1.requireAuth, (0, rbac_middleware_1.requireMenu)('merchant-qr'), merchant_qr_router_1.merchantQrRouter));
+    mountRouter(app, '/clients', (0, express_1.Router)().use(auth_middleware_1.requireAuth, (0, rbac_middleware_1.requireMenu)('clients'), clients_router_1.clientsRouter));
+    mountRedirect(app, '/settings/login-logs', '/dashboard/login-logs', [auth_middleware_1.requireAuth]);
+    mountRedirect(app, '/settings/aliases', '/dashboard/aliases', [auth_middleware_1.requireAuth]);
+    mountRouter(app, '/reports', reports_router_1.reportsRouter);
+    mountRouter(app, '/api/v1/reports', reports_router_1.reportsRouter);
+    mountRouter(app, '/webhook', webhook_router_1.webhookRouter);
+    if (process.env.NODE_ENV !== 'production') {
+        mountRouter(app, '/dev', transactions_router_1.qrisDevRouter);
+    }
+    mountRouter(app, '/api/v1/qris', transactions_router_1.qrisClientRouter);
+    mountRouter(app, '/api/v1/qris', (0, express_1.Router)().use(auth_middleware_1.requireAuth, transactions_router_1.qrisAdminRouter));
+    app.use((req, res) => {
+        const requestPath = req.originalUrl.split('?')[0];
+        const isApiRequest = requestPath.includes('/api/');
+        if (isApiRequest) {
+            res.status(404).json({ success: false, error: 'Endpoint tidak ditemukan' });
+            return;
+        }
+        res.status(404).render('error/404', {
+            title: 'Halaman Tidak Ditemukan',
+            layout: req.session.user ? 'layouts/main' : 'layouts/auth',
+        });
+    });
+    app.use((err, req, res, _next) => {
+        logger_1.logger.error({ err, path: req.originalUrl }, 'Unhandled error');
+        if (req.originalUrl.includes('/api/')) {
+            res.status(500).json({ success: false, error: 'Internal server error' });
+            return;
+        }
+        res.status(500).render('error/500', {
+            title: 'Server Error',
+            layout: req.session.user ? 'layouts/main' : 'layouts/auth',
+        });
+    });
+    return app;
+}
+//# sourceMappingURL=app.js.map

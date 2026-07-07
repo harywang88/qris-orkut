@@ -1,0 +1,310 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.showMerchantQrList = showMerchantQrList;
+exports.showNewMerchantQrForm = showNewMerchantQrForm;
+exports.handleCreateMerchantQr = handleCreateMerchantQr;
+exports.showEditMerchantQrForm = showEditMerchantQrForm;
+exports.handleUpdateMerchantQr = handleUpdateMerchantQr;
+exports.handleDeleteMerchantQr = handleDeleteMerchantQr;
+exports.handleToggleMerchantQrStatus = handleToggleMerchantQrStatus;
+exports.handleSetMerchantQrHealth = handleSetMerchantQrHealth;
+exports.handleResetMerchantQrDailyUsage = handleResetMerchantQrDailyUsage;
+exports.handleTestMerchantQrConnection = handleTestMerchantQrConnection;
+exports.handleSyncMerchantQrNow = handleSyncMerchantQrNow;
+exports.handleTestMerchantQrReportLogin = handleTestMerchantQrReportLogin;
+exports.handleCompareMerchantQrSources = handleCompareMerchantQrSources;
+exports.getMerchantQrStatusApi = getMerchantQrStatusApi;
+const zod_1 = require("zod");
+const qris_accounts_service_1 = require("../qris-accounts/qris-accounts.service");
+const merchant_qr_sync_service_1 = require("./merchant-qr-sync.service");
+const config_1 = require("../../config");
+const logger_1 = require("../../config/logger");
+const base_path_1 = require("../../core/base-path");
+function optionalInt(min, max) {
+    return zod_1.z.preprocess((value) => {
+        if (value === '' || value === null || value === undefined)
+            return undefined;
+        if (typeof value === 'string' && value.trim() === '')
+            return undefined;
+        const parsed = typeof value === 'string' ? Number(value) : Number(value);
+        return Number.isFinite(parsed) ? parsed : value;
+    }, zod_1.z.number().int().min(min).max(max).optional());
+}
+function optionalText(max) {
+    return zod_1.z.preprocess((value) => {
+        if (value === null || value === undefined)
+            return undefined;
+        if (typeof value !== 'string')
+            return value;
+        const trimmed = value.trim();
+        return trimmed === '' ? undefined : trimmed;
+    }, zod_1.z.string().max(max).optional());
+}
+const MerchantQrCreateSchema = zod_1.z.object({
+    code: zod_1.z
+        .string()
+        .min(1)
+        .max(10)
+        .regex(/^[A-Z0-9]+$/i, 'Kode hanya boleh huruf dan angka'),
+    accountNumber: zod_1.z.string().trim().min(1).max(50),
+    merchantName: zod_1.z.string().trim().min(1).max(100),
+    orkutAccountIndex: optionalInt(1, 999),
+    dailyLimit: zod_1.z.coerce.number().int().min(0).default(30000000),
+    qrisPayload: optionalText(2000),
+    sessionToken: optionalText(1000),
+    cookies: optionalText(5000),
+    webCookies: optionalText(12000),
+    webUserAgent: optionalText(500),
+    deviceId: optionalText(100),
+    transferPin: optionalText(20),
+    balanceWatchActiveSeconds: optionalInt(1, 10).default(2),
+    detailPollSeconds: optionalInt(15, 120).default(20),
+});
+const MerchantQrUpdateSchema = zod_1.z.object({
+    code: optionalText(10).refine((value) => value === undefined || /^[A-Z0-9]+$/i.test(value), {
+        message: 'Kode hanya boleh huruf dan angka',
+    }),
+    accountNumber: optionalText(50),
+    merchantName: optionalText(100),
+    orkutAccountIndex: optionalInt(1, 999),
+    dailyLimit: zod_1.z.preprocess((value) => {
+        if (value === '' || value === null || value === undefined)
+            return undefined;
+        return value;
+    }, zod_1.z.coerce.number().int().min(0).optional()),
+    qrisPayload: optionalText(2000),
+    sessionToken: optionalText(1000),
+    cookies: optionalText(5000),
+    webCookies: optionalText(12000),
+    webUserAgent: optionalText(500),
+    deviceId: optionalText(100),
+    transferPin: optionalText(20),
+    balanceWatchActiveSeconds: optionalInt(1, 10),
+    detailPollSeconds: optionalInt(15, 120),
+});
+async function getMerchantFormAccount(id) {
+    const account = await (0, qris_accounts_service_1.getQrisAccountById)(id);
+    if (!account)
+        return null;
+    const credentials = await (0, qris_accounts_service_1.getDecryptedCredentials)(id);
+    return {
+        ...account,
+        transferPin: credentials.transferPin ?? '',
+    };
+}
+function renderMerchantForm(res, opts) {
+    res.render('merchant-qr/form', opts);
+}
+async function showMerchantQrList(req, res) {
+    try {
+        const accounts = await (0, qris_accounts_service_1.listQrisAccounts)();
+        res.render('merchant-qr/index', {
+            title: 'Merchant QR',
+            accounts,
+        });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'showMerchantQrList error');
+        res.status(500).render('error/500', { title: 'Error' });
+    }
+}
+async function showNewMerchantQrForm(req, res) {
+    renderMerchantForm(res, {
+        title: 'Tambah Merchant QR',
+        account: null,
+        errors: null,
+    });
+}
+async function handleCreateMerchantQr(req, res) {
+    const parsed = MerchantQrCreateSchema.safeParse(req.body);
+    if (!parsed.success) {
+        renderMerchantForm(res, {
+            title: 'Tambah Merchant QR',
+            account: null,
+            errors: parsed.error.flatten().fieldErrors,
+        });
+        return;
+    }
+    try {
+        await (0, qris_accounts_service_1.createQrisAccount)(parsed.data);
+        req.session.flash = {
+            type: 'success',
+            message: 'Merchant QR berhasil ditambahkan dan otomatis siap dipakai di Generate QR serta semua menu mutasi.',
+        };
+        res.redirect((0, base_path_1.withBasePath)('/merchant-qr', config_1.config.APP_BASE_PATH));
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : 'Gagal menambahkan Merchant QR';
+        renderMerchantForm(res, {
+            title: 'Tambah Merchant QR',
+            account: null,
+            errors: { _form: [message] },
+        });
+    }
+}
+async function showEditMerchantQrForm(req, res) {
+    try {
+        const account = await getMerchantFormAccount(req.params.id);
+        if (!account) {
+            res.status(404).render('error/404', { title: 'Tidak Ditemukan' });
+            return;
+        }
+        renderMerchantForm(res, {
+            title: `Edit Merchant QR: ${account.code}`,
+            account,
+            errors: null,
+        });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'showEditMerchantQrForm error');
+        res.status(500).render('error/500', { title: 'Error' });
+    }
+}
+async function handleUpdateMerchantQr(req, res) {
+    const parsed = MerchantQrUpdateSchema.safeParse(req.body);
+    if (!parsed.success) {
+        const account = await getMerchantFormAccount(req.params.id);
+        renderMerchantForm(res, {
+            title: 'Edit Merchant QR',
+            account,
+            errors: parsed.error.flatten().fieldErrors,
+        });
+        return;
+    }
+    try {
+        await (0, qris_accounts_service_1.updateQrisAccount)(req.params.id, parsed.data);
+        req.session.flash = {
+            type: 'success',
+            message: 'Merchant QR berhasil diperbarui.',
+        };
+        res.redirect((0, base_path_1.withBasePath)('/merchant-qr', config_1.config.APP_BASE_PATH));
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : 'Gagal memperbarui Merchant QR';
+        req.session.flash = { type: 'error', message };
+        res.redirect((0, base_path_1.withBasePath)('/merchant-qr', config_1.config.APP_BASE_PATH));
+    }
+}
+async function handleDeleteMerchantQr(req, res) {
+    try {
+        await (0, qris_accounts_service_1.deleteQrisAccount)(req.params.id);
+        req.session.flash = { type: 'success', message: 'Merchant QR berhasil dihapus.' };
+        res.redirect((0, base_path_1.withBasePath)('/merchant-qr', config_1.config.APP_BASE_PATH));
+    }
+    catch (err) {
+        const message = err instanceof Error ? err.message : 'Gagal menghapus Merchant QR';
+        req.session.flash = { type: 'error', message };
+        res.redirect((0, base_path_1.withBasePath)('/merchant-qr', config_1.config.APP_BASE_PATH));
+    }
+}
+async function handleToggleMerchantQrStatus(req, res) {
+    try {
+        const newStatus = await (0, qris_accounts_service_1.toggleAccountStatus)(req.params.id);
+        res.json({ success: true, status: newStatus });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'handleToggleMerchantQrStatus error');
+        res.status(500).json({ success: false, error: 'Gagal mengubah status Merchant QR' });
+    }
+}
+async function handleSetMerchantQrHealth(req, res) {
+    const { healthStatus } = req.body;
+    if (!['healthy', 'degraded', 'down'].includes(healthStatus)) {
+        res.status(400).json({ success: false, error: 'Status tidak valid' });
+        return;
+    }
+    try {
+        await (0, qris_accounts_service_1.setHealthStatus)(req.params.id, healthStatus);
+        res.json({ success: true });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'handleSetMerchantQrHealth error');
+        res.status(500).json({ success: false, error: 'Gagal mengubah status kesehatan Merchant QR' });
+    }
+}
+async function handleResetMerchantQrDailyUsage(req, res) {
+    try {
+        await (0, qris_accounts_service_1.resetDailyUsage)(req.params.id);
+        req.session.flash = { type: 'success', message: 'Penggunaan harian Merchant QR berhasil direset.' };
+        res.redirect((0, base_path_1.withBasePath)('/merchant-qr', config_1.config.APP_BASE_PATH));
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'handleResetMerchantQrDailyUsage error');
+        req.session.flash = { type: 'error', message: 'Gagal mereset penggunaan harian Merchant QR.' };
+        res.redirect((0, base_path_1.withBasePath)('/merchant-qr', config_1.config.APP_BASE_PATH));
+    }
+}
+async function handleTestMerchantQrConnection(req, res) {
+    try {
+        const report = await (0, merchant_qr_sync_service_1.testMerchantConnection)(req.params.id);
+        res.json({ success: true, report });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'handleTestMerchantQrConnection error');
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : 'Gagal mengetes koneksi merchant.',
+        });
+    }
+}
+async function handleSyncMerchantQrNow(req, res) {
+    try {
+        const report = await (0, merchant_qr_sync_service_1.syncMerchantNow)(req.params.id);
+        res.json({ success: true, report });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'handleSyncMerchantQrNow error');
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : 'Gagal menjalankan sinkron manual.',
+        });
+    }
+}
+async function handleTestMerchantQrReportLogin(req, res) {
+    try {
+        const report = await (0, merchant_qr_sync_service_1.testReportLogin)({
+            rawHeaders: typeof req.body?.rawHeaders === 'string' ? req.body.rawHeaders : null,
+            webCookies: typeof req.body?.webCookies === 'string' ? req.body.webCookies : null,
+            webUserAgent: typeof req.body?.webUserAgent === 'string' ? req.body.webUserAgent : null,
+        });
+        res.status(report.success ? 200 : 400).json({ success: report.success, report });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'handleTestMerchantQrReportLogin error');
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : 'Gagal mengetes login report.',
+        });
+    }
+}
+async function handleCompareMerchantQrSources(req, res) {
+    try {
+        const report = await (0, merchant_qr_sync_service_1.compareReportVsLiveSources)({
+            rawHeaders: typeof req.body?.rawHeaders === 'string' ? req.body.rawHeaders : null,
+            webCookies: typeof req.body?.webCookies === 'string' ? req.body.webCookies : null,
+            webUserAgent: typeof req.body?.webUserAgent === 'string' ? req.body.webUserAgent : null,
+            sessionToken: typeof req.body?.sessionToken === 'string' ? req.body.sessionToken : null,
+            cookies: typeof req.body?.cookies === 'string' ? req.body.cookies : null,
+            deviceId: typeof req.body?.deviceId === 'string' ? req.body.deviceId : null,
+        });
+        res.status(report.success ? 200 : 400).json({ success: report.success, report });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'handleCompareMerchantQrSources error');
+        res.status(500).json({
+            success: false,
+            error: err instanceof Error ? err.message : 'Gagal membandingkan source merchant.',
+        });
+    }
+}
+async function getMerchantQrStatusApi(req, res) {
+    try {
+        const accounts = await (0, qris_accounts_service_1.listQrisAccountsStatus)();
+        res.json({ ok: true, accounts });
+    }
+    catch (err) {
+        logger_1.logger.error({ err }, 'getMerchantQrStatusApi error');
+        res.status(500).json({ ok: false, error: 'Gagal mengambil status merchant.' });
+    }
+}
+//# sourceMappingURL=merchant-qr.controller.js.map

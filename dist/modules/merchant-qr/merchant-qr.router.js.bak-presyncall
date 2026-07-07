@@ -1,0 +1,25 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.merchantQrRouter = void 0;
+const express_1 = require("express");
+const rbac_middleware_1 = require("../../core/rbac.middleware");
+const merchant_qr_controller_1 = require("./merchant-qr.controller");
+const router = (0, express_1.Router)();
+exports.merchantQrRouter = router;
+const canManage = (0, rbac_middleware_1.requireMenuOrPermission)('merchant-qr', 'manage', 'qris:manage');
+// Static routes MUST come before /:id dynamic routes
+router.get('/', canManage, merchant_qr_controller_1.showMerchantQrList);
+router.get('/new', canManage, merchant_qr_controller_1.showNewMerchantQrForm);
+router.get('/api/status', canManage, merchant_qr_controller_1.getMerchantQrStatusApi);
+router.post('/test-report-login', canManage, merchant_qr_controller_1.handleTestMerchantQrReportLogin);
+router.post('/compare-sources', canManage, merchant_qr_controller_1.handleCompareMerchantQrSources);
+router.post('/', canManage, merchant_qr_controller_1.handleCreateMerchantQr);
+router.get('/:id/edit', canManage, merchant_qr_controller_1.showEditMerchantQrForm);
+router.post('/:id', canManage, merchant_qr_controller_1.handleUpdateMerchantQr);
+router.post('/:id/delete', canManage, merchant_qr_controller_1.handleDeleteMerchantQr);
+router.post('/:id/toggle-status', canManage, merchant_qr_controller_1.handleToggleMerchantQrStatus);
+router.post('/:id/set-health', canManage, merchant_qr_controller_1.handleSetMerchantQrHealth);
+router.post('/:id/reset-daily', canManage, merchant_qr_controller_1.handleResetMerchantQrDailyUsage);
+router.post('/:id/test-connection', canManage, merchant_qr_controller_1.handleTestMerchantQrConnection);
+router.post('/:id/sync-now', canManage, merchant_qr_controller_1.handleSyncMerchantQrNow);
+//# sourceMappingURL=merchant-qr.router.js.map

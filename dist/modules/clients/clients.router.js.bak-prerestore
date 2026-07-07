@@ -1,0 +1,20 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.clientsRouter = void 0;
+const express_1 = require("express");
+const rbac_middleware_1 = require("../../core/rbac.middleware");
+const clients_controller_1 = require("./clients.controller");
+const router = (0, express_1.Router)();
+exports.clientsRouter = router;
+const canManage = (0, rbac_middleware_1.requirePermission)('client:manage');
+router.get('/', canManage, clients_controller_1.showClientList);
+router.get('/new', canManage, clients_controller_1.showNewClientForm);
+router.post('/', canManage, clients_controller_1.handleCreateClient);
+router.get('/:id', canManage, clients_controller_1.showClientDetail);
+router.get('/:id/edit', canManage, clients_controller_1.showEditClientForm);
+router.post('/:id', canManage, clients_controller_1.handleUpdateClient);
+router.post('/:id/delete', canManage, clients_controller_1.handleDeleteClient);
+router.post('/:id/rotate-secret', canManage, clients_controller_1.handleRotateSecret);
+router.post('/:id/rotate-widget-key', canManage, clients_controller_1.handleRotateWidgetKey);
+router.get('/:id/reveal-secret', canManage, clients_controller_1.handleRevealSecret);
+//# sourceMappingURL=clients.router.js.map
