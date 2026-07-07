@@ -19,6 +19,7 @@ import {
   testReportLogin,
   saveWebReportLink,
   testWebReportLink,
+  getWebReportStatus,
   startSyncAllMerchants,
   getSyncAllStatus,
 } from './merchant-qr-sync.service';
@@ -389,5 +390,16 @@ export async function handleTestWebReportUrl(req: Request, res: Response): Promi
   } catch (err) {
     logger.error({ err }, 'handleTestWebReportUrl error');
     res.status(500).json({ success: false, message: 'Gagal menguji link Web Report.' });
+  }
+}
+
+
+export async function handleWebReportStatus(req: Request, res: Response): Promise<void> {
+  try {
+    const result = await getWebReportStatus(String(req.params.id || ''));
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, 'handleWebReportStatus error');
+    res.status(500).json({ status: 'expired' });
   }
 }

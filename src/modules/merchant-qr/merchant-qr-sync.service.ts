@@ -23,6 +23,7 @@ import {
   probeMerchantMutationsFromReport,
   probeMerchantMutationsFromRawReportInput,
   autologinReportCookie,
+  checkWebReportLogin,
   syncMerchantMutationsFromReport,
   type PythonScrapeResult,
 } from '../../shared/orderkuota-report-python.service';
@@ -1138,4 +1139,11 @@ export async function saveWebReportLink(accountId: string, rawUrl: string): Prom
     ok: true,
     message: 'Link Web Report tersimpan & terverifikasi. Sistem akan login sendiri — tak perlu paste cookie tiap 2 jam lagi.',
   };
+}
+
+
+export async function getWebReportStatus(accountId: string): Promise<{ status: 'none' | 'active' | 'expired' }> {
+  const acc = await db.qrisAccount.findUnique({ where: { id: accountId }, select: { webReportUrlEncrypted: true } });
+  const status = await checkWebReportLogin((acc as any)?.webReportUrlEncrypted ?? null);
+  return { status };
 }

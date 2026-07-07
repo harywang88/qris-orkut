@@ -324,3 +324,32 @@ export async function syncMerchantMutationsFromReportIfStale(
   }
   return syncMerchantMutationsFromReport(account, target);
 }
+
+
+/** Cek status login Web Report: none (belum ada link) | active | expired. */
+export async function checkWebReportLogin(webReportUrlEncrypted?: string | null): Promise<'none' | 'active' | 'expired'> {
+  if (!webReportUrlEncrypted) return 'none';
+  let url: string;
+  try { url = decrypt(webReportUrlEncrypted); } catch { return 'expired'; }
+  const auto = await autologinReportCookie(url);
+  if (!auto) return 'expired';
+  try {
+    const res = await fetch(WEB_REPORT_BASE + '/', {
+      headers: {
+        'User-Agent': auto.userAgent,
+        Cookie: auto.cookie,
+        Referer: WEB_REPORT_BASE + '/transaksi',
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(15000),
+    });
+    if (res.status >= 300 && res.status < 400) {
+      const loc = res.headers.get('location') || '';
+      return /auth\/login/i.test(loc) ? 'expired' : 'active';
+    }
+    return res.status === 200 ? 'active' : 'expired';
+  } catch {
+    return 'expired';
+  }
+}

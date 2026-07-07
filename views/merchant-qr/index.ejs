@@ -74,6 +74,12 @@ function fmtMiniTime(value) {
   .mqi-action-btn.amber:hover { background:rgba(245,158,11,0.14); border-color:rgba(245,158,11,0.3); color:#fcd34d; }
   .mqi-action-btn.blue:hover { background:rgba(59,130,246,0.14); border-color:rgba(59,130,246,0.3); color:#93c5fd; }
   .mqi-action-btn.green:hover { background:rgba(34,197,94,0.14); border-color:rgba(34,197,94,0.3); color:#86efac; }
+  .mqi-action-btn.wr-active { background:rgba(34,197,94,.16); border-color:rgba(34,197,94,.4); color:#86efac; cursor:default; position:relative; }
+  .mqi-action-btn.wr-active::after { content:''; position:absolute; top:-2px; right:-2px; width:7px; height:7px; border-radius:50%; background:#22c55e; box-shadow:0 0 0 0 rgba(34,197,94,.6); animation:wrPulse 1.8s infinite; }
+  @keyframes wrPulse { 0%{box-shadow:0 0 0 0 rgba(34,197,94,.55);} 70%{box-shadow:0 0 0 6px rgba(34,197,94,0);} 100%{box-shadow:0 0 0 0 rgba(34,197,94,0);} }
+  .mqi-action-btn.wr-active:hover { background:rgba(34,197,94,.16); }
+  .mqi-action-btn.wr-expired { background:rgba(239,68,68,.14); border-color:rgba(239,68,68,.4); color:#fca5a5; }
+  .mqi-action-btn.wr-checking { opacity:.6; cursor:progress; }
 
   .mqi-add-btn {
     display:inline-flex; align-items:center; gap:7px;
@@ -368,7 +374,7 @@ function fmtMiniTime(value) {
                 <button type="button" class="mqi-action-btn green" title="Sinkronkan Sekarang" onclick="runMerchantAction('<%= acc.id %>', 'sync')">
                   <i class="fa-solid fa-arrows-rotate"></i>
                 </button>
-                <button type="button" class="mqi-action-btn amber" title="Link Web Report (autologin)" onclick="openWrModal('<%= acc.id %>')"><i class="fa-solid fa-link"></i></button>
+                <% if (acc.webReportUrlEncrypted) { %><button type="button" class="mqi-action-btn wr-checking" data-wr-btn="<%= acc.id %>" data-wr-linked="1" disabled title="Web Report: mengecek login…" onclick="openWrModal('<%= acc.id %>')"><i class="fa-solid fa-spinner fa-spin"></i></button><% } else { %><button type="button" class="mqi-action-btn amber" data-wr-btn="<%= acc.id %>" data-wr-linked="0" title="Hubungkan Web Report (autologin)" onclick="openWrModal('<%= acc.id %>')"><i class="fa-solid fa-link"></i></button><% } %>
               </div>
               <div style="display:flex;align-items:center;justify-content:center;gap:6px">
                 <a href="<%= url(`/merchant-qr/${acc.id}/edit`) %>" class="mqi-action-btn" title="Edit">
@@ -703,10 +709,33 @@ async function syncAllMerchants() {
     try{
       var r=await fetch(MQ+'/'+curId+'/web-report-url',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:url})});
       var d=await r.json();
-      if(d && d.ok){ rslt('<b style="color:#86efac">✓ '+(d.message||'Tersimpan.')+'</b>','ok'); setTimeout(closeWrModal,1600); }
+      if(d && d.ok){ rslt('<b style="color:#86efac">✓ '+(d.message||'Tersimpan.')+'</b>','ok'); if(window.wrCheckOne)window.wrCheckOne(curId); setTimeout(closeWrModal,1600); }
       else { rslt('<b>✗</b> '+((d&&d.message)||'Gagal simpan.'),'bad'); }
     }catch(e){ rslt('Gagal koneksi ke server.','bad'); }
   };
 })();
 </script>
 <!-- ═══ /Web Report Link modal ═══ -->
+
+<script>
+(function(){
+  var MQ='<%- url('/merchant-qr') %>';
+  function applyStatus(btn,status){
+    if(!btn) return;
+    if(status==='active'){ btn.className='mqi-action-btn wr-active'; btn.disabled=true; btn.title='Web Report: LOGIN AKTIF & sedang aktif (tombol dibekukan)'; btn.innerHTML='<i class="fa-solid fa-circle-check"></i>'; btn.setAttribute('data-wr-linked','1'); }
+    else if(status==='expired'){ btn.className='mqi-action-btn wr-expired'; btn.disabled=false; btn.title='Web Report: TERLOGOUT / link kadaluarsa — klik untuk login ulang'; btn.innerHTML='<i class="fa-solid fa-link-slash"></i>'; btn.setAttribute('data-wr-linked','1'); }
+    else { btn.className='mqi-action-btn amber'; btn.disabled=false; btn.title='Hubungkan Web Report (autologin)'; btn.innerHTML='<i class="fa-solid fa-link"></i>'; btn.setAttribute('data-wr-linked','0'); }
+  }
+  window.wrApplyStatus=applyStatus;
+  window.wrCheckOne=function(id){
+    var btn=document.querySelector('[data-wr-btn="'+id+'"]'); if(!btn) return;
+    btn.className='mqi-action-btn wr-checking'; btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i>'; btn.title='Web Report: mengecek login…';
+    fetch(MQ+'/'+id+'/web-report-status',{headers:{Accept:'application/json'}})
+      .then(function(r){return r.json();})
+      .then(function(d){ applyStatus(btn,(d&&d.status)||'expired'); })
+      .catch(function(){ applyStatus(btn,'expired'); });
+  };
+  function refreshAll(){ var b=document.querySelectorAll('[data-wr-btn][data-wr-linked="1"]'); Array.prototype.forEach.call(b,function(x){ window.wrCheckOne(x.getAttribute('data-wr-btn')); }); }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',refreshAll); else refreshAll();
+})();
+</script>
