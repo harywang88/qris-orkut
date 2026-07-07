@@ -17,6 +17,8 @@ import {
   syncMerchantNow,
   testMerchantConnection,
   testReportLogin,
+  saveWebReportLink,
+  testWebReportLink,
   startSyncAllMerchants,
   getSyncAllStatus,
 } from './merchant-qr-sync.service';
@@ -363,5 +365,29 @@ export async function getSyncAllStatusApi(req: Request, res: Response): Promise<
   } catch (err) {
     logger.error({ err }, 'getSyncAllStatusApi error');
     res.status(500).json({ ok: false, error: 'Gagal mengambil status Sinkron ALL.' });
+  }
+}
+
+// ── Web Report link handlers (menu Merchant QR, kolom aksi) ──
+export async function handleSaveWebReportUrl(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id || '');
+    const url = String((req.body && req.body.url) ?? '');
+    const result = await saveWebReportLink(id, url);
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (err) {
+    logger.error({ err }, 'handleSaveWebReportUrl error');
+    res.status(500).json({ ok: false, message: 'Gagal menyimpan link Web Report.' });
+  }
+}
+
+export async function handleTestWebReportUrl(req: Request, res: Response): Promise<void> {
+  try {
+    const url = String((req.body && req.body.url) ?? '').trim();
+    const report = await testWebReportLink(url);
+    res.json(report);
+  } catch (err) {
+    logger.error({ err }, 'handleTestWebReportUrl error');
+    res.status(500).json({ success: false, message: 'Gagal menguji link Web Report.' });
   }
 }

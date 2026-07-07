@@ -5,6 +5,57 @@ import { logger } from '../config/logger';
 import { decrypt } from '../core/encryption';
 import { storeMutationIfNew } from './mutation-ingest.service';
 
+const WEB_REPORT_BASE = 'https://report.orderkuota.com';
+const WEB_REPORT_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36';
+
+/** Autologin ke Web Report -> cookie sesi fresh (ci_session) atau null. */
+export async function autologinReportCookie(autologinUrl: string): Promise<{ cookie: string; userAgent: string } | null> {
+  try {
+    const res = await fetch(autologinUrl, {
+      headers: {
+        'User-Agent': WEB_REPORT_UA,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        Referer: WEB_REPORT_BASE + '/transaksi',
+        'Upgrade-Insecure-Requests': '1',
+      },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(20000),
+    });
+    const hdr = res.headers as unknown as { getSetCookie?: () => string[] };
+    const setCookies: string[] = typeof hdr.getSetCookie === 'function' ? hdr.getSetCookie() : [];
+    const jar: Record<string, string> = {};
+    for (const sc of setCookies) {
+      const m = /^\s*([^=]+)=([^;]+)/.exec(sc);
+      if (m) jar[m[1].trim()] = m[2].trim();
+    }
+    if (!jar.ci_session) {
+      logger.warn({ status: res.status }, 'autologinReportCookie: ci_session tidak ditemukan');
+      return null;
+    }
+    const parts: string[] = [];
+    if (jar.csrf_cookie_name) parts.push('csrf_cookie_name=' + jar.csrf_cookie_name);
+    parts.push('ci_session=' + jar.ci_session);
+    return { cookie: parts.join('; '), userAgent: WEB_REPORT_UA };
+  } catch (err) {
+    logger.warn({ err }, 'autologinReportCookie error');
+    return null;
+  }
+}
+
+async function autologinCookieForAccount(
+  webReportUrlEncrypted?: string | null,
+): Promise<{ cookie: string; userAgent: string } | null> {
+  if (!webReportUrlEncrypted) return null;
+  try {
+    return await autologinReportCookie(decrypt(webReportUrlEncrypted));
+  } catch {
+    return null;
+  }
+}
+
+
 type WalletTarget = 'qris' | 'utama' | 'both';
 
 type RawPythonMutation = {
@@ -177,6 +228,8 @@ export async function probeMerchantMutationsFromReport(
   account: Pick<QrisAccount, 'code' | 'webCookiesEncrypted' | 'cookiesEncrypted' | 'webUserAgent'>,
   target: WalletTarget = 'both',
 ): Promise<PythonScrapeResult> {
+  const auto = await autologinCookieForAccount((account as any).webReportUrlEncrypted);
+  if (auto) return runPythonReportScraperRaw({ cookie: auto.cookie, userAgent: auto.userAgent, target });
   return runPythonReportScraper(account, target);
 }
 
@@ -206,7 +259,10 @@ export async function syncMerchantMutationsFromReport(
   if (existing) return existing;
 
   const promise = (async () => {
-    const scrapeResult = await runPythonReportScraper(account, target);
+    const auto = await autologinCookieForAccount((account as any).webReportUrlEncrypted);
+    const scrapeResult = auto
+      ? await runPythonReportScraperRaw({ cookie: auto.cookie, userAgent: auto.userAgent, target })
+      : await runPythonReportScraper(account, target);
     const newQrisMutations = target === 'utama'
       ? 0
       : await ingestWalletMutations(account.id, scrapeResult.qris.mutations);

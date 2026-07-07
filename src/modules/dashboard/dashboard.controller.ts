@@ -1788,7 +1788,7 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
             lastMaderaBalance: true,
             sessionTokenEncrypted: true,
             cookiesEncrypted: true,
-            webCookiesEncrypted: true,
+            webCookiesEncrypted: true, webReportUrlEncrypted: true,
             webUserAgent: true,
             deviceId: true,
           },
@@ -2694,7 +2694,7 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
         code: true,
         transferPinEncrypted: true,
         cookiesEncrypted: true,
-        webCookiesEncrypted: true,
+        webCookiesEncrypted: true, webReportUrlEncrypted: true,
         webUserAgent: true,
       },
     });

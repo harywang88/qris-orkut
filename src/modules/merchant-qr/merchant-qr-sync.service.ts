@@ -22,6 +22,7 @@ import { tryMatchMutation } from '../../shared/mutation-matcher.service';
 import {
   probeMerchantMutationsFromReport,
   probeMerchantMutationsFromRawReportInput,
+  autologinReportCookie,
   syncMerchantMutationsFromReport,
   type PythonScrapeResult,
 } from '../../shared/orderkuota-report-python.service';
@@ -1083,5 +1084,58 @@ export function startSyncAllMerchants() {
     running: true,
     nextAllowedAt: syncAllState.nextAllowedAt,
     remainingMs: SYNC_ALL_COOLDOWN_MS,
+  };
+}
+
+// ── Web Report link (autologin permanen): simpan & tes (menu Merchant QR, kolom aksi) ──
+const WEB_REPORT_LINK_RE = /^https:\/\/report\.orderkuota\.com\/auth\/autologin\//i;
+
+export async function testWebReportLink(url: string): Promise<ReportLoginTestReport> {
+  const clean = (url || '').trim();
+  const auto = WEB_REPORT_LINK_RE.test(clean) ? await autologinReportCookie(clean) : null;
+  if (!auto) {
+    return {
+      success: false,
+      message:
+        'Autologin gagal. Pastikan link berformat https://report.orderkuota.com/auth/autologin/... dan masih berlaku (ambil ulang dari app bila perlu).',
+      normalized: { cookie: null, userAgent: null },
+      badges: [
+        { key: 'cookie', label: 'Autologin Gagal', ok: false, detail: 'Link tidak menghasilkan sesi login (ci_session).' },
+      ],
+      preview: {
+        accountName: null,
+        mainBalance: null,
+        qrisBalance: null,
+        qrisCount: 0,
+        utamaCount: 0,
+        qrisPagesRead: null,
+        utamaPagesRead: null,
+      },
+      detectedPattern: { qris: null, utama: null },
+    };
+  }
+  return testReportLogin({ webCookies: auto.cookie, webUserAgent: auto.userAgent });
+}
+
+export async function saveWebReportLink(accountId: string, rawUrl: string): Promise<{ ok: boolean; message: string }> {
+  const url = (rawUrl || '').trim();
+  if (!url) {
+    await db.qrisAccount.update({ where: { id: accountId }, data: { webReportUrlEncrypted: null } });
+    return { ok: true, message: 'Link Web Report dihapus dari akun ini.' };
+  }
+  if (!WEB_REPORT_LINK_RE.test(url)) {
+    return { ok: false, message: 'Format link salah. Harus https://report.orderkuota.com/auth/autologin/...' };
+  }
+  const auto = await autologinReportCookie(url);
+  if (!auto) {
+    return { ok: false, message: 'Autologin gagal saat verifikasi. Cek link atau ambil ulang dari app OrderKuota.' };
+  }
+  await db.qrisAccount.update({
+    where: { id: accountId },
+    data: { webReportUrlEncrypted: encrypt(url), webCookiesEncrypted: encrypt(auto.cookie), webUserAgent: auto.userAgent },
+  });
+  return {
+    ok: true,
+    message: 'Link Web Report tersimpan & terverifikasi. Sistem akan login sendiri — tak perlu paste cookie tiap 2 jam lagi.',
   };
 }

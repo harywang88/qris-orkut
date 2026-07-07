@@ -17,6 +17,8 @@ import {
   getMerchantQrStatusApi,
   handleSyncAllMerchants,
   getSyncAllStatusApi,
+  handleSaveWebReportUrl,
+  handleTestWebReportUrl,
 } from './merchant-qr.controller';
 
 const router = Router();
@@ -40,5 +42,7 @@ router.post('/:id/set-health', canManage, handleSetMerchantQrHealth);
 router.post('/:id/reset-daily', canManage, handleResetMerchantQrDailyUsage);
 router.post('/:id/test-connection', canManage, handleTestMerchantQrConnection);
 router.post('/:id/sync-now', canManage, handleSyncMerchantQrNow);
+router.post('/:id/web-report-url', canManage, handleSaveWebReportUrl);
+router.post('/:id/test-web-report', canManage, handleTestWebReportUrl);
 
 export { router as merchantQrRouter };
