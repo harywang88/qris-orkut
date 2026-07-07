@@ -3299,3 +3299,92 @@ export async function getQrisTemplate(req: Request, res: Response): Promise<void
     res.status(500).json({ ok: false });
   }
 }
+
+// ══════════ Send Money Manual (BI-Fast Madera, PIN dientri sendiri di tab Nobu) ══════════
+export async function getMaderaManualBanksApi(req: Request, res: Response): Promise<void> {
+  try {
+    const account = await db.qrisAccount.findUnique({ where: { id: req.params.accountId } });
+    if (!account) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; }
+    if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(403).json({ ok: false, message: 'Akun di luar site Anda.' }); return; }
+    const ov = await (appGateway as any).fetchMaderaTransferOverview(account);
+    const banksObj = (ov && ov.banks) || {};
+    const banks = Object.keys(banksObj)
+      .map((code) => ({ code, name: banksObj[code].name, status: banksObj[code].status, fee: banksObj[code].fee }))
+      .filter((b) => !b.status || b.status === 'OPERATIONAL')
+      .sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    res.json({
+      ok: true,
+      banks,
+      min: (ov && ov.min) || 10000,
+      max: (ov && ov.max) || 0,
+      balance: (ov && typeof ov.accountBalance === 'number') ? ov.accountBalance : (account.lastMaderaBalance || 0),
+    });
+  } catch (err) {
+    logger.error({ err }, 'getMaderaManualBanksApi error');
+    res.status(500).json({ ok: false, message: 'Gagal memuat daftar bank.' });
+  }
+}
+
+export async function postMaderaManualInquiryApi(req: Request, res: Response): Promise<void> {
+  try {
+    const account = await db.qrisAccount.findUnique({ where: { id: req.params.accountId } });
+    if (!account) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; }
+    if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(403).json({ ok: false, message: 'Akun di luar site Anda.' }); return; }
+    const bankCode = String((req.body && req.body.bankCode) || '').trim();
+    const accountNumber = String((req.body && req.body.accountNumber) || '').trim();
+    const amount = Number((req.body && req.body.amount) || 0);
+    if (!bankCode || !accountNumber) { res.status(400).json({ ok: false, message: 'Bank & nomor rekening wajib diisi.' }); return; }
+    if (!Number.isFinite(amount) || amount < 10000) { res.status(400).json({ ok: false, message: 'Nominal minimal Rp 10.000.' }); return; }
+    const inquiry = await (appGateway as any).inquireBankAccount(account, { sourceWallet: 'madera', bankCode, accountNumber, amount });
+    if (!inquiry || !inquiry.success || !inquiry.accountName) {
+      res.json({ ok: false, message: (inquiry && inquiry.message) || 'Nama pemilik rekening belum bisa dibaca. Periksa bank & nomor rekening.' });
+      return;
+    }
+    res.json({ ok: true, accountName: inquiry.accountName, bankName: inquiry.bankName, bankCode: inquiry.bankCode || bankCode, fee: inquiry.fee || 0 });
+  } catch (err) {
+    logger.error({ err }, 'postMaderaManualInquiryApi error');
+    res.status(500).json({ ok: false, message: 'Gagal cek rekening.' });
+  }
+}
+
+export async function postMaderaManualInitiateApi(req: Request, res: Response): Promise<void> {
+  let settlementId: string | null = null;
+  try {
+    const account = await db.qrisAccount.findUnique({ where: { id: req.params.accountId } });
+    if (!account) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; }
+    if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(403).json({ ok: false, message: 'Akun di luar site Anda.' }); return; }
+    const bankCode = String((req.body && req.body.bankCode) || '').trim();
+    const accountNumber = String((req.body && req.body.accountNumber) || '').trim();
+    const accountName = String((req.body && req.body.accountName) || '').trim();
+    const bankName = String((req.body && req.body.bankName) || '').trim();
+    const amount = Number((req.body && req.body.amount) || 0);
+    if (!bankCode || !accountNumber) { res.status(400).json({ ok: false, message: 'Bank & nomor rekening wajib diisi.' }); return; }
+    if (!Number.isFinite(amount) || amount < 10000) { res.status(400).json({ ok: false, message: 'Nominal minimal Rp 10.000.' }); return; }
+    if (account.lastMaderaBalance === null || account.lastMaderaBalance === undefined) { res.status(400).json({ ok: false, message: 'Saldo Madera akun ini belum tersedia.' }); return; }
+    let bal = account.lastMaderaBalance || 0;
+    try { const ov = await (appGateway as any).fetchMaderaTransferOverview(account); if (ov && typeof ov.accountBalance === 'number') bal = ov.accountBalance; } catch (_e) { /* pakai cache DB */ }
+    if (bal < amount) { res.status(400).json({ ok: false, message: 'Saldo Madera tidak cukup (saldo: ' + bal + ', diminta: ' + amount + ').' }); return; }
+
+    // Catat sebagai settlement, langsung 'processing' agar worker-sweep TIDAK memprosesnya via PIN otomatis.
+    settlementId = await createSettlement(
+      { fromWallet: 'madera', toWallet: 'bank', amount, qrisAccountId: account.id, bankCode, bankAccount: accountNumber, bankName: bankName || undefined, note: '[MANUAL] PIN dientri di tab Nobu' },
+      req.session.user?.id, req.ip,
+    );
+    await db.settlementRequest.update({ where: { id: settlementId }, data: { status: 'processing' } });
+
+    // Inisiasi transfer TANPA PIN -> OrderKuota balas redirect_url untuk PIN manual di webview Nobu.
+    const transfer = await appGateway.transferBankFromMadera(account, { bankCode, accountNumber, accountName, bankName: bankName || undefined, amount });
+    if (!transfer || !transfer.redirectUrl) {
+      await db.settlementRequest.update({ where: { id: settlementId }, data: { status: 'failed', note: '[MANUAL] gagal inisiasi: ' + ((transfer && transfer.message) || 'tanpa redirect_url') } }).catch(() => {});
+      res.json({ ok: false, message: (transfer && transfer.message) || 'Gagal memulai transfer manual. Coba lagi sebentar.' });
+      return;
+    }
+    const referenceNo = transfer.referenceNo || ('MBK-' + Date.now() + '-' + settlementId.slice(0, 6).toUpperCase());
+    await db.settlementRequest.update({ where: { id: settlementId }, data: { referenceNo, note: '[MANUAL] menunggu PIN di tab Nobu' } }).catch(() => {});
+    res.json({ ok: true, redirectUrl: transfer.redirectUrl, settlementId });
+  } catch (err) {
+    logger.error({ err, settlementId }, 'postMaderaManualInitiateApi error');
+    if (settlementId) { await db.settlementRequest.update({ where: { id: settlementId }, data: { status: 'failed', note: '[MANUAL] error inisiasi' } }).catch(() => {}); }
+    res.status(500).json({ ok: false, message: 'Gagal memulai transfer manual.' });
+  }
+}

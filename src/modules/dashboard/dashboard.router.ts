@@ -10,6 +10,9 @@ import {
   showMaderaNobuHistory,
   getMaderaNobuHistoryApi,
   getMaderaNobuWebviewApi,
+  getMaderaManualBanksApi,
+  postMaderaManualInquiryApi,
+  postMaderaManualInitiateApi,
   handleCaptureSettlementProofApi,
   getSettlementProofApi,
   getSettlementProofsListApi,
@@ -68,6 +71,9 @@ router.get('/reconcile', requireMenu('mutasi-utama'), showReconcile);
 router.get('/madera-nobu', showMaderaNobuHistory);
 router.get('/api/madera-nobu/:accountId', getMaderaNobuHistoryApi);
 router.get('/api/madera-nobu/:accountId/webview', getMaderaNobuWebviewApi);
+router.get('/api/madera-nobu/:accountId/manual-banks', getMaderaManualBanksApi);
+router.post('/api/madera-nobu/:accountId/manual-inquiry', postMaderaManualInquiryApi);
+router.post('/api/madera-nobu/:accountId/manual-initiate', postMaderaManualInitiateApi);
 router.post('/api/settlement/:id/capture-proof', requirePermission('setting:manage'), handleCaptureSettlementProofApi);
 router.get('/api/settlement/:id/proof', getSettlementProofApi);
 router.get('/api/settlement-proofs', getSettlementProofsListApi);
