@@ -10,11 +10,21 @@ import {
   handleToggleStatus,
   handleSetHealth,
   handleResetDailyUsage,
+  handleCreateSite,
+  handleUpdateSite,
+  handleDeleteSite,
+  handleAssignSite,
 } from './qris-accounts.controller';
 
 const router = Router();
 
 const canManage = requirePermission('qris:manage');
+
+// Kelola Site — DIDAFTARKAN DULU agar '/sites' & '/accounts/..' tak tertangkap '/:id'
+router.post('/sites', canManage, handleCreateSite);
+router.post('/sites/:sid/delete', canManage, handleDeleteSite);
+router.post('/sites/:sid', canManage, handleUpdateSite);
+router.post('/accounts/:id/site', canManage, handleAssignSite);
 
 router.get('/', canManage, showAccountList);
 router.get('/new', canManage, showNewAccountForm);
