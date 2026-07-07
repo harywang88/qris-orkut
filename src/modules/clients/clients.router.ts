@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requirePermission } from '../../core/rbac.middleware';
+import { requireMenuOrPermission } from '../../core/rbac.middleware';
 import {
   showClientList,
   showNewClientForm,
@@ -15,7 +15,7 @@ import {
 
 const router = Router();
 
-const canManage = requirePermission('client:manage');
+const canManage = requireMenuOrPermission('clients', 'manage', 'client:manage');
 
 router.get('/', canManage, showClientList);
 router.get('/new', canManage, showNewClientForm);
