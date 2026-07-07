@@ -3,7 +3,7 @@
     try {
       var t = new Date(new Date(d).getTime() + 7 * 3600000);
       var p = function (n) { return String(n).padStart(2, '0'); };
-      return p(t.getUTCDate()) + '/' + p(t.getUTCMonth() + 1) + ' ' + p(t.getUTCHours()) + ':' + p(t.getUTCMinutes());
+      return p(t.getUTCDate()) + '/' + p(t.getUTCMonth() + 1) + ' ' + p(t.getUTCHours()) + ':' + p(t.getUTCMinutes()) + ':' + p(t.getUTCSeconds());
     } catch (e) { return '-'; }
   }
   function rp(n) { return 'Rp ' + Number(n || 0).toLocaleString('id-ID'); }

@@ -31,10 +31,22 @@ export interface PendingTag {
 }
 type PendingTagMap = Record<string, PendingTag>;
 
-/** Ciri entri BUKAN pembayaran customer (uang keluar / internal): pencairan saldo QRIS. */
-function isDisbursement(issuerName: string | null): boolean {
-  const s = (issuerName || '').toLowerCase();
-  return s.includes('pencairan');
+/**
+ * Ciri entri BUKAN uang masuk customer = UANG KELUAR (out).
+ * Penanda pasti: rawDataJson.status === "OUT" (mis. Pencairan Saldo QRIS). Uang pending
+ * HANYA untuk uang MASUK (status IN) yang tak ter-match.
+ */
+function isDisbursement(rawDataJson: string | null, issuerName: string | null): boolean {
+  if ((issuerName || '').toLowerCase().includes('pencairan')) return true;
+  try {
+    const raw = JSON.parse(rawDataJson || '{}') as { status?: string; keterangan?: string; description?: string };
+    if (String(raw.status || '').toUpperCase() === 'OUT') return true;
+    const ket = String(raw.keterangan || raw.description || '').toLowerCase();
+    if (ket.includes('pencairan')) return true;
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 // ── Pengirim: PORT PERSIS dari views/mutations/qris.ejs (getPengirim/getBank/stripNobuText) ──
@@ -184,8 +196,8 @@ export async function listPendingMoney(accountIds?: string[] | null): Promise<Pe
     type: 'credit',
     matchedTransactionId: null,
     transactionTime: { lte: cutoff },
-    // HANYA uang MASUK dari customer — buang entri "Pencairan Saldo QRIS" (uang keluar/internal).
-    NOT: { issuerName: { contains: 'Pencairan' } },
+    // HANYA uang MASUK (status IN) — buang uang KELUAR (status "OUT" / Pencairan Saldo QRIS).
+    NOT: { rawDataJson: { contains: '"status":"OUT"' } },
   };
   if (accountIds) where.qrisAccountId = { in: accountIds };
 
@@ -199,8 +211,8 @@ export async function listPendingMoney(accountIds?: string[] | null): Promise<Pe
   const tags = readTags();
   const rows: PendingMoneyRow[] = [];
   for (const m of muts) {
-    // Jaring pengaman kedua (kalau issuerName null tapi deskripsi mengandung pencairan lolos NOT di atas).
-    if (isDisbursement(m.issuerName)) continue;
+    // Jaring pengaman: buang uang keluar (status OUT / pencairan) yang lolos filter query.
+    if (isDisbursement(m.rawDataJson, m.issuerName)) continue;
 
     const { start, end } = wibDayRange(m.transactionTime);
     const cands = await db.transaction.findMany({
@@ -250,7 +262,7 @@ export async function pendingMoneyTotal(
     type: 'credit',
     matchedTransactionId: null,
     transactionTime: { gte: from, lte: to },
-    NOT: { issuerName: { contains: 'Pencairan' } },
+    NOT: { rawDataJson: { contains: '"status":"OUT"' } },
   };
   if (accountIds) where.qrisAccountId = { in: accountIds };
   const agg = await db.mutation.aggregate({ where, _sum: { amount: true }, _count: true });
