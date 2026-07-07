@@ -232,7 +232,6 @@ function readMutationCategory(rawDataJson: string, storedCategory?: unknown): Mu
     const text = description.toLowerCase();
 
     if (description) {
-      if (text.includes('pencairan saldo qris')) return 'qris';
       if (hasExplicitMaderaMarker(text)) return 'madera';
       if (hasExplicitUtamaMarker(text)) return 'utama';
     }
@@ -985,16 +984,23 @@ export async function showHistory(req: Request, res: Response): Promise<void> {
         skip: offset,
         include: {
           client: { select: { name: true, panelCode: true } },
-          qrisAccount: { select: { code: true, merchantName: true } },
+          qrisAccount: { select: { id: true, code: true, merchantName: true } },
         },
       }),
       db.transaction.count({ where }),
     ]);
 
-    const clients = await db.client.findMany({
-      select: { id: true, name: true },
-      orderBy: { name: 'asc' },
-    });
+    const [clients, qrisAccounts] = await Promise.all([
+      db.client.findMany({
+        select: { id: true, name: true },
+        orderBy: { name: 'asc' },
+      }),
+      db.qrisAccount.findMany({
+        where: { status: 'active' },
+        select: { id: true, code: true, merchantName: true },
+        orderBy: { code: 'asc' },
+      }),
+    ]);
 
     res.render('history/index', {
       title: 'Generate QR',
@@ -1003,6 +1009,7 @@ export async function showHistory(req: Request, res: Response): Promise<void> {
       page,
       totalPages: Math.ceil(total / limit),
       clients,
+      qrisAccounts,
       query: req.query,
       isDev: process.env.NODE_ENV !== 'production',
     });
@@ -1071,7 +1078,7 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
         skip: offset,
         include: {
           client: { select: { name: true, panelCode: true } },
-          qrisAccount: { select: { code: true, merchantName: true } },
+          qrisAccount: { select: { id: true, code: true, merchantName: true } },
           mutations: {
             select: {
               rrn: true,
@@ -1117,7 +1124,11 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
 
     const [clients, qrisAccounts, paidAgg, statusPayAgg, statusBotAgg] = await Promise.all([
       db.client.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-      db.qrisAccount.findMany({ select: { code: true, merchantName: true }, orderBy: { code: 'asc' } }),
+      db.qrisAccount.findMany({
+        where: { status: 'active' },
+        select: { id: true, code: true, merchantName: true },
+        orderBy: { code: 'asc' },
+      }),
       db.transaction.aggregate({ where, _sum: { finalAmount: true, feeAmount: true } }),
       db.transaction.groupBy({
         by: ['statusPay'],
@@ -1955,7 +1966,6 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
           id: true,
           code: true,
           merchantName: true,
-          status: true,
           lastQrisBalance: true,
           lastMainBalance: true,
           lastMaderaBalance: true,
@@ -1996,17 +2006,6 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
 
           if (maderaOverview?.accountBalance !== null && maderaOverview?.accountBalance !== undefined) {
             nextMaderaBalance = maderaOverview.accountBalance;
-            if (maderaOverview.accountBalance !== account.lastMaderaBalance) {
-              await db.qrisAccount.update({
-                where: { id: account.id },
-                data: {
-                  lastMaderaBalance: maderaOverview.accountBalance,
-                  lastBalanceSyncAt: new Date(),
-                  lastBalanceSyncStatus: 'live',
-                  lastBalanceSyncError: null,
-                },
-              }).catch(() => {});
-            }
           }
         } catch (err) {
           withdrawMessage = err instanceof Error ? err.message : 'Gagal membaca info tarik saldo.';
@@ -2051,7 +2050,6 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
         withdrawEnabled,
         withdrawMin,
         withdrawMax,
-        status: account.status,
         withdrawMessage,
       };
     }));

@@ -44,3 +44,7 @@ npm-debug.log*
 
 # PM2
 .pm2/
+
+# Claude temp/staging
+_stage/
+/backups/

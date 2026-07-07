@@ -162,10 +162,16 @@ function fmtMiniTime(value) {
     <h1 class="mqi-hero-title">Merchant <span>QR</span></h1>
     <p class="mqi-hero-sub">Kelola akun merchant QRIS — sumber data Generate QR, Mutasi, dan Settlement</p>
   </div>
-  <a href="<%= url('/merchant-qr/new') %>" class="mqi-add-btn">
-    <i class="fa-solid fa-plus" style="font-size:11px"></i>
-    Tambah Merchant
-  </a>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button type="button" id="btnSyncAll" onclick="syncAllMerchants()" class="mqi-add-btn" style="background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.35);color:#93c5fd">
+      <i class="fa-solid fa-arrows-rotate" style="font-size:11px"></i>
+      <span id="syncAllLabel">Sinkron Semua</span>
+    </button>
+    <a href="<%= url('/merchant-qr/new') %>" class="mqi-add-btn">
+      <i class="fa-solid fa-plus" style="font-size:11px"></i>
+      Tambah Merchant
+    </a>
+  </div>
 </div>
 
 <!-- Info bar -->
@@ -588,6 +594,42 @@ async function runMerchantAction(id, action) {
       'Permintaan belum berhasil dijalankan',
       `<div class="mqi-modal-summary">${err?.message || 'Terjadi kesalahan jaringan.'}</div>`
     );
+  }
+}
+
+// ── Sinkron SEMUA merchant sekaligus (bulk) — poll status hingga selesai ──
+async function syncAllMerchants() {
+  const btn = document.getElementById('btnSyncAll');
+  const lbl = document.getElementById('syncAllLabel');
+  if (!btn || btn.dataset.busy === '1') return;
+  const base = `<%= url('/merchant-qr') %>`;
+  btn.dataset.busy = '1'; btn.disabled = true; lbl.textContent = 'Memulai...';
+  const reset = () => { btn.disabled = false; btn.dataset.busy = '0'; lbl.textContent = 'Sinkron Semua'; };
+  try {
+    const res = await fetch(base + '/sync-all', { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.blocked) {
+      reset();
+      openMerchantActionModal('Sinkron Semua', 'Belum bisa dijalankan', `<div class="mqi-modal-summary">${data.error || 'Gagal memulai sinkron.'}</div>`);
+      return;
+    }
+    const poll = setInterval(async () => {
+      try {
+        const s = await (await fetch(base + '/sync-all/status', { cache: 'no-store' })).json();
+        if (s.running) {
+          lbl.textContent = 'Sinkron ' + (s.done || 0) + '/' + (s.total || 0);
+        } else {
+          clearInterval(poll);
+          reset();
+          openMerchantActionModal('Sinkron Semua Selesai', 'Semua merchant selesai disinkronkan',
+            `<div class="mqi-modal-summary">Berhasil ${s.ok || 0}, gagal ${s.failed || 0} dari ${s.total || 0}.${s.lastError ? '<br>Error terakhir: ' + s.lastError : ''}</div>`);
+          setTimeout(() => location.reload(), 1600);
+        }
+      } catch (_) {}
+    }, 2000);
+  } catch (err) {
+    reset();
+    openMerchantActionModal('Sinkron Semua Gagal', 'Permintaan gagal', `<div class="mqi-modal-summary">${err?.message || 'Kesalahan jaringan.'}</div>`);
   }
 }
 </script>

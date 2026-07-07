@@ -1,0 +1,407 @@
+<%
+  const totalRecordsText = total.toLocaleString('id-ID');
+%>
+
+<section class="space-y-5">
+  <div class="qris-page-header">
+    <h1 class="qris-page-title">History <span>Generate QR</span></h1>
+    <p class="qris-section-sub mt-1">Riwayat semua permintaan QR Code yang dibuat</p>
+  </div>
+
+  <section class="qris-card">
+    <div class="flex flex-col gap-5 p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap gap-3">
+          <a href="<%= url('/dashboard/history') %>" class="qris-ghost-btn">
+            <span>Reload</span>
+          </a>
+          <button type="button" onclick="exportHistory()" class="qris-ghost-btn">
+            <span>Export</span>
+          </button>
+          <button type="button" onclick="checkStatusAll()" class="qris-accent-btn">
+            Check Status All
+          </button>
+          <button id="btnSyncAllTx" type="button" onclick="syncHistoryAll(this)" class="qris-accent-btn">
+            <i class="fa-solid fa-arrows-rotate"></i>
+            <span id="btnSyncAllTxLabel">Sinkron All</span>
+          </button>
+          <button id="btnSyncOneTx" type="button" onclick="syncHistoryVisible(this)" class="qris-ghost-btn">
+            <i class="fa-solid fa-rotate"></i>
+            <span id="btnSyncOneTxLabel">Sinkron</span>
+          </button>
+        </div>
+        <p class="text-sm text-muted">
+          <span class="font-semibold text-ink"><%= totalRecordsText %></span> Records
+          <span class="mx-1">Page</span>
+          <span class="font-semibold text-ink"><%= page %></span>
+        </p>
+      </div>
+
+      <form method="GET" action="<%= url('/dashboard/history') %>" class="space-y-4">
+        <div class="flex flex-wrap gap-3">
+          <div class="min-w-[150px]">
+            <label class="qris-label">Status Bayar</label>
+            <select name="statusPay" class="qris-input">
+              <option value="">Semua Status</option>
+              <option value="open" <%= query.statusPay === 'open' ? 'selected' : '' %>>Open</option>
+              <option value="paid" <%= query.statusPay === 'paid' ? 'selected' : '' %>>Paid</option>
+              <option value="expired" <%= query.statusPay === 'expired' ? 'selected' : '' %>>Expired</option>
+            </select>
+          </div>
+
+          <div class="min-w-[170px]">
+            <label class="qris-label">Status Bot</label>
+            <select name="statusBot" class="qris-input">
+              <option value="">Semua Status</option>
+              <option value="pending" <%= query.statusBot === 'pending' ? 'selected' : '' %>>Pending</option>
+              <option value="deposit_queued" <%= query.statusBot === 'deposit_queued' ? 'selected' : '' %>>Deposit Queued</option>
+              <option value="deposit_success" <%= query.statusBot === 'deposit_success' ? 'selected' : '' %>>Deposit Success</option>
+              <option value="deposit_failed" <%= query.statusBot === 'deposit_failed' ? 'selected' : '' %>>Deposit Failed</option>
+              <option value="manual_review" <%= query.statusBot === 'manual_review' ? 'selected' : '' %>>Manual Review</option>
+            </select>
+          </div>
+
+          <div class="min-w-[190px]">
+            <label class="qris-label">Klien</label>
+            <select name="clientId" class="qris-input">
+              <option value="">Semua Site</option>
+              <% clients.forEach((client) => { %>
+                <option value="<%= client.id %>" <%= query.clientId === client.id ? 'selected' : '' %>><%= client.name %></option>
+              <% }) %>
+            </select>
+          </div>
+        </div>
+
+        <div class="grid gap-3 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_180px]">
+          <div>
+            <label class="qris-label">User ID / Order</label>
+            <input type="text" name="userId" value="<%= query.userId || '' %>" class="qris-input" placeholder="Username / Order ID ..." />
+          </div>
+          <div>
+            <label class="qris-label">Ref No</label>
+            <input type="text" name="ref" value="<%= query.ref || '' %>" class="qris-input" placeholder="Ref No ..." />
+          </div>
+          <div>
+            <label class="qris-label">Issuer Name</label>
+            <input type="text" name="issuer" value="<%= query.issuer || '' %>" class="qris-input" placeholder="Issuer / Bank ..." />
+          </div>
+          <div>
+            <label class="qris-label">QRIS Account</label>
+            <input type="text" name="account" value="<%= query.account || '' %>" class="qris-input" placeholder="Semua Akun" />
+          </div>
+          <div class="flex items-end gap-3">
+            <button type="submit" class="qris-accent-btn w-full justify-center">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <span>Filter</span>
+            </button>
+            <a href="<%= url('/dashboard/history') %>" class="qris-ghost-btn w-full justify-center">
+              <span>Reset</span>
+            </a>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <div class="border-t border-line">
+      <div id="history-table"></div>
+    </div>
+  </section>
+</section>
+
+<div id="qr-modal" class="qris-modal hidden">
+  <div class="qris-modal-card max-w-md">
+    <div class="qris-modal-header">
+      <h3 class="qris-modal-title">QR Detail</h3>
+      <button type="button" onclick="closeQrModal()" class="qris-modal-close">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+    <div class="space-y-3 text-center">
+      <img id="qr-img" src="" alt="QR Code" class="mx-auto h-64 w-64 rounded-2xl bg-white p-3 object-contain" />
+      <p id="qr-note" class="break-all text-xs font-mono text-muted"></p>
+      <p id="qr-amount" class="text-2xl font-bold text-ink"></p>
+      <p id="qr-expires" class="text-sm text-muted"></p>
+    </div>
+  </div>
+</div>
+
+<div id="status-modal" class="qris-modal hidden">
+  <div class="qris-modal-card max-w-lg">
+    <div class="qris-modal-header">
+      <h3 class="qris-modal-title">Status Transaksi</h3>
+      <button type="button" onclick="closeStatusModal()" class="qris-modal-close">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+    </div>
+    <div id="status-content" class="space-y-2 text-sm"></div>
+  </div>
+</div>
+
+<script>
+const tableData = <%- JSON.stringify(transactions.map((tx) => ({
+  id: tx.id,
+  qrId: tx.qrId,
+  qrisAccountId: tx.qrisAccount.id,
+  clientName: tx.client.name,
+  panelCode: tx.client.panelCode,
+  accountCode: tx.qrisAccount.code,
+  merchantName: tx.qrisAccount.merchantName,
+  requestedAmount: tx.requestedAmount,
+  finalAmount: tx.finalAmount,
+  feeAmount: tx.feeAmount || 0,
+  uniqueCode: tx.uniqueCode,
+  statusPay: tx.statusPay,
+  statusBot: tx.statusBot,
+  expiresAt: tx.expiresAt,
+  paidAt: tx.paidAt,
+  createdAt: tx.createdAt,
+  note: tx.note,
+  issuerName: tx.issuerName,
+  rrn: tx.rrn,
+  receiptUrl: tx.receiptUrl,
+  qrImageBase64: tx.qrImageBase64,
+}))) %>;
+const syncableAccounts = <%- JSON.stringify((qrisAccounts || []).map((account) => ({
+  id: account.id,
+  code: account.code,
+  merchantName: account.merchantName,
+}))) %>;
+
+const isDev = <%= isDev ? 'true' : 'false' %>;
+const basePath = <%- JSON.stringify(basePath) %>;
+const formatRp = (value) => 'Rp ' + Number(value || 0).toLocaleString('id-ID');
+const apiUrl = (pathname) => `${basePath}${pathname}`;
+const merchantSyncUrl = (accountId) => apiUrl(`/merchant-qr/${encodeURIComponent(accountId)}/sync-now`);
+
+const payBadge = {
+  open: 'qris-pill qris-pill-open',
+  paid: 'qris-pill qris-pill-paid',
+  expired: 'qris-pill qris-pill-expired',
+};
+
+const botBadge = {
+  pending: 'qris-pill qris-pill-muted',
+  deposit_queued: 'qris-pill qris-pill-warn',
+  deposit_success: 'qris-pill qris-pill-paid',
+  deposit_failed: 'qris-pill qris-pill-danger',
+  manual_review: 'qris-pill qris-pill-review',
+};
+
+new Tabulator('#history-table', {
+  data: tableData,
+  layout: 'fitColumns',
+  responsiveLayout: 'collapse',
+  height: '640px',
+  columns: [
+    { title: 'NO', formatter: 'rownum', hozAlign: 'center', width: 70, headerHozAlign: 'center' },
+    { title: 'QR ID', field: 'qrId', width: 170, formatter: (cell) => `<span class="font-mono text-xs text-[#cdbda9]">${cell.getValue().slice(0, 14)}...</span>` },
+    { title: 'SITE', field: 'panelCode', width: 90, hozAlign: 'center' },
+    { title: 'USER ID', field: 'clientName', width: 180 },
+    { title: 'QRIS ACCOUNT', field: 'accountCode', width: 130, hozAlign: 'center' },
+    { title: 'CREATED', field: 'createdAt', width: 170, formatter: (cell) => new Date(cell.getValue()).toLocaleString('id-ID') },
+    { title: 'EXPIRES', field: 'expiresAt', width: 170, formatter: (cell) => new Date(cell.getValue()).toLocaleString('id-ID') },
+    { title: 'AMOUNT', field: 'finalAmount', width: 140, hozAlign: 'right', formatter: (cell) => formatRp(cell.getValue()) },
+    { title: 'REF NO', field: 'rrn', width: 130, formatter: (cell) => cell.getValue() || '-' },
+    { title: 'NO. REFERENSI', field: 'uniqueCode', width: 120, hozAlign: 'center' },
+    { title: 'NOTE', field: 'note', width: 230, formatter: (cell) => `<span class="text-xs text-[#b4a796]">${cell.getValue()}</span>` },
+    { title: 'STATUS', field: 'statusPay', width: 120, hozAlign: 'center', formatter: (cell) => `<span class="${payBadge[cell.getValue()] || 'qris-pill qris-pill-muted'}">${cell.getValue()}</span>` },
+    { title: 'AUTO DEPOSIT', field: 'statusBot', width: 150, hozAlign: 'center', formatter: (cell) => `<span class="${botBadge[cell.getValue()] || 'qris-pill qris-pill-muted'}">${String(cell.getValue()).replaceAll('_', ' ')}</span>` },
+    {
+      title: 'ACTIONS',
+      field: 'qrId',
+      width: isDev ? 255 : 220,
+      headerSort: false,
+      hozAlign: 'center',
+      formatter: (cell) => {
+        const data = cell.getData();
+        const buttons = [
+          `<button type="button" onclick="showQr('${data.qrId}')" class="qris-mini-btn">Show QR</button>`,
+          `<button type="button" onclick="showStatus('${data.qrId}')" class="qris-mini-btn">Check</button>`,
+          `<button type="button" onclick="syncHistoryAccount('${data.qrisAccountId}', this)" class="qris-mini-btn qris-mini-btn-green">Sync</button>`,
+        ];
+
+        if (data.statusPay === 'paid' && ['deposit_failed', 'manual_review'].includes(data.statusBot)) {
+          buttons.push(`<button type="button" onclick="retryDeposit('${data.qrId}', this)" class="qris-mini-btn qris-mini-btn-accent">Retry</button>`);
+        }
+
+        if (isDev && data.statusPay === 'open') {
+          buttons.push(`<button type="button" onclick="simulatePay('${data.qrId}', this)" class="qris-mini-btn qris-mini-btn-green">Sim</button>`);
+        }
+
+        return `<div class="flex flex-wrap justify-center gap-2">${buttons.join('')}</div>`;
+      },
+    },
+  ],
+});
+
+function exportHistory() {
+  if (!window.Tabulator) return;
+  const table = Tabulator.findTable('#history-table')[0];
+  table?.download('csv', `history-generate-qr-${Date.now()}.csv`);
+}
+
+function showQr(qrId) {
+  const data = tableData.find((item) => item.qrId === qrId);
+  if (!data) return;
+
+  document.getElementById('qr-img').src = data.qrImageBase64 || '';
+  document.getElementById('qr-note').textContent = data.note || '';
+  document.getElementById('qr-amount').textContent = formatRp(data.finalAmount);
+  document.getElementById('qr-expires').textContent = `Expires: ${new Date(data.expiresAt).toLocaleString('id-ID')}`;
+  document.getElementById('qr-modal').classList.remove('hidden');
+}
+
+function closeQrModal() {
+  document.getElementById('qr-modal').classList.add('hidden');
+}
+
+function uniqueAccountIds(rows) {
+  return [...new Set((rows || []).map((row) => row.qrisAccountId).filter(Boolean))];
+}
+
+function setSyncButton(button, labelId, running, text) {
+  if (!button) return;
+  button.disabled = running;
+  const label = labelId ? document.getElementById(labelId) : null;
+  if (label) label.textContent = text;
+  if (!label) button.textContent = text;
+}
+
+async function syncAccounts(accountIds, opts = {}) {
+  const ids = [...new Set((accountIds || []).filter(Boolean))];
+  if (!ids.length) {
+    alert(opts.emptyMessage || 'Tidak ada akun yang perlu disinkronkan.');
+    return { ok: 0, fail: 0 };
+  }
+
+  const results = await Promise.allSettled(ids.map((accountId) => fetch(merchantSyncUrl(accountId), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
+    return data;
+  })));
+
+  const ok = results.filter((result) => result.status === 'fulfilled').length;
+  const fail = results.length - ok;
+  return { ok, fail };
+}
+
+async function refreshOpenStatusRows() {
+  const openRows = tableData.filter((row) => row.statusPay === 'open').slice(0, 30);
+  await Promise.allSettled(openRows.map((row) => fetch(apiUrl(`/api/v1/qris/${row.qrId}/status`))));
+}
+
+async function runHistorySync(button, labelId, accountIds, idleText) {
+  setSyncButton(button, labelId, true, 'Sinkron...');
+  try {
+    const result = await syncAccounts(accountIds);
+    await refreshOpenStatusRows();
+    alert(`Sinkron selesai. Berhasil: ${result.ok}, gagal: ${result.fail}. Halaman akan dimuat ulang.`);
+    window.location.reload();
+  } catch (error) {
+    alert(`Sinkron gagal: ${error?.message || 'Terjadi kesalahan'}`);
+  } finally {
+    setSyncButton(button, labelId, false, idleText);
+  }
+}
+
+window.syncHistoryAll = function(button) {
+  return runHistorySync(button, 'btnSyncAllTxLabel', syncableAccounts.map((account) => account.id), 'Sinkron All');
+};
+
+window.syncHistoryVisible = function(button) {
+  return runHistorySync(button, 'btnSyncOneTxLabel', uniqueAccountIds(tableData), 'Sinkron');
+};
+
+window.syncHistoryAccount = function(accountId, button) {
+  return runHistorySync(button, null, [accountId], 'Sync');
+};
+
+async function showStatus(qrId) {
+  const response = await fetch(apiUrl(`/api/v1/qris/${qrId}/status`));
+  const json = await response.json().catch(() => ({ success: false }));
+  const data = json.success ? json.data : tableData.find((item) => item.qrId === qrId);
+  if (!data) return;
+
+  const rows = [
+    ['QR ID', data.qrId],
+    ['Status Bayar', data.statusPay],
+    ['Status Bot', data.statusBot],
+    ['Nominal', formatRp(data.finalAmount || data.requestedAmount)],
+    ['Paid At', data.paidAt ? new Date(data.paidAt).toLocaleString('id-ID') : '-'],
+    ['Issuer', data.issuerName || '-'],
+    ['RRN', data.rrn || '-'],
+    ['Receipt', data.receiptUrl ? `<a href="${data.receiptUrl}" target="_blank" class="text-[#ff7f6f] underline">Lihat</a>` : '-'],
+  ];
+
+  document.getElementById('status-content').innerHTML = rows
+    .map(([label, value]) => `
+      <div class="flex items-center justify-between gap-4 rounded-2xl border border-line bg-panel px-4 py-3">
+        <span class="text-muted">${label}</span>
+        <span class="text-right font-medium text-ink">${value}</span>
+      </div>
+    `)
+    .join('');
+
+  document.getElementById('status-modal').classList.remove('hidden');
+}
+
+function closeStatusModal() {
+  document.getElementById('status-modal').classList.add('hidden');
+}
+
+async function retryDeposit(qrId, button) {
+  if (!confirm('Retry auto deposit untuk transaksi ini?')) return;
+  button.disabled = true;
+  button.textContent = 'Processing...';
+
+  const response = await fetch(apiUrl(`/api/v1/qris/${qrId}/retry-deposit`), { method: 'POST' });
+  const json = await response.json().catch(() => ({ success: false, error: 'Unknown error' }));
+
+  if (json.success) {
+    alert('Deposit dijadwalkan ulang. Worker akan memproses kembali.');
+    window.location.reload();
+    return;
+  }
+
+  alert(`Gagal: ${json.error}`);
+  button.disabled = false;
+  button.textContent = 'Retry';
+}
+
+async function simulatePay(qrId, button) {
+  if (!confirm('Simulasikan pembayaran untuk QR ini?')) return;
+  button.disabled = true;
+  button.textContent = 'Processing...';
+
+  const response = await fetch(apiUrl('/dev/simulate-payment'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ qrId }),
+  });
+  const json = await response.json().catch(() => ({ success: false, error: 'Unknown error' }));
+
+  if (json.success) {
+    alert('Mutasi simulasi dibuat. Halaman akan dimuat ulang otomatis.');
+    setTimeout(() => window.location.reload(), 1800);
+    return;
+  }
+
+  alert(`Gagal: ${json.error}`);
+  button.disabled = false;
+  button.textContent = 'Sim';
+}
+
+async function checkStatusAll() {
+  const openRows = tableData.filter((row) => row.statusPay === 'open').slice(0, 15);
+  if (!openRows.length) {
+    alert('Tidak ada transaksi open yang perlu dicek.');
+    return;
+  }
+
+  await Promise.allSettled(openRows.map((row) => fetch(apiUrl(`/api/v1/qris/${row.qrId}/status`))));
+  window.location.reload();
+}
+</script>
