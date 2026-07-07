@@ -105,6 +105,7 @@ export interface PendingMoneyRow {
   id: string;
   qrisAccountId: string;
   accountCode: string;
+  merchantName: string | null;
   siteName: string | null;
   amount: number;
   reqAmount: number | null; // nominal asli yang diminta member (dari transaksi tebakan)
@@ -143,7 +144,7 @@ export async function listPendingMoney(accountIds?: string[] | null): Promise<Pe
     where,
     orderBy: { transactionTime: 'desc' },
     take: 200,
-    include: { qrisAccount: { select: { code: true } } },
+    include: { qrisAccount: { select: { code: true, merchantName: true } } },
   });
 
   const tags = readTags();
@@ -173,6 +174,7 @@ export async function listPendingMoney(accountIds?: string[] | null): Promise<Pe
       id: m.id,
       qrisAccountId: m.qrisAccountId,
       accountCode: m.qrisAccount?.code || '-',
+      merchantName: m.qrisAccount?.merchantName || null,
       siteName: null,
       amount: m.amount,
       reqAmount: guesses[0] ? guesses[0].requestedAmount : null,

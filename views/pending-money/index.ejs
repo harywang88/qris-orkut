@@ -22,12 +22,13 @@
   .pm-btn:active { transform:translateY(0); }
   .pm-btn-ghost { background:rgba(148,163,184,.14); color:#cbd5e1; }
   .pm-btn-push { background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; box-shadow:0 4px 14px rgba(37,99,235,.35); }
-  .pm-btn-catat { background:rgba(251,191,36,.15); color:#fbbf24; border:1px solid rgba(251,191,36,.3); }
+  .pm-btn-red { background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; box-shadow:0 4px 14px rgba(220,38,38,.32); }
+  .pm-btn-green { background:linear-gradient(135deg,#22c55e,#16a34a); color:#fff; box-shadow:0 4px 14px rgba(22,163,74,.32); }
 
   /* ── Modal premium ── */
-  .pm-modal-backdrop { position:fixed; inset:0; background:rgba(2,6,23,.62); backdrop-filter:blur(6px); z-index:1000; display:none; align-items:center; justify-content:center; padding:16px; opacity:0; transition:opacity .22s ease; }
+  .pm-modal-backdrop { position:fixed; inset:0; background:rgba(2,6,23,.62); backdrop-filter:blur(6px); z-index:1000; display:none; align-items:center; justify-content:center; padding:16px; overflow-y:auto; opacity:0; transition:opacity .22s ease; }
   .pm-modal-backdrop.show { display:flex; opacity:1; }
-  .pm-modal { width:100%; max-width:430px; border-radius:20px; background:linear-gradient(180deg,#ffffff,#f7f8fb); color:#0f172a; box-shadow:0 30px 70px rgba(0,0,0,.5); transform:translateY(18px) scale(.96); opacity:0; transition:transform .28s cubic-bezier(.2,.9,.3,1.2), opacity .28s; overflow:hidden; }
+  .pm-modal { width:100%; max-width:430px; border-radius:20px; background:linear-gradient(180deg,#ffffff,#f7f8fb); color:#0f172a; box-shadow:0 30px 70px rgba(0,0,0,.5); transform:translateY(18px) scale(.96); opacity:0; transition:transform .28s cubic-bezier(.2,.9,.3,1.2), opacity .28s; max-height:92vh; overflow-y:auto; overflow-x:hidden; }
   .pm-modal-backdrop.show .pm-modal { transform:translateY(0) scale(1); opacity:1; }
   @media (prefers-color-scheme: dark) { .pm-modal { background:linear-gradient(180deg,#1e293b,#0f172a); color:#e2e8f0; } }
   .pm-modal-head { text-align:center; padding:20px 22px 6px; }
@@ -109,7 +110,7 @@
               <span class="block text-[10px] text-muted"><%= r.ageMinutes %> mnt lalu</span>
             </td>
             <td class="whitespace-nowrap">
-              <span class="text-ink font-semibold"><%= r.accountCode %></span>
+              <span class="text-ink font-semibold"><%= r.merchantName || r.accountCode %></span>
               <span class="block text-[10px] text-muted"><%= r.siteName || 'Tanpa site' %></span>
             </td>
             <td>
@@ -136,9 +137,9 @@
                   <button class="pm-btn pm-btn-ghost" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/untag') %>" onclick="pmUntag(this)">Reset</button>
                 <% } else { %>
                   <% if (r.tag && r.tag.status === 'pending') { %>
-                    <span class="pm-badge" style="background:rgba(251,191,36,.15);color:#fbbf24"><i class="fa-solid fa-clock"></i> Dicatat</span>
+                    <button class="pm-btn pm-btn-green" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/untag') %>" onclick="pmUntag(this)"><i class="fa-solid fa-circle-check"></i> Dicatat</button>
                   <% } else { %>
-                    <button class="pm-btn pm-btn-catat" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>" onclick="pmCatat(this)"><i class="fa-solid fa-bookmark"></i> Catat Pending</button>
+                    <button class="pm-btn pm-btn-red" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>" onclick="pmCatat(this)"><i class="fa-solid fa-bookmark"></i> Catat Pending</button>
                   <% } %>
                   <button class="pm-btn pm-btn-push"
                     data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>"
