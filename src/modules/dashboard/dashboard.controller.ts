@@ -1060,16 +1060,16 @@ export async function showTransactions(
     }
     if (keyword) {
       where.OR = [
-        { qrId: { contains: keyword, mode: 'insensitive' } },
-        { userIdExt: { contains: keyword, mode: 'insensitive' } },
-        { externalReference: { contains: keyword, mode: 'insensitive' } },
-        { note: { contains: keyword, mode: 'insensitive' } },
-        { issuerName: { contains: keyword, mode: 'insensitive' } },
-        { rrn: { contains: keyword, mode: 'insensitive' } },
-        { qrisAccount: { merchantName: { contains: keyword, mode: 'insensitive' } } },
-        { qrisAccount: { code: { contains: keyword, mode: 'insensitive' } } },
-        { client: { name: { contains: keyword, mode: 'insensitive' } } },
-        { client: { panelCode: { contains: keyword, mode: 'insensitive' } } },
+        { qrId: { contains: keyword } },
+        { userIdExt: { contains: keyword } },
+        { externalReference: { contains: keyword } },
+        { note: { contains: keyword } },
+        { issuerName: { contains: keyword } },
+        { rrn: { contains: keyword } },
+        { qrisAccount: { merchantName: { contains: keyword } } },
+        { qrisAccount: { code: { contains: keyword } } },
+        { client: { name: { contains: keyword } } },
+        { client: { panelCode: { contains: keyword } } },
       ];
     }
     // Filter Site (dari sites.json via akun->site) + scope alias-tenant (Fase 6: showTransactions dulu belum discope).
