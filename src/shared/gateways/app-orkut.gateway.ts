@@ -2292,7 +2292,7 @@ export class AppOrkutGateway implements IOrkutGateway {
     },
   ): Promise<AppBankTransferResult> {
     const requestedBank = resolveBankRouting(params.bankCode, account.code);
-    const inquiry = params.sessionId
+    let inquiry = params.sessionId
       ? {
           success: true,
           sourceWallet: 'madera' as const,
@@ -2311,6 +2311,18 @@ export class AppOrkutGateway implements IOrkutGateway {
           accountNumber: params.accountNumber,
           amount: params.amount,
         });
+
+    // Retry sekali kalau inquiry transient-flake (mis. "Nama pemilik rekening belum bisa dibaca").
+    if (!params.sessionId && (!inquiry.success || !inquiry.accountName)) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const inquiryRetry = await this.inquireBankAccount(account, {
+        sourceWallet: 'madera',
+        bankCode: params.bankCode,
+        accountNumber: params.accountNumber,
+        amount: params.amount,
+      });
+      if (inquiryRetry.success && inquiryRetry.accountName) inquiry = inquiryRetry;
+    }
 
     if (!inquiry.success || !inquiry.accountName) {
       return {
@@ -2373,6 +2385,9 @@ export class AppOrkutGateway implements IOrkutGateway {
         || null;
       const fee = parseOptionalAmount(results?.fee) ?? inquiry.fee ?? null;
       let message = readString(wrapper?.message) || readApiMessage(transferJson) || null;
+      if (!success && !redirectUrl && /terjadi kesalahan/i.test(message || '')) {
+        message = 'Transfer sementara ditolak Nobu (kemungkinan transaksi sebelumnya belum selesai / sistem sibuk). Tunggu 1-2 menit lalu coba lagi.';
+      }
       let finalStatus: 'done' | 'processing' | 'failed' = success ? 'done' : 'failed';
       let finalSuccess = success;
       const raw: Record<string, unknown> = {
