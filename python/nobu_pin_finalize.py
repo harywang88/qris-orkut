@@ -39,7 +39,7 @@ def run(redirect_url, pin, dry_run):
     opts.add_argument('--disable-dev-shm-usage')
     opts.add_argument('--window-size=1400,2000')
     opts.binary_location = CHROME_BIN
-    driver = uc.Chrome(options=opts, headless=False, use_subprocess=True, version_main=149)
+    driver = uc.Chrome(options=opts, headless=False, use_subprocess=True, version_main=150)
     result = {'success': False, 'outcome': 'unknown', 'message': None, 'dry_run': dry_run}
     try:
         driver.get(redirect_url)

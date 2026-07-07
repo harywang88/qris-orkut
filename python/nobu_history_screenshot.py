@@ -237,7 +237,7 @@ def run(url, out_path, pin, amount, wait):
     opts.add_argument('--disable-dev-shm-usage')
     opts.add_argument('--window-size=900,1600')
     opts.binary_location = CHROME_BIN
-    driver = uc.Chrome(options=opts, headless=False, use_subprocess=True, version_main=149)
+    driver = uc.Chrome(options=opts, headless=False, use_subprocess=True, version_main=150)
     result = {'success': False, 'out_path': out_path, 'step': 'start', 'message': None}
     try:
         driver.get(url)
