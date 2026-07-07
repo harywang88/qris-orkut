@@ -286,6 +286,25 @@ function fmtMiniTime(value) {
             if (hasWebCookies) integrationBadges.push({ label: 'Web Cookie', cls: 'mqi-badge-blue' });
             if (hasPayload) integrationBadges.push({ label: 'Payload', cls: 'mqi-badge-green' });
             const watcherLabel = 'Python Standby';
+            // ── Kesehatan LIVE (JUJUR — bukan sekadar enabled/kredensial-ada) ──
+            let lhLabel, lhCls, lhTip;
+            const _syncAgeMs = acc.lastBalanceSyncAt ? (Date.now() - new Date(acc.lastBalanceSyncAt).getTime()) : null;
+            if (!isActive) {
+              lhLabel = 'Nonaktif'; lhCls = 'mqi-badge-gray'; lhTip = 'Akun dimatikan manual';
+            } else if (!hasSession && !hasCookies && !hasWebCookies && !hasPayload) {
+              lhLabel = 'Belum Login'; lhCls = 'mqi-badge-red'; lhTip = 'Tidak ada token/cookie/payload';
+            } else if (acc.lastConnectionTestStatus === 'failed' || acc.lastBalanceSyncStatus === 'error') {
+              lhLabel = 'Bermasalah'; lhCls = 'mqi-badge-red'; lhTip = acc.lastBalanceSyncError || acc.lastConnectionTestError || 'Test/sync gagal — cek token';
+            } else if (acc.lastBalanceSyncStatus === 'rate_limited') {
+              lhLabel = 'Dibatasi OrderKuota'; lhCls = 'mqi-badge-amber'; lhTip = acc.lastBalanceSyncError || 'OrderKuota membatasi sementara (rate limit)';
+            } else if (acc.lastConnectionTestStatus === 'partial' || acc.lastBalanceSyncStatus === 'partial') {
+              lhLabel = 'Degraded'; lhCls = 'mqi-badge-amber'; lhTip = acc.lastBalanceSyncError || acc.lastConnectionTestError || 'Sebagian layanan bermasalah';
+            } else if (acc.lastBalanceSyncStatus === 'synced') {
+              if (_syncAgeMs !== null && _syncAgeMs > 86400000) { lhLabel = 'Sync Basi'; lhCls = 'mqi-badge-amber'; lhTip = 'Sync terakhir >24 jam lalu'; }
+              else { lhLabel = 'Sehat'; lhCls = 'mqi-badge-green'; lhTip = 'Login valid + sync OK'; }
+            } else {
+              lhLabel = 'Belum Sync'; lhCls = 'mqi-badge-gray'; lhTip = 'Belum ada hasil sync';
+            }
           %>
           <tr data-id="<%= acc.id %>">
             <td>
@@ -325,6 +344,11 @@ function fmtMiniTime(value) {
                 <span class="mqi-badge-dot"></span>
                 <%= isActive ? 'Aktif' : 'Nonaktif' %>
               </button>
+              <div style="margin-top:5px" title="Kesehatan LIVE (dari token + hasil test + hasil sync) — bukan sekadar enabled">
+                <span class="mqi-badge <%= lhCls %>" data-chip="health" data-id="<%= acc.id %>" title="<%= lhTip %>">
+                  <span class="mqi-badge-dot"></span><%= lhLabel %>
+                </span>
+              </div>
             </td>
             <td style="text-align:center">
               <span class="mqi-badge <%= generateReady ? 'mqi-badge-green' : 'mqi-badge-amber' %>">
