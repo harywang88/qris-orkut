@@ -28,6 +28,7 @@ import {
   resolveOrkutAccountIndex,
   syncOrkutBalanceSnapshot,
 } from '../../shared/orkut-panel.service';
+import { pullAndPersistMaderaHistory, type MaderaAccount } from '../../shared/madera-history.service';
 
 const MASTER_TICK_MS = 1_000;
 const ACTIVE_ACCOUNT_REFRESH_MS = 3_000;
@@ -42,6 +43,11 @@ const SALDO_ACTIVE_MS = 2_000;
 const SALDO_IDLE_MS = 15_000;
 // qrisBalance terakhir yang DILIHAT proses ini per akun (deteksi perubahan saldo).
 const qrisBalanceSeen = new Map<string, number>();
+// System B utama: mainBalance terakhir yang dilihat (deteksi perubahan saldo utama → tarik mutasi utama).
+const mainBalanceSeen = new Map<string, number>();
+// System B madera: poll saldo Madera 30s → saat berubah → tarik feed madera → DB (walletCategory='madera').
+const MADERA_SALDO_MS = 30_000;
+const maderaBalanceSeen = new Map<string, number>();
 
 type LaneState = {
   running: boolean;
@@ -52,6 +58,7 @@ type SchedulerState = {
   qris: LaneState;
   balance: LaneState;
   detail: LaneState;
+  madera: LaneState;
 };
 
 const providerCooldownUntil = new Map<string, number>();
@@ -83,6 +90,7 @@ function getState(accountId: string): SchedulerState {
     qris: { running: false, nextAt: 0 },
     balance: { running: false, nextAt: 0 },
     detail: { running: false, nextAt: 0 },
+    madera: { running: false, nextAt: 0 },
   };
   schedulerState.set(accountId, created);
   return created;
@@ -115,6 +123,10 @@ function getQrisLaneInterval(account: QrisAccount): number {
 
 function getSaldoLaneInterval(account: QrisAccount): number {
   return activeAccountIds.has(account.id) ? SALDO_ACTIVE_MS : SALDO_IDLE_MS;
+}
+
+function getMaderaLaneInterval(_account: QrisAccount): number {
+  return MADERA_SALDO_MS;
 }
 
 function getBalanceLaneInterval(account: QrisAccount): number {
@@ -313,6 +325,16 @@ async function runAppSaldoLane(account: QrisAccount, state: SchedulerState): Pro
         await pullQrisMutationsOnce(account);
       }
     }
+
+    // System B utama: mainBalance ikut ke-fetch di summary → deteksi perubahan → tarik mutasi utama.
+    if (newMain !== null && newMain !== undefined) {
+      const prevMain = mainBalanceSeen.has(account.id) ? mainBalanceSeen.get(account.id) : undefined;
+      const mainChanged = prevMain !== undefined && newMain !== prevMain;
+      mainBalanceSeen.set(account.id, newMain);
+      if (mainChanged) {
+        await pullUtamaMutationsOnce(account);
+      }
+    }
   } catch (err) {
     if (err instanceof AppOrkutRateLimitError) {
       await setProviderCooldown(account, err);
@@ -322,6 +344,57 @@ async function runAppSaldoLane(account: QrisAccount, state: SchedulerState): Pro
   } finally {
     state.qris.running = false;
     state.qris.nextAt = Date.now() + getSaldoLaneInterval(account);
+  }
+}
+
+// System B utama: tarik mutasi UTAMA (fetchBalanceHistory, /api/v2/get bebas-limit). Dipanggil saat saldo utama berubah.
+async function pullUtamaMutationsOnce(account: QrisAccount): Promise<void> {
+  const result = await appGateway.fetchBalanceHistory(account);
+  const newCount = await ingestMutationBatch(account, result.mutations);
+  await db.qrisAccount.update({
+    where: { id: account.id },
+    data: {
+      lastMainBalance: result.mainBalance ?? account.lastMainBalance,
+      lastBalanceSyncAt: new Date(),
+    },
+  });
+  if (newCount > 0) {
+    logger.info(
+      { accountCode: account.code, lane: 'utama-pull', newMutations: newCount },
+      'System B: mutasi UTAMA baru tersimpan setelah saldo utama berubah',
+    );
+  }
+}
+
+// System B madera: poll saldo Madera (fetchMaderaTransferOverview) → saat berubah → tarik feed madera → DB.
+async function runAppMaderaLane(account: QrisAccount, state: SchedulerState): Promise<void> {
+  state.madera.running = true;
+
+  try {
+    const overview = await appGateway.fetchMaderaTransferOverview(account);
+    const newMadera = overview?.accountBalance ?? null;
+
+    if (newMadera !== null && newMadera !== undefined) {
+      const prev = maderaBalanceSeen.has(account.id) ? maderaBalanceSeen.get(account.id) : undefined;
+      const changed = prev !== undefined && newMadera !== prev;
+      // Poll pertama (worker restart): rekonsiliasi 1x utk tangkap mutasi madera saat worker mati.
+      const firstSeen = prev === undefined;
+      maderaBalanceSeen.set(account.id, newMadera);
+
+      await db.qrisAccount.update({
+        where: { id: account.id },
+        data: { lastMaderaBalance: newMadera },
+      });
+
+      if (changed || firstSeen) {
+        await pullAndPersistMaderaHistory(account as unknown as MaderaAccount);
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, accountCode: account.code, lane: 'madera' }, 'System B Madera: lane error');
+  } finally {
+    state.madera.running = false;
+    state.madera.nextAt = Date.now() + getMaderaLaneInterval(account);
   }
 }
 
@@ -536,6 +609,10 @@ async function schedulerTick(): Promise<void> {
 
       if (!state.detail.running && state.detail.nextAt <= now && !isAccountCoolingDown(account.id)) {
         void runAppDetailLane(account, state);
+      }
+
+      if (!state.madera.running && state.madera.nextAt <= now && !isAccountCoolingDown(account.id)) {
+        void runAppMaderaLane(account, state); // System B madera: poll saldo madera → berubah → tarik feed
       }
 
       continue;
