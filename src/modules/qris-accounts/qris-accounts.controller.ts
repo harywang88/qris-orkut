@@ -10,6 +10,7 @@ import {
   setHealthStatus,
   resetDailyUsage,
 } from './qris-accounts.service';
+import { qrisReceivedTodayMap } from '../../shared/daily-usage.service';
 import {
   listSites,
   attachSiteInfo,
@@ -98,15 +99,8 @@ export async function showAccountList(req: Request, res: Response): Promise<void
     // "Penggunaan Harian" = total PAID hari ini (WIB) per akun — SAMA seperti Kirim Uang.
     const WIB_MS = 7 * 60 * 60 * 1000;
     const todayWibStart = new Date(Math.floor((Date.now() + WIB_MS) / 86400000) * 86400000 - WIB_MS);
-    const paidAgg = await db.transaction.groupBy({
-      by: ['qrisAccountId'] as const,
-      where: { statusPay: 'paid', paidAt: { gte: todayWibStart } },
-      _sum: { finalAmount: true },
-    });
-    const paidTodayMap: Record<string, number> = {};
-    for (const r of paidAgg) {
-      if (r.qrisAccountId) paidTodayMap[r.qrisAccountId] = r._sum.finalAmount || 0;
-    }
+    // Penggunaan Harian = SEMUA uang masuk QRIS hari ini (WIB) = paid + pending (mutasi kredit).
+    const paidTodayMap = await qrisReceivedTodayMap();
     const accountsWithSite = attachSiteInfo(accounts).map((a) => ({
       ...a,
       usedToday: paidTodayMap[a.id] || 0,

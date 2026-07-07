@@ -29,6 +29,7 @@ import {
   syncOrkutBalanceSnapshot,
 } from '../../shared/orkut-panel.service';
 import { pullAndPersistMaderaHistory, type MaderaAccount } from '../../shared/madera-history.service';
+import { enforceQrisDailyAutoOff } from '../../shared/daily-usage.service';
 
 const MASTER_TICK_MS = 1_000;
 const ACTIVE_ACCOUNT_REFRESH_MS = 3_000;
@@ -290,6 +291,9 @@ async function pullQrisMutationsOnce(account: QrisAccount): Promise<void> {
       'System B: mutasi QRIS baru tersimpan setelah saldo berubah',
     );
   }
+
+  // Auto-off: begitu uang masuk QRIS hari ini (WIB) >= 29.9jt, nonaktifkan akun otomatis.
+  await enforceQrisDailyAutoOff(account.id);
 }
 
 // System B: lane SALDO — poll endpoint saldo (bebas limit) tiap 2s/15s, deteksi perubahan qrisBalance.

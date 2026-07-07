@@ -6,6 +6,7 @@ import { spawnSync } from 'child_process';
 import type { OutboxEvent, QrisAccount, Prisma } from '@prisma/client';
 import { config } from '../../config';
 import { db } from '../../config/database';
+import { qrisReceivedTodayMap } from '../../shared/daily-usage.service';
 import { logger } from '../../config/logger';
 import { withBasePath } from '../../core/base-path';
 import { decrypt } from '../../core/encryption';
@@ -987,15 +988,8 @@ export async function showDashboard(req: Request, res: Response): Promise<void> 
     // Kesehatan = LIVE (computeLiveHealth), bukan snapshot basi -> normal jadi "healthy", bukan "degraded".
     const WIB_MS = 7 * 60 * 60 * 1000;
     const todayWibStart = new Date(Math.floor((Date.now() + WIB_MS) / 86400000) * 86400000 - WIB_MS);
-    const paidAggAcc = await db.transaction.groupBy({
-      by: ['qrisAccountId'],
-      where: { statusPay: 'paid', paidAt: { gte: todayWibStart } },
-      _sum: { finalAmount: true },
-    });
-    const paidTodayMap: Record<string, number> = {};
-    for (const r of paidAggAcc) {
-      if (r.qrisAccountId) paidTodayMap[r.qrisAccountId] = r._sum.finalAmount || 0;
-    }
+    // Status Akun QRIS = SEMUA uang masuk QRIS hari ini (WIB) = paid + pending (mutasi kredit).
+    const paidTodayMap = await qrisReceivedTodayMap();
     const qrisAccounts = qrisAccountsRaw.map((a) => Object.assign({}, a, { usedToday: paidTodayMap[a.id] || 0, healthStatus: computeLiveHealth(a) }));
 
     res.render('dashboard/index', {
@@ -2468,9 +2462,8 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
     ]);
     // Penerimaan QRIS hari ini (WIB) per akun — untuk Limit Harian (basis PAID, bukan generated).
     const _todayWibStart = new Date(Math.floor((Date.now() + 25200000) / 86400000) * 86400000 - 25200000);
-    const _paidAggToday = await db.transaction.groupBy({ by: ['qrisAccountId'], where: { statusPay: 'paid', paidAt: { gte: _todayWibStart } }, _sum: { finalAmount: true } });
-    const _paidTodayMap: Record<string, number> = {};
-    for (const _r of _paidAggToday) { if (_r.qrisAccountId) _paidTodayMap[_r.qrisAccountId] = _r._sum.finalAmount || 0; }
+    // Limit Harian (Diterima) = SEMUA uang masuk QRIS hari ini (WIB) = paid + pending (mutasi kredit).
+    const _paidTodayMap = await qrisReceivedTodayMap();
     let inferredMaderaAggregate = 0;
     // Fase 6: alias-tenant -> hanya akun site-nya. Fase 5: siteName tiap akun.
     const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
