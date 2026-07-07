@@ -17,6 +17,8 @@ import {
   syncMerchantNow,
   testMerchantConnection,
   testReportLogin,
+  startSyncAllMerchants,
+  getSyncAllStatus,
 } from './merchant-qr-sync.service';
 import { config } from '../../config';
 import { logger } from '../../config/logger';
@@ -321,5 +323,45 @@ export async function getMerchantQrStatusApi(req: Request, res: Response): Promi
   } catch (err) {
     logger.error({ err }, 'getMerchantQrStatusApi error');
     res.status(500).json({ ok: false, error: 'Gagal mengambil status merchant.' });
+  }
+}
+
+// ── Sinkron ALL (bulk) ────────────────────────────────────────────────────────
+export async function handleSyncAllMerchants(req: Request, res: Response): Promise<void> {
+  try {
+    const gate = startSyncAllMerchants();
+    if (gate.blocked) {
+      res.status(429).json({
+        success: false,
+        blocked: gate.blocked,
+        running: !!gate.running,
+        nextAllowedAt: gate.nextAllowedAt,
+        remainingMs: gate.remainingMs,
+        error:
+          gate.blocked === 'running'
+            ? 'Sinkron ALL sedang berjalan.'
+            : 'Sinkron ALL baru bisa lagi setelah cooldown 1 menit.',
+      });
+      return;
+    }
+    res.json({
+      success: true,
+      started: true,
+      running: true,
+      nextAllowedAt: gate.nextAllowedAt,
+      remainingMs: gate.remainingMs,
+    });
+  } catch (err) {
+    logger.error({ err }, 'handleSyncAllMerchants error');
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Gagal menjalankan Sinkron ALL.' });
+  }
+}
+
+export async function getSyncAllStatusApi(req: Request, res: Response): Promise<void> {
+  try {
+    res.json({ ok: true, ...getSyncAllStatus() });
+  } catch (err) {
+    logger.error({ err }, 'getSyncAllStatusApi error');
+    res.status(500).json({ ok: false, error: 'Gagal mengambil status Sinkron ALL.' });
   }
 }

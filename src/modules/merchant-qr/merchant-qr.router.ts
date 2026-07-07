@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requirePermission } from '../../core/rbac.middleware';
+import { requireMenuOrPermission } from '../../core/rbac.middleware';
 import {
   showMerchantQrList,
   showNewMerchantQrForm,
@@ -15,11 +15,13 @@ import {
   handleTestMerchantQrReportLogin,
   handleSyncMerchantQrNow,
   getMerchantQrStatusApi,
+  handleSyncAllMerchants,
+  getSyncAllStatusApi,
 } from './merchant-qr.controller';
 
 const router = Router();
 
-const canManage = requirePermission('qris:manage');
+const canManage = requireMenuOrPermission('merchant-qr', 'manage', 'qris:manage');
 
 // Static routes MUST come before /:id dynamic routes
 router.get('/', canManage, showMerchantQrList);
@@ -28,6 +30,8 @@ router.get('/api/status', canManage, getMerchantQrStatusApi);
 router.post('/test-report-login', canManage, handleTestMerchantQrReportLogin);
 router.post('/compare-sources', canManage, handleCompareMerchantQrSources);
 router.post('/', canManage, handleCreateMerchantQr);
+router.get('/sync-all/status', canManage, getSyncAllStatusApi);
+router.post('/sync-all', canManage, handleSyncAllMerchants);
 router.get('/:id/edit', canManage, showEditMerchantQrForm);
 router.post('/:id', canManage, handleUpdateMerchantQr);
 router.post('/:id/delete', canManage, handleDeleteMerchantQr);

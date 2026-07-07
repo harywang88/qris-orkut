@@ -960,3 +960,109 @@ export async function syncMerchantNow(id: string): Promise<MerchantSyncReport> {
 
   return promise;
 }
+
+// ── Sinkron ALL (bulk): gate cooldown 60s + status utk freeze live ──────────
+const SYNC_ALL_COOLDOWN_MS = 60000;
+interface SyncAllState {
+  running: boolean;
+  startedAt: number | null;
+  finishedAt: number | null;
+  nextAllowedAt: number;
+  total: number;
+  done: number;
+  ok: number;
+  failed: number;
+  lastError: string | null;
+}
+let syncAllState: SyncAllState = {
+  running: false,
+  startedAt: null,
+  finishedAt: null,
+  nextAllowedAt: 0,
+  total: 0,
+  done: 0,
+  ok: 0,
+  failed: 0,
+  lastError: null,
+};
+
+export function getSyncAllStatus() {
+  const now = Date.now();
+  return {
+    running: syncAllState.running,
+    startedAt: syncAllState.startedAt,
+    finishedAt: syncAllState.finishedAt,
+    total: syncAllState.total,
+    done: syncAllState.done,
+    ok: syncAllState.ok,
+    failed: syncAllState.failed,
+    lastError: syncAllState.lastError,
+    nextAllowedAt: syncAllState.nextAllowedAt,
+    remainingMs: Math.max(0, syncAllState.nextAllowedAt - now),
+  };
+}
+
+export function startSyncAllMerchants() {
+  const now = Date.now();
+  if (syncAllState.running) {
+    return {
+      blocked: 'running' as const,
+      running: true,
+      nextAllowedAt: syncAllState.nextAllowedAt,
+      remainingMs: Math.max(0, syncAllState.nextAllowedAt - now),
+    };
+  }
+  if (now < syncAllState.nextAllowedAt) {
+    return {
+      blocked: 'cooldown' as const,
+      running: false,
+      nextAllowedAt: syncAllState.nextAllowedAt,
+      remainingMs: syncAllState.nextAllowedAt - now,
+    };
+  }
+  syncAllState = {
+    running: true,
+    startedAt: now,
+    finishedAt: null,
+    nextAllowedAt: now + SYNC_ALL_COOLDOWN_MS,
+    total: 0,
+    done: 0,
+    ok: 0,
+    failed: 0,
+    lastError: null,
+  };
+  void (async () => {
+    try {
+      const accounts = await db.qrisAccount.findMany({
+        where: { status: 'active', sessionTokenEncrypted: { not: null } },
+        select: { id: true, code: true },
+        orderBy: { code: 'asc' },
+      });
+      syncAllState.total = accounts.length;
+      for (const acc of accounts) {
+        try {
+          await syncMerchantNow(acc.id);
+          syncAllState.ok += 1;
+        } catch (err) {
+          syncAllState.failed += 1;
+          syncAllState.lastError = (err instanceof Error ? err.message : String(err)).slice(0, 200);
+          logger.warn({ err, accountCode: acc.code }, 'syncAll: 1 merchant gagal');
+        }
+        syncAllState.done += 1;
+      }
+    } catch (err) {
+      syncAllState.lastError = err instanceof Error ? err.message : String(err);
+      logger.error({ err }, 'startSyncAllMerchants loop error');
+    } finally {
+      syncAllState.running = false;
+      syncAllState.finishedAt = Date.now();
+      syncAllState.nextAllowedAt = Date.now() + SYNC_ALL_COOLDOWN_MS;
+    }
+  })();
+  return {
+    blocked: false as const,
+    running: true,
+    nextAllowedAt: syncAllState.nextAllowedAt,
+    remainingMs: SYNC_ALL_COOLDOWN_MS,
+  };
+}
