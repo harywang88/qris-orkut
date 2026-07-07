@@ -59,6 +59,9 @@ export async function initDatabase(): Promise<void> {
     // SQLite PRAGMAs return result sets so we use $queryRawUnsafe, not $executeRaw.
     await db.$queryRawUnsafe('PRAGMA journal_mode=WAL');
     await db.$queryRawUnsafe('PRAGMA synchronous=NORMAL');
+    // busy_timeout: tulis MENUNGGU lock sampai 15 dtk (app + worker + sync loop nulis ke 1 file SQLite).
+    // Tanpa ini, tulis bersamaan langsung SQLITE_BUSY → Prisma P1008 "Operations timed out".
+    await db.$queryRawUnsafe('PRAGMA busy_timeout=15000');
     await db.$queryRawUnsafe('PRAGMA cache_size=-65536');
     logger.info('Database initialized (WAL mode, synchronous=NORMAL)');
   } catch (err) {
