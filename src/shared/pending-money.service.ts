@@ -21,12 +21,21 @@ const DATA_DIR = path.join(process.cwd(), 'data');
 const TAGS_FILE = path.join(DATA_DIR, 'pending-tags.json');
 
 export interface PendingTag {
+  status?: string; // 'pending' | 'claimed'
+  mode?: string; // 'manual' | 'auto'
+  website?: string;
   userIdExt?: string;
   note?: string;
   taggedAt: number;
   taggedBy?: string;
 }
 type PendingTagMap = Record<string, PendingTag>;
+
+/** Ciri entri BUKAN pembayaran customer (uang keluar / internal): pencairan saldo QRIS. */
+function isDisbursement(issuerName: string | null): boolean {
+  const s = (issuerName || '').toLowerCase();
+  return s.includes('pencairan');
+}
 
 function ensureDir(): void {
   try {
@@ -56,10 +65,13 @@ function writeTags(map: PendingTagMap): void {
 
 export function setPendingTag(
   mutationId: string,
-  tag: { userIdExt?: string; note?: string; taggedBy?: string },
+  tag: { status?: string; mode?: string; website?: string; userIdExt?: string; note?: string; taggedBy?: string },
 ): void {
   const map = readTags();
   map[mutationId] = {
+    status: tag.status || 'pending',
+    mode: tag.mode || undefined,
+    website: tag.website || undefined,
     userIdExt: tag.userIdExt || undefined,
     note: tag.note || undefined,
     taggedBy: tag.taggedBy || undefined,
@@ -85,6 +97,7 @@ export interface PendingGuess {
   userIdExt: string;
   qrId: string;
   finalAmount: number;
+  requestedAmount: number;
   statusPay: string;
 }
 
@@ -94,12 +107,23 @@ export interface PendingMoneyRow {
   accountCode: string;
   siteName: string | null;
   amount: number;
+  reqAmount: number | null; // nominal asli yang diminta member (dari transaksi tebakan)
   issuerName: string | null;
   rrn: string | null;
   transactionTime: Date;
   ageMinutes: number;
   guesses: PendingGuess[];
   tag: PendingTag | null;
+}
+
+function parseOriginalAmount(metadataJson: string | null): number | null {
+  if (!metadataJson) return null;
+  try {
+    const m = JSON.parse(metadataJson) as { originalAmount?: number };
+    return typeof m.originalAmount === 'number' ? m.originalAmount : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Daftar uang pending (unmatched IN > 2 menit). accountIds opsional = filter scope. */
@@ -110,6 +134,8 @@ export async function listPendingMoney(accountIds?: string[] | null): Promise<Pe
     type: 'credit',
     matchedTransactionId: null,
     transactionTime: { lte: cutoff },
+    // HANYA uang MASUK dari customer — buang entri "Pencairan Saldo QRIS" (uang keluar/internal).
+    NOT: { issuerName: { contains: 'Pencairan' } },
   };
   if (accountIds) where.qrisAccountId = { in: accountIds };
 
@@ -123,6 +149,9 @@ export async function listPendingMoney(accountIds?: string[] | null): Promise<Pe
   const tags = readTags();
   const rows: PendingMoneyRow[] = [];
   for (const m of muts) {
+    // Jaring pengaman kedua (kalau issuerName null tapi deskripsi mengandung pencairan lolos NOT di atas).
+    if (isDisbursement(m.issuerName)) continue;
+
     const { start, end } = wibDayRange(m.transactionTime);
     const cands = await db.transaction.findMany({
       where: {
@@ -130,25 +159,28 @@ export async function listPendingMoney(accountIds?: string[] | null): Promise<Pe
         finalAmount: m.amount,
         createdAt: { gte: start, lt: end },
       },
-      select: { qrId: true, userIdExt: true, finalAmount: true, statusPay: true },
+      select: { qrId: true, userIdExt: true, finalAmount: true, requestedAmount: true, metadataJson: true, statusPay: true },
       take: 5,
     });
+    const guesses: PendingGuess[] = cands.map((c) => ({
+      userIdExt: c.userIdExt,
+      qrId: c.qrId,
+      finalAmount: c.finalAmount,
+      requestedAmount: parseOriginalAmount(c.metadataJson) ?? c.requestedAmount,
+      statusPay: c.statusPay,
+    }));
     rows.push({
       id: m.id,
       qrisAccountId: m.qrisAccountId,
       accountCode: m.qrisAccount?.code || '-',
       siteName: null,
       amount: m.amount,
+      reqAmount: guesses[0] ? guesses[0].requestedAmount : null,
       issuerName: m.issuerName,
       rrn: m.rrn,
       transactionTime: m.transactionTime,
       ageMinutes: Math.floor((Date.now() - m.transactionTime.getTime()) / 60000),
-      guesses: cands.map((c) => ({
-        userIdExt: c.userIdExt,
-        qrId: c.qrId,
-        finalAmount: c.finalAmount,
-        statusPay: c.statusPay,
-      })),
+      guesses,
       tag: tags[m.id] || null,
     });
   }
@@ -166,6 +198,7 @@ export async function pendingMoneyTotal(
     type: 'credit',
     matchedTransactionId: null,
     transactionTime: { gte: from, lte: to },
+    NOT: { issuerName: { contains: 'Pencairan' } },
   };
   if (accountIds) where.qrisAccountId = { in: accountIds };
   const agg = await db.mutation.aggregate({ where, _sum: { amount: true }, _count: true });

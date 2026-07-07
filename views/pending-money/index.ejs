@@ -6,12 +6,63 @@
       return p(t.getUTCDate()) + '/' + p(t.getUTCMonth() + 1) + ' ' + p(t.getUTCHours()) + ':' + p(t.getUTCMinutes());
     } catch (e) { return '-'; }
   }
+  function rp(n) { return 'Rp ' + Number(n || 0).toLocaleString('id-ID'); }
+  var siteList = typeof websites !== 'undefined' ? websites : [];
 %>
+<style>
+  .pm-table th { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted,#8b8b8b); text-align:left; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08); }
+  .pm-table td { padding:10px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:top; }
+  .pm-table tbody tr { transition:background .15s; }
+  .pm-table tbody tr:hover { background:rgba(255,255,255,.03); }
+  .pm-amt { font-weight:800; color:#fbbf24; font-size:15px; font-family:ui-monospace,monospace; white-space:nowrap; }
+  .pm-req { font-size:11px; color:var(--muted-2,#9a9a9a); margin-top:2px; }
+  .pm-badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+  .pm-btn { border:none; cursor:pointer; border-radius:8px; font-size:12px; font-weight:700; padding:7px 12px; transition:transform .12s, box-shadow .2s, filter .2s; display:inline-flex; align-items:center; gap:6px; }
+  .pm-btn:hover { transform:translateY(-1px); filter:brightness(1.08); }
+  .pm-btn:active { transform:translateY(0); }
+  .pm-btn-ghost { background:rgba(148,163,184,.14); color:#cbd5e1; }
+  .pm-btn-push { background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; box-shadow:0 4px 14px rgba(37,99,235,.35); }
+  .pm-btn-catat { background:rgba(251,191,36,.15); color:#fbbf24; border:1px solid rgba(251,191,36,.3); }
+
+  /* ── Modal premium ── */
+  .pm-modal-backdrop { position:fixed; inset:0; background:rgba(2,6,23,.62); backdrop-filter:blur(6px); z-index:1000; display:none; align-items:center; justify-content:center; padding:16px; opacity:0; transition:opacity .22s ease; }
+  .pm-modal-backdrop.show { display:flex; opacity:1; }
+  .pm-modal { width:100%; max-width:430px; border-radius:20px; background:linear-gradient(180deg,#ffffff,#f7f8fb); color:#0f172a; box-shadow:0 30px 70px rgba(0,0,0,.5); transform:translateY(18px) scale(.96); opacity:0; transition:transform .28s cubic-bezier(.2,.9,.3,1.2), opacity .28s; overflow:hidden; }
+  .pm-modal-backdrop.show .pm-modal { transform:translateY(0) scale(1); opacity:1; }
+  @media (prefers-color-scheme: dark) { .pm-modal { background:linear-gradient(180deg,#1e293b,#0f172a); color:#e2e8f0; } }
+  .pm-modal-head { text-align:center; padding:20px 22px 6px; }
+  .pm-modal-title { font-size:20px; font-weight:800; letter-spacing:-.01em; }
+  .pm-info { margin:14px 22px 4px; background:rgba(148,163,184,.12); border:1px solid rgba(148,163,184,.18); border-radius:12px; padding:12px 14px; }
+  .pm-info-row { display:flex; justify-content:space-between; align-items:center; font-size:13px; padding:3px 0; }
+  .pm-info-row .k { color:#94a3b8; }
+  .pm-info-amt { color:#16a34a; font-weight:800; font-size:16px; }
+  @media (prefers-color-scheme: dark) { .pm-info-amt { color:#4ade80; } }
+  .pm-tabs { display:flex; margin:16px 22px 0; border-bottom:1px solid rgba(148,163,184,.25); position:relative; }
+  .pm-tab { flex:1; text-align:center; padding:10px; font-size:13px; font-weight:700; cursor:pointer; color:#94a3b8; background:none; border:none; transition:color .2s; }
+  .pm-tab.active { color:#3b82f6; }
+  .pm-tab-underline { position:absolute; bottom:-1px; height:2px; width:50%; background:#3b82f6; border-radius:2px; transition:transform .28s cubic-bezier(.2,.9,.3,1.2); }
+  .pm-panel { padding:16px 22px 6px; animation:pmFade .3s ease; }
+  @keyframes pmFade { from{opacity:0; transform:translateY(6px);} to{opacity:1; transform:none;} }
+  .pm-label { font-size:12px; font-weight:600; color:#64748b; margin:10px 0 5px; display:block; }
+  @media (prefers-color-scheme: dark){ .pm-label{color:#94a3b8;} }
+  .pm-field { width:100%; padding:10px 12px; border-radius:10px; border:1px solid rgba(148,163,184,.35); background:rgba(255,255,255,.6); color:inherit; font-size:14px; outline:none; transition:border .2s, box-shadow .2s; }
+  @media (prefers-color-scheme: dark){ .pm-field{ background:rgba(15,23,42,.6);} }
+  .pm-field:focus { border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.18); }
+  .pm-note { font-size:11.5px; color:#94a3b8; margin-top:10px; display:flex; gap:6px; align-items:flex-start; }
+  .pm-actions { display:flex; gap:10px; justify-content:center; padding:16px 22px 22px; }
+  .pm-modal-btn { border:none; cursor:pointer; border-radius:10px; font-size:14px; font-weight:800; padding:11px 22px; transition:transform .12s, filter .2s; }
+  .pm-modal-btn:hover { filter:brightness(1.08); transform:translateY(-1px); }
+  .pm-ok { background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; box-shadow:0 6px 18px rgba(37,99,235,.4); }
+  .pm-cancel { background:#64748b; color:#fff; }
+  .pm-soon { text-align:center; padding:22px 10px; }
+  .pm-soon i { font-size:30px; color:#a78bfa; }
+</style>
+
 <!-- Header -->
 <div class="qris-page-header flex flex-wrap items-start justify-between gap-4">
   <div>
     <h1 class="qris-page-title">Uang <span>Pending</span></h1>
-    <p class="qris-section-sub mt-1">Uang masuk QRIS yang belum ter-match ke transaksi (bayar 2× / QR kadaluarsa)</p>
+    <p class="qris-section-sub mt-1">Uang MASUK QRIS yang belum ter-match ke order (bayar 2× / QR kadaluarsa). Uang keluar / pencairan tidak ditampilkan.</p>
   </div>
 </div>
 
@@ -24,17 +75,12 @@
     <div>
       <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Total Uang Pending</p>
       <p class="text-base font-bold leading-tight" style="color:#fbbf24">Rp <%= totalPending.toLocaleString('id-ID') %></p>
-      <p class="text-xs text-muted-2 mt-0.5"><%= rows.length %> mutasi belum ter-match</p>
+      <p class="text-xs text-muted-2 mt-0.5"><%= rows.length %> uang masuk belum ter-match</p>
     </div>
   </div>
 </div>
 
-<div class="qris-card p-3 mb-4" style="border-color:rgba(251,191,36,0.2);background:rgba(251,191,36,0.04)">
-  <p class="text-xs text-muted-2"><i class="fa-solid fa-circle-info mr-1" style="color:#fbbf24"></i>
-    "Kaitkan ke member" hanya <b>menandai</b> dugaan pemilik uang (tidak otomatis kredit/refund). Proses kredit/refund tetap manual oleh Anda. Dugaan member diambil dari transaksi hari yang sama dengan nominal yang persis sama.</p>
-</div>
-
-<div class="qris-card p-4 mb-5">
+<div class="qris-card p-4">
   <% if (!rows || rows.length === 0) { %>
     <div class="text-center py-10 text-muted-2">
       <i class="fa-solid fa-circle-check text-3xl mb-2" style="color:#86efac"></i>
@@ -42,61 +88,67 @@
     </div>
   <% } else { %>
   <div class="overflow-x-auto">
-    <table class="w-full text-sm">
+    <table class="w-full pm-table">
       <thead>
-        <tr class="text-muted border-b border-white/10 text-xs uppercase tracking-wider">
-          <th class="text-left py-2 pr-3">Waktu</th>
-          <th class="text-left py-2 pr-3">Akun / Site</th>
-          <th class="text-right py-2 pr-3">Nominal</th>
-          <th class="text-left py-2 pr-3">Pengirim / RRN</th>
-          <th class="text-left py-2 pr-3">Dugaan Member</th>
-          <th class="text-left py-2">Kaitkan ke Member</th>
+        <tr>
+          <th>Waktu</th>
+          <th>Akun / Site</th>
+          <th>Nominal</th>
+          <th>Pengirim / RRN</th>
+          <th>Dugaan Member</th>
+          <th style="text-align:center">Action</th>
         </tr>
       </thead>
       <tbody>
-        <% rows.forEach(function (r) { %>
-          <tr class="border-b border-white/5 align-top">
-            <td class="py-2 pr-3 whitespace-nowrap text-muted-2">
+        <% rows.forEach(function (r) {
+             var guessId = (r.guesses && r.guesses[0]) ? r.guesses[0].userIdExt : '';
+        %>
+          <tr>
+            <td class="whitespace-nowrap text-muted-2">
               <%= fmtWib(r.transactionTime) %>
-              <span class="block text-[10px] text-muted">(<%= r.ageMinutes %> mnt lalu)</span>
+              <span class="block text-[10px] text-muted"><%= r.ageMinutes %> mnt lalu</span>
             </td>
-            <td class="py-2 pr-3 whitespace-nowrap">
+            <td class="whitespace-nowrap">
               <span class="text-ink font-semibold"><%= r.accountCode %></span>
-              <% if (r.siteName) { %><span class="block text-[10px] text-muted"><%= r.siteName %></span><% } %>
+              <span class="block text-[10px] text-muted"><%= r.siteName || 'Tanpa site' %></span>
             </td>
-            <td class="py-2 pr-3 text-right font-mono font-bold whitespace-nowrap" style="color:#fbbf24">Rp <%= r.amount.toLocaleString('id-ID') %></td>
-            <td class="py-2 pr-3">
-              <span class="text-ink"><%= r.issuerName || '-' %></span>
+            <td>
+              <div class="pm-amt"><%= rp(r.amount) %></div>
+              <% if (r.reqAmount) { %><div class="pm-req">Req: <%= rp(r.reqAmount) %></div><% } %>
+            </td>
+            <td>
+              <span class="text-ink text-sm"><%= r.issuerName || '-' %></span>
               <% if (r.rrn) { %><span class="block text-[10px] text-muted font-mono"><%= r.rrn %></span><% } %>
             </td>
-            <td class="py-2 pr-3">
+            <td>
               <% if (r.guesses && r.guesses.length) { %>
-                <% r.guesses.forEach(function (g) { %>
-                  <span class="inline-block mb-1 px-2 py-0.5 rounded text-[11px]" style="background:rgba(96,165,250,0.15);color:#93c5fd">
-                    <%= g.userIdExt %> <span class="text-muted">(<%= g.statusPay %>)</span>
-                  </span><br>
+                <% r.guesses.slice(0,3).forEach(function (g) { %>
+                  <span class="pm-badge" style="background:rgba(96,165,250,.15);color:#93c5fd;margin-bottom:3px"><%= g.userIdExt %> <span style="opacity:.7">(<%= g.statusPay %>)</span></span><br>
                 <% }); %>
               <% } else { %>
                 <span class="text-[11px] text-muted">— tak ada dugaan —</span>
               <% } %>
             </td>
-            <td class="py-2">
-              <% if (r.tag) { %>
-                <div class="text-[11px]">
-                  <span class="px-2 py-0.5 rounded" style="background:rgba(134,239,172,0.15);color:#86efac">
-                    <i class="fa-solid fa-link"></i> <%= r.tag.userIdExt || '(tanpa id)' %>
-                  </span>
-                  <% if (r.tag.note) { %><span class="block text-muted mt-0.5"><%= r.tag.note %></span><% } %>
-                  <button class="text-[11px] text-red-300 mt-1 underline" data-id="<%= r.id %>" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/untag') %>" onclick="untagPending(this)">Lepas</button>
-                </div>
-              <% } else { %>
-                <div class="flex items-center gap-1">
-                  <input id="m_<%= r.id %>" type="text" placeholder="ID member"
-                    value="<%= (r.guesses && r.guesses[0]) ? r.guesses[0].userIdExt : '' %>"
-                    class="text-xs" style="width:120px;padding:4px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:inherit">
-                  <button class="text-xs font-semibold" style="padding:5px 12px;background:#3b82f6;color:#fff;border-radius:6px;border:none;cursor:pointer" data-id="<%= r.id %>" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>" onclick="tagPending(this)">Kaitkan</button>
-                </div>
-              <% } %>
+            <td style="text-align:center">
+              <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap">
+                <% if (r.tag && r.tag.status === 'claimed') { %>
+                  <span class="pm-badge" style="background:rgba(134,239,172,.15);color:#86efac"><i class="fa-solid fa-circle-check"></i> Diklaim<%= r.tag.website ? (' → ' + r.tag.website) : '' %></span>
+                  <button class="pm-btn pm-btn-ghost" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/untag') %>" onclick="pmUntag(this)">Reset</button>
+                <% } else { %>
+                  <% if (r.tag && r.tag.status === 'pending') { %>
+                    <span class="pm-badge" style="background:rgba(251,191,36,.15);color:#fbbf24"><i class="fa-solid fa-clock"></i> Dicatat</span>
+                  <% } else { %>
+                    <button class="pm-btn pm-btn-catat" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>" onclick="pmCatat(this)"><i class="fa-solid fa-bookmark"></i> Catat Pending</button>
+                  <% } %>
+                  <button class="pm-btn pm-btn-push"
+                    data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>"
+                    data-issuer="<%= r.issuerName || '-' %>"
+                    data-amount="<%= rp(r.amount) %>"
+                    data-rrn="<%= r.rrn || '-' %>"
+                    data-member="<%= guessId %>"
+                    onclick="pmOpenPush(this)"><i class="fa-solid fa-arrow-up-right-from-square"></i> Push ke Website</button>
+                <% } %>
+              </div>
             </td>
           </tr>
         <% }); %>
@@ -106,26 +158,102 @@
   <% } %>
 </div>
 
+<!-- ── Modal Push ke Website (Klaim Transaksi) ── -->
+<div class="pm-modal-backdrop" id="pmModal" onclick="if(event.target===this)pmClose()">
+  <div class="pm-modal" role="dialog" aria-modal="true">
+    <div class="pm-modal-head"><div class="pm-modal-title">Klaim Transaksi</div></div>
+    <div class="pm-info">
+      <div class="pm-info-row"><span class="k">Pengirim</span><span id="pmiIssuer" style="font-weight:700"></span></div>
+      <div class="pm-info-row"><span class="k">Amount</span><span class="pm-info-amt" id="pmiAmount"></span></div>
+      <div class="pm-info-row"><span class="k">RRN</span><span id="pmiRrn" class="font-mono" style="font-size:12px;color:#94a3b8"></span></div>
+    </div>
+    <div class="pm-tabs">
+      <button class="pm-tab active" id="pmTabManual" onclick="pmSwitch('manual')"><i class="fa-solid fa-pen-to-square"></i> Manual</button>
+      <button class="pm-tab" id="pmTabAuto" onclick="pmSwitch('auto')"><i class="fa-solid fa-robot"></i> Auto Deposit</button>
+      <span class="pm-tab-underline" id="pmUnderline" style="transform:translateX(0)"></span>
+    </div>
+
+    <div class="pm-panel" id="pmPanelManual">
+      <label class="pm-label">Website <span style="color:#ef4444">*</span></label>
+      <select class="pm-field" id="pmWebsite">
+        <option value="">— Pilih Website —</option>
+        <% siteList.forEach(function(w){ %><option value="<%= w.name %>"><%= w.name %><%= w.code ? (' (' + w.code + ')') : '' %></option><% }); %>
+      </select>
+      <label class="pm-label">User ID / Member</label>
+      <input class="pm-field" id="pmMember" type="text" placeholder="Username member (opsional)">
+      <label class="pm-label">Catatan</label>
+      <input class="pm-field" id="pmNote" type="text" placeholder="Catatan klaim (opsional)">
+      <div class="pm-note"><i class="fa-solid fa-circle-info" style="margin-top:2px"></i><span>Hanya mencatat klaim tanpa deposit ke panel game.</span></div>
+    </div>
+
+    <div class="pm-panel" id="pmPanelAuto" style="display:none">
+      <div class="pm-soon">
+        <i class="fa-solid fa-robot"></i>
+        <p style="font-weight:800; margin-top:10px">Auto Deposit via API</p>
+        <p style="font-size:12.5px; color:#94a3b8; margin-top:4px">Python akan otomatis deposit ke website member lewat API. Fitur ini <b>segera dibangun</b> — untuk sekarang gunakan tab Manual.</p>
+      </div>
+    </div>
+
+    <div class="pm-actions">
+      <button class="pm-modal-btn pm-ok" id="pmSubmit" onclick="pmSubmit()"><i class="fa-solid fa-check"></i> Klaim Sekarang</button>
+      <button class="pm-modal-btn pm-cancel" onclick="pmClose()">Batal</button>
+    </div>
+  </div>
+</div>
+
 <script>
-  async function tagPending(btn) {
-    var id = btn.dataset.id;
-    var el = document.getElementById('m_' + id);
-    var v = el ? el.value.trim() : '';
-    btn.disabled = true;
-    try {
-      var r = await fetch(btn.dataset.url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userIdExt: v }),
-      });
-      if (r.ok) { location.reload(); } else { alert('Gagal menyimpan tag'); btn.disabled = false; }
-    } catch (e) { alert('Gagal: ' + e.message); btn.disabled = false; }
+  var pmCur = { url: '', mode: 'manual' };
+  function pmOpenPush(btn) {
+    pmCur.url = btn.dataset.url;
+    document.getElementById('pmiIssuer').textContent = btn.dataset.issuer;
+    document.getElementById('pmiAmount').textContent = btn.dataset.amount;
+    document.getElementById('pmiRrn').textContent = btn.dataset.rrn;
+    document.getElementById('pmMember').value = btn.dataset.member || '';
+    document.getElementById('pmWebsite').value = '';
+    document.getElementById('pmNote').value = '';
+    pmSwitch('manual');
+    document.getElementById('pmModal').classList.add('show');
   }
-  async function untagPending(btn) {
-    if (!confirm('Lepas tag member dari uang pending ini?')) return;
+  function pmClose() { document.getElementById('pmModal').classList.remove('show'); }
+  function pmSwitch(mode) {
+    pmCur.mode = mode;
+    var man = mode === 'manual';
+    document.getElementById('pmTabManual').classList.toggle('active', man);
+    document.getElementById('pmTabAuto').classList.toggle('active', !man);
+    document.getElementById('pmUnderline').style.transform = 'translateX(' + (man ? '0' : '100%') + ')';
+    document.getElementById('pmPanelManual').style.display = man ? 'block' : 'none';
+    document.getElementById('pmPanelAuto').style.display = man ? 'none' : 'block';
+    var submit = document.getElementById('pmSubmit');
+    submit.style.opacity = man ? '1' : '.45';
+    submit.style.pointerEvents = man ? 'auto' : 'none';
+    submit.innerHTML = man ? '<i class="fa-solid fa-check"></i> Klaim Sekarang' : '<i class="fa-solid fa-clock"></i> Segera';
+  }
+  async function pmSubmit() {
+    if (pmCur.mode !== 'manual') return;
+    var website = document.getElementById('pmWebsite').value;
+    if (!website) { alert('Pilih Website dulu ya.'); return; }
+    var payload = {
+      status: 'claimed', mode: 'manual', website: website,
+      userIdExt: document.getElementById('pmMember').value.trim(),
+      note: document.getElementById('pmNote').value.trim(),
+    };
+    try {
+      var r = await fetch(pmCur.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (r.ok) { location.reload(); } else { alert('Gagal menyimpan klaim'); }
+    } catch (e) { alert('Gagal: ' + e.message); }
+  }
+  async function pmCatat(btn) {
+    try {
+      var r = await fetch(btn.dataset.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'pending' }) });
+      if (r.ok) { location.reload(); } else { alert('Gagal'); }
+    } catch (e) { alert('Gagal: ' + e.message); }
+  }
+  async function pmUntag(btn) {
+    if (!confirm('Reset status uang pending ini?')) return;
     try {
       var r = await fetch(btn.dataset.url, { method: 'POST' });
       if (r.ok) { location.reload(); } else { alert('Gagal'); }
     } catch (e) { alert('Gagal: ' + e.message); }
   }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') pmClose(); });
 </script>

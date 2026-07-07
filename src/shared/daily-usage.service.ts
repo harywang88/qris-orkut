@@ -31,7 +31,7 @@ export async function qrisReceivedTodayMap(): Promise<Record<string, number>> {
   const start = todayWibStart();
   const agg = await db.mutation.groupBy({
     by: ['qrisAccountId'],
-    where: { walletCategory: 'qris', type: 'credit', transactionTime: { gte: start } },
+    where: { walletCategory: 'qris', type: 'credit', transactionTime: { gte: start }, NOT: { issuerName: { contains: 'Pencairan' } } },
     _sum: { amount: true },
   });
   const map: Record<string, number> = {};
@@ -50,6 +50,7 @@ export async function qrisReceivedTodayFor(accountId: string): Promise<number> {
       walletCategory: 'qris',
       type: 'credit',
       transactionTime: { gte: start },
+      NOT: { issuerName: { contains: 'Pencairan' } },
     },
     _sum: { amount: true },
   });
