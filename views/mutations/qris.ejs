@@ -613,109 +613,127 @@
     return syncMerchantUrlTemplate.replace('__ACCOUNT_ID__', encodeURIComponent(accountId));
   }
 
-  // ── Sinkron ALL + Sinkron per-akun — state cooldown di SERVER (60s), 1 pintu (anti-bentrok), live lintas-menu ──
-  (function initSync(){
+  // -- Sinkron ALL + Sinkron 1 akun: pola resmi Merchant QR, bulk job di server + polling status --
+  (function initMutSync(){
+    if (window.__MutSyncReady) return;
+    window.__MutSyncReady = true;
     const btnAll = document.getElementById('btnSyncAllMut');
     const lblAll = document.getElementById('btnSyncAllMutLabel');
     const sel = document.getElementById('syncOneSelMut');
     const btnOne = document.getElementById('btnSyncOneMut');
     const lblOne = document.getElementById('btnSyncOneMutLabel');
-    if (!btnAll) return;
+    if (!btnAll && !btnOne) return;
     const ALL_URL = '<%= url('/merchant-qr/sync-all') %>';
     const STATUS_URL = '<%= url('/merchant-qr/sync-all/status') %>';
-    const ONE_TPL = '<%= url('/merchant-qr/__ID__/sync-one') %>';
-    const oneUrl = function(id){ return ONE_TPL.replace('__ID__', encodeURIComponent(id)); };
-    const ALL_CD = 60000, ONE_CD = 60000;
-    let busy = false, allNextAt = 0, perCd = {}, tick = null, lastResultAt = null, acctName = {};
+    const oneUrl = function(id){ return getSyncMerchantUrl(id); };
+    let pollTimer = null;
+    let sawRunning = false;
     function toast(msg, ok){
       let box = document.getElementById('syncToastBox');
       if (!box){ box = document.createElement('div'); box.id = 'syncToastBox'; box.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:99999;display:flex;flex-direction:column;gap:8px'; document.body.appendChild(box); }
       const t = document.createElement('div');
-      t.style.cssText = 'background:' + (ok ? 'rgba(16,185,129,0.96)' : 'rgba(239,68,68,0.96)') + ';color:#fff;padding:11px 16px;border-radius:12px;font-size:13px;font-weight:700;box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:320px;opacity:0;transform:translateY(8px);transition:all .25s';
+      t.style.cssText = 'background:' + (ok ? 'rgba(16,185,129,0.96)' : 'rgba(239,68,68,0.96)') + ';color:#fff;padding:11px 16px;border-radius:12px;font-size:13px;font-weight:700;box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:360px;opacity:0;transform:translateY(8px);transition:all .25s';
       t.textContent = msg; box.appendChild(t);
       requestAnimationFrame(function(){ t.style.opacity = '1'; t.style.transform = 'translateY(0)'; });
       setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translateY(8px)'; setTimeout(function(){ t.remove(); }, 300); }, 4200);
     }
-    function dis(btn, lbl, txt){ if (!btn) return; btn.disabled = true; btn.style.opacity = '.55'; btn.style.cursor = 'not-allowed'; if (lbl) lbl.textContent = txt; }
-    function ena(btn, lbl, txt){ if (!btn) return; btn.disabled = false; btn.style.opacity = '1'; btn.style.cursor = 'pointer'; if (lbl) lbl.textContent = txt; }
-    function render(){
-      const now = Date.now();
-      const allRem = allNextAt - now;
-      if (busy) dis(btnAll, lblAll, 'Menyinkron…');
-      else if (allRem > 0) dis(btnAll, lblAll, 'Tunggu ' + Math.ceil(allRem/1000) + 's');
-      else ena(btnAll, lblAll, 'Sinkron ALL');
-      const id = sel ? sel.value : '';
-      const oneRem = id ? Math.max(0, (perCd[id]||0) - now) : 0;
-      if (busy) dis(btnOne, lblOne, 'Menyinkron…');
-      else if (!id) dis(btnOne, lblOne, 'Sinkron');
-      else if (oneRem > 0) dis(btnOne, lblOne, 'Tunggu ' + Math.ceil(oneRem/1000) + 's');
-      else ena(btnOne, lblOne, 'Sinkron');
+    function setButton(btn, lbl, disabled, text){
+      if (!btn) return;
+      btn.disabled = disabled;
+      btn.style.opacity = disabled ? '.55' : '1';
+      btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+      if (lbl) lbl.textContent = text;
     }
-    function startTick(){ if (tick) return; tick = setInterval(function(){ render(); const now = Date.now(); let act = busy || (allNextAt - now > 0); for (const k in perCd){ if (perCd[k] - now > 0) act = true; } if (!act){ clearInterval(tick); tick = null; } }, 500); }
     async function loadAccounts(){
+      if (!sel) return;
       try {
-        const r = await fetch(apiAcctUrl, { cache: 'no-store' });
-        const d = await r.json();
-        const list = (d && d.accounts) || [];
-        if (!sel) return;
+        const list = await (fetch(apiAcctUrl, { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(d){ return d.accounts || serverAccounts || []; }));
         const cur = sel.value;
-        sel.innerHTML = '<option value="">Pilih Akun…</option>' + list.map(function(a){ acctName[a.id] = a.merchantName || a.code || a.id; return '<option value="' + a.id + '">' + (a.merchantName || a.code || a.id) + '</option>'; }).join('');
+        sel.innerHTML = '<option value="">Pilih Akun...</option>' + (list || []).filter(function(a){ return a && a.id; }).map(function(a){
+          const label = a.merchantName || a.code || a.label || a.id;
+          return '<option value="' + a.id + '">' + label + '</option>';
+        }).join('');
         if (cur) sel.value = cur;
-      } catch(_){}
+        setButton(btnOne, lblOne, !sel.value, 'Sinkron');
+      } catch (_) { setButton(btnOne, lblOne, true, 'Sinkron'); }
     }
-    async function poll(){
+    async function pollStatus(reloadOnDone){
       try {
-        const r = await fetch(STATUS_URL, { headers: { 'Accept': 'application/json' } });
-        const d = await r.json();
-        if (!d || !d.ok) return;
-        const now = Date.now();
-        busy = !!d.busy;
-        allNextAt = now + Math.max(0, Number(d.remainingMs) || 0);
-        const pc = {}; const pa = d.perAccount || {}; for (const k in pa){ pc[k] = now + Math.max(0, Number(pa[k]) || 0); }
-        perCd = pc;
-        const lr = d.lastResult;
-        if (lr && lr.at){ if (lastResultAt !== null && lr.at !== lastResultAt && !busy){ toast('Sinkron ALL selesai · ' + lr.ok + '/' + lr.total + ' akun tersinkron', true); } lastResultAt = lr.at; }
-        render(); startTick();
-      } catch(_){}
+        const res = await fetch(STATUS_URL, { cache: 'no-store', headers: { 'Accept': 'application/json' } });
+        const data = await res.json().catch(function(){ return {}; });
+        if (!res.ok || data.ok === false) return;
+        if (data.running) {
+          sawRunning = true;
+          setButton(btnAll, lblAll, true, 'Sinkron ' + (data.done || 0) + '/' + (data.total || 0));
+          setButton(btnOne, lblOne, true, 'Menyinkron...');
+          return;
+        }
+        if (sawRunning) {
+          sawRunning = false;
+          if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+          setButton(btnAll, lblAll, false, 'Sinkron ALL');
+          setButton(btnOne, lblOne, !(sel && sel.value), 'Sinkron');
+          toast('Sinkron ALL selesai. Berhasil ' + (data.ok || 0) + ', gagal ' + (data.failed || 0) + ' dari ' + (data.total || 0) + '.', true);
+          if (reloadOnDone !== false) setTimeout(function(){ window.location.reload(); }, 1400);
+          return;
+        }
+        const rem = Math.max(0, Number(data.remainingMs) || 0);
+        if (rem > 0) setButton(btnAll, lblAll, true, 'Tunggu ' + Math.ceil(rem / 1000) + 's');
+        else setButton(btnAll, lblAll, false, 'Sinkron ALL');
+        setButton(btnOne, lblOne, !(sel && sel.value), 'Sinkron');
+      } catch (_) {}
+    }
+    function startPolling(){
+      if (pollTimer) clearInterval(pollTimer);
+      pollTimer = setInterval(function(){ pollStatus(true); }, 2000);
+      pollStatus(true);
     }
     async function clickAll(){
-      if (btnAll.disabled) return;
-      busy = true; render(); startTick();
+      if (btnAll && btnAll.disabled) return;
+      sawRunning = true;
+      setButton(btnAll, lblAll, true, 'Memulai...');
+      setButton(btnOne, lblOne, true, 'Menyinkron...');
       try {
-        const r = await fetch(ALL_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-        const d = await r.json().catch(function(){ return {}; });
-        busy = !!d.running;
-        allNextAt = Date.now() + Math.max(0, Number(d.remainingMs) || ALL_CD);
-        if (r.status === 429) toast(d.error || 'Sinkron ALL belum bisa.', false);
-      } catch(_){ allNextAt = Date.now() + ALL_CD; }
-      render(); startTick(); poll();
+        const res = await fetch(ALL_URL, { method: 'POST', headers: { 'Accept': 'application/json' } });
+        const data = await res.json().catch(function(){ return {}; });
+        if (res.status === 429 && data.blocked === 'cooldown') {
+          sawRunning = false;
+          const wait = Math.ceil((Number(data.remainingMs) || 60000) / 1000);
+          toast(data.error || ('Sinkron ALL cooldown. Tunggu ' + wait + 's.'), false);
+          setButton(btnAll, lblAll, true, 'Tunggu ' + wait + 's');
+          setButton(btnOne, lblOne, !(sel && sel.value), 'Sinkron');
+          setTimeout(function(){ pollStatus(false); }, Number(data.remainingMs) || 60000);
+          return;
+        }
+        if (!res.ok && data.blocked !== 'running') throw new Error(data.error || ('HTTP ' + res.status));
+        startPolling();
+      } catch (err) {
+        sawRunning = false;
+        toast('Sinkron ALL gagal: ' + (err && err.message ? err.message : 'Kesalahan jaringan.'), false);
+        setButton(btnAll, lblAll, false, 'Sinkron ALL');
+        setButton(btnOne, lblOne, !(sel && sel.value), 'Sinkron');
+      }
     }
     async function clickOne(){
-      if (btnOne.disabled) return;
       const id = sel ? sel.value : '';
-      if (!id){ toast('Pilih akun dulu.', false); return; }
-      busy = true; render(); startTick();
+      if (!id) { toast('Pilih akun QRIS dulu.', false); return; }
+      setButton(btnOne, lblOne, true, 'Sinkron...');
       try {
-        const r = await fetch(oneUrl(id), { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-        const d = await r.json().catch(function(){ return {}; });
-        const now = Date.now();
-        busy = false;
-        if (r.ok && d.success){
-          perCd[id] = now + ONE_CD;
-          toast('✓ ' + (acctName[id] || 'Akun') + ' tersinkron · ' + (d.newQris || 0) + ' mutasi baru', true);
-        } else {
-          if (d.remainingMs) perCd[id] = now + Number(d.remainingMs);
-          toast(d.error || 'Gagal sinkron akun.', false);
-        }
-      } catch(_){ busy = false; toast('Koneksi gagal.', false); }
-      render(); startTick(); poll();
+        const res = await fetch(oneUrl(id), { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' } });
+        const data = await res.json().catch(function(){ return {}; });
+        if (!res.ok || data.success === false || (data.report && data.report.success === false)) throw new Error(data.error || (data.report && data.report.message) || ('HTTP ' + res.status));
+        toast('Sinkron akun berhasil. Halaman akan dimuat ulang.', true);
+        setTimeout(function(){ window.location.reload(); }, 1000);
+      } catch (err) {
+        toast('Sinkron akun gagal: ' + (err && err.message ? err.message : 'Kesalahan jaringan.'), false);
+        setButton(btnOne, lblOne, false, 'Sinkron');
+      }
     }
-    btnAll.addEventListener('click', clickAll);
+    if (btnAll) btnAll.addEventListener('click', clickAll);
     if (btnOne) btnOne.addEventListener('click', clickOne);
-    if (sel) sel.addEventListener('change', render);
+    if (sel) sel.addEventListener('change', function(){ setButton(btnOne, lblOne, !sel.value, 'Sinkron'); });
     loadAccounts();
-    poll();
-    setInterval(poll, 3000);
+    pollStatus(false);
   })();
 
   async function refreshSelectedWalletBalance(wallet, silent) {

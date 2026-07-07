@@ -963,6 +963,13 @@ export async function syncMerchantNow(id: string): Promise<MerchantSyncReport> {
 
 // ── Sinkron ALL (bulk): gate cooldown 60s + status utk freeze live ──────────
 const SYNC_ALL_COOLDOWN_MS = 60000;
+const SYNC_ALL_PROVIDER_RATE_LIMIT_MS = 300000;
+const SYNC_ALL_BETWEEN_ACCOUNT_DELAY_MS = 2000;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+function isRateLimitSyncReport(report: MerchantSyncReport): boolean {
+  const text = `${report.message || ''} ${(report.checks || []).map((check) => check.detail).join(' ')}`.toLowerCase();
+  return text.includes('membatasi akses') || text.includes('rate limit') || text.includes('gunakan jaringan internet lainnya');
+}
 interface SyncAllState {
   running: boolean;
   startedAt: number | null;
@@ -1039,10 +1046,22 @@ export function startSyncAllMerchants() {
         orderBy: { code: 'asc' },
       });
       syncAllState.total = accounts.length;
-      for (const acc of accounts) {
+      for (const [index, acc] of accounts.entries()) {
+        if (index > 0) await sleep(SYNC_ALL_BETWEEN_ACCOUNT_DELAY_MS);
         try {
-          await syncMerchantNow(acc.id);
-          syncAllState.ok += 1;
+          const report = await syncMerchantNow(acc.id);
+          if (report.success) {
+            syncAllState.ok += 1;
+          } else {
+            syncAllState.failed += 1;
+            syncAllState.lastError = (report.message || 'Sinkron akun gagal.').slice(0, 200);
+            logger.warn({ accountCode: acc.code, message: report.message }, 'syncAll: 1 merchant gagal');
+            if (isRateLimitSyncReport(report)) {
+              syncAllState.nextAllowedAt = Date.now() + SYNC_ALL_PROVIDER_RATE_LIMIT_MS;
+              syncAllState.done += 1;
+              break;
+            }
+          }
         } catch (err) {
           syncAllState.failed += 1;
           syncAllState.lastError = (err instanceof Error ? err.message : String(err)).slice(0, 200);
@@ -1056,7 +1075,7 @@ export function startSyncAllMerchants() {
     } finally {
       syncAllState.running = false;
       syncAllState.finishedAt = Date.now();
-      syncAllState.nextAllowedAt = Date.now() + SYNC_ALL_COOLDOWN_MS;
+      syncAllState.nextAllowedAt = Math.max(syncAllState.nextAllowedAt, Date.now() + SYNC_ALL_COOLDOWN_MS);
     }
   })();
   return {

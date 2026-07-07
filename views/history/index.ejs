@@ -21,11 +21,14 @@
           <button type="button" onclick="checkStatusAll()" class="qris-accent-btn">
             Check Status All
           </button>
-          <button id="btnSyncAllTx" type="button" onclick="syncHistoryAll(this)" class="qris-accent-btn">
+          <button id="btnSyncAllTx" type="button" class="qris-accent-btn" title="Sinkron semua akun QRIS via server bulk job">
             <i class="fa-solid fa-arrows-rotate"></i>
-            <span id="btnSyncAllTxLabel">Sinkron All</span>
+            <span id="btnSyncAllTxLabel">Sinkron ALL</span>
           </button>
-          <button id="btnSyncOneTx" type="button" onclick="syncHistoryVisible(this)" class="qris-ghost-btn">
+          <select id="syncOneSelTx" class="qris-input" style="width:180px" title="Pilih akun QRIS untuk disinkron">
+            <option value="">Pilih Akun...</option>
+          </select>
+          <button id="btnSyncOneTx" type="button" class="qris-ghost-btn" title="Sinkron akun QRIS terpilih">
             <i class="fa-solid fa-rotate"></i>
             <span id="btnSyncOneTxLabel">Sinkron</span>
           </button>
@@ -255,68 +258,142 @@ function closeQrModal() {
   document.getElementById('qr-modal').classList.add('hidden');
 }
 
-function uniqueAccountIds(rows) {
-  return [...new Set((rows || []).map((row) => row.qrisAccountId).filter(Boolean))];
-}
-
-function setSyncButton(button, labelId, running, text) {
-  if (!button) return;
-  button.disabled = running;
-  const label = labelId ? document.getElementById(labelId) : null;
-  if (label) label.textContent = text;
-  if (!label) button.textContent = text;
-}
-
-async function syncAccounts(accountIds, opts = {}) {
-  const ids = [...new Set((accountIds || []).filter(Boolean))];
-  if (!ids.length) {
-    alert(opts.emptyMessage || 'Tidak ada akun yang perlu disinkronkan.');
-    return { ok: 0, fail: 0 };
+// -- Sinkron ALL + Sinkron 1 akun: pola resmi Merchant QR, bulk job di server + polling status --
+(function initHistoryLegacySync(){
+  if (window.__HistoryLegacySyncReady) return;
+  window.__HistoryLegacySyncReady = true;
+  const btnAll = document.getElementById('btnSyncAllTx');
+  const lblAll = document.getElementById('btnSyncAllTxLabel');
+  const sel = document.getElementById('syncOneSelTx');
+  const btnOne = document.getElementById('btnSyncOneTx');
+  const lblOne = document.getElementById('btnSyncOneTxLabel');
+  if (!btnAll && !btnOne) return;
+  const ALL_URL = apiUrl('/merchant-qr/sync-all');
+  const STATUS_URL = apiUrl('/merchant-qr/sync-all/status');
+  const oneUrl = function(id){ return merchantSyncUrl(id); };
+  let pollTimer = null;
+  let sawRunning = false;
+  function toast(msg, ok){
+    let box = document.getElementById('syncToastBox');
+    if (!box){ box = document.createElement('div'); box.id = 'syncToastBox'; box.style.cssText = 'position:fixed;right:18px;bottom:18px;z-index:99999;display:flex;flex-direction:column;gap:8px'; document.body.appendChild(box); }
+    const t = document.createElement('div');
+    t.style.cssText = 'background:' + (ok ? 'rgba(16,185,129,0.96)' : 'rgba(239,68,68,0.96)') + ';color:#fff;padding:11px 16px;border-radius:12px;font-size:13px;font-weight:700;box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:360px;opacity:0;transform:translateY(8px);transition:all .25s';
+    t.textContent = msg; box.appendChild(t);
+    requestAnimationFrame(function(){ t.style.opacity = '1'; t.style.transform = 'translateY(0)'; });
+    setTimeout(function(){ t.style.opacity = '0'; t.style.transform = 'translateY(8px)'; setTimeout(function(){ t.remove(); }, 300); }, 4200);
   }
-
-  const results = await Promise.allSettled(ids.map((accountId) => fetch(merchantSyncUrl(accountId), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-  }).then(async (res) => {
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || data.success === false) throw new Error(data.error || `HTTP ${res.status}`);
-    return data;
-  })));
-
-  const ok = results.filter((result) => result.status === 'fulfilled').length;
-  const fail = results.length - ok;
-  return { ok, fail };
-}
-
-async function refreshOpenStatusRows() {
-  const openRows = tableData.filter((row) => row.statusPay === 'open').slice(0, 30);
-  await Promise.allSettled(openRows.map((row) => fetch(apiUrl(`/api/v1/qris/${row.qrId}/status`))));
-}
-
-async function runHistorySync(button, labelId, accountIds, idleText) {
-  setSyncButton(button, labelId, true, 'Sinkron...');
+  function setButton(btn, lbl, disabled, text){
+    if (!btn) return;
+    btn.disabled = disabled;
+    btn.style.opacity = disabled ? '.55' : '1';
+    btn.style.cursor = disabled ? 'not-allowed' : 'pointer';
+    if (lbl) lbl.textContent = text;
+  }
+  async function loadAccounts(){
+    if (!sel) return;
+    try {
+      const list = await (Promise.resolve(syncableAccounts || []));
+      const cur = sel.value;
+      sel.innerHTML = '<option value="">Pilih Akun...</option>' + (list || []).filter(function(a){ return a && a.id; }).map(function(a){
+        const label = a.merchantName || a.code || a.label || a.id;
+        return '<option value="' + a.id + '">' + label + '</option>';
+      }).join('');
+      if (cur) sel.value = cur;
+      setButton(btnOne, lblOne, !sel.value, 'Sinkron');
+    } catch (_) { setButton(btnOne, lblOne, true, 'Sinkron'); }
+  }
+  async function pollStatus(reloadOnDone){
+    try {
+      const res = await fetch(STATUS_URL, { cache: 'no-store', headers: { 'Accept': 'application/json' } });
+      const data = await res.json().catch(function(){ return {}; });
+      if (!res.ok || data.ok === false) return;
+      if (data.running) {
+        sawRunning = true;
+        setButton(btnAll, lblAll, true, 'Sinkron ' + (data.done || 0) + '/' + (data.total || 0));
+        setButton(btnOne, lblOne, true, 'Menyinkron...');
+        return;
+      }
+      if (sawRunning) {
+        sawRunning = false;
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        setButton(btnAll, lblAll, false, 'Sinkron ALL');
+        setButton(btnOne, lblOne, !(sel && sel.value), 'Sinkron');
+        toast('Sinkron ALL selesai. Berhasil ' + (data.ok || 0) + ', gagal ' + (data.failed || 0) + ' dari ' + (data.total || 0) + '.', true);
+        if (reloadOnDone !== false) setTimeout(function(){ window.location.reload(); }, 1400);
+        return;
+      }
+      const rem = Math.max(0, Number(data.remainingMs) || 0);
+      if (rem > 0) setButton(btnAll, lblAll, true, 'Tunggu ' + Math.ceil(rem / 1000) + 's');
+      else setButton(btnAll, lblAll, false, 'Sinkron ALL');
+      setButton(btnOne, lblOne, !(sel && sel.value), 'Sinkron');
+    } catch (_) {}
+  }
+  function startPolling(){
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(function(){ pollStatus(true); }, 2000);
+    pollStatus(true);
+  }
+  async function clickAll(){
+    if (btnAll && btnAll.disabled) return;
+    sawRunning = true;
+    setButton(btnAll, lblAll, true, 'Memulai...');
+    setButton(btnOne, lblOne, true, 'Menyinkron...');
+    try {
+      const res = await fetch(ALL_URL, { method: 'POST', headers: { 'Accept': 'application/json' } });
+      const data = await res.json().catch(function(){ return {}; });
+      if (res.status === 429 && data.blocked === 'cooldown') {
+        sawRunning = false;
+        const wait = Math.ceil((Number(data.remainingMs) || 60000) / 1000);
+        toast(data.error || ('Sinkron ALL cooldown. Tunggu ' + wait + 's.'), false);
+        setButton(btnAll, lblAll, true, 'Tunggu ' + wait + 's');
+        setButton(btnOne, lblOne, !(sel && sel.value), 'Sinkron');
+        setTimeout(function(){ pollStatus(false); }, Number(data.remainingMs) || 60000);
+        return;
+      }
+      if (!res.ok && data.blocked !== 'running') throw new Error(data.error || ('HTTP ' + res.status));
+      startPolling();
+    } catch (err) {
+      sawRunning = false;
+      toast('Sinkron ALL gagal: ' + (err && err.message ? err.message : 'Kesalahan jaringan.'), false);
+      setButton(btnAll, lblAll, false, 'Sinkron ALL');
+      setButton(btnOne, lblOne, !(sel && sel.value), 'Sinkron');
+    }
+  }
+  async function clickOne(){
+    const id = sel ? sel.value : '';
+    if (!id) { toast('Pilih akun QRIS dulu.', false); return; }
+    setButton(btnOne, lblOne, true, 'Sinkron...');
+    try {
+      const res = await fetch(oneUrl(id), { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' } });
+      const data = await res.json().catch(function(){ return {}; });
+      if (!res.ok || data.success === false || (data.report && data.report.success === false)) throw new Error(data.error || (data.report && data.report.message) || ('HTTP ' + res.status));
+      toast('Sinkron akun berhasil. Halaman akan dimuat ulang.', true);
+      setTimeout(function(){ window.location.reload(); }, 1000);
+    } catch (err) {
+      toast('Sinkron akun gagal: ' + (err && err.message ? err.message : 'Kesalahan jaringan.'), false);
+      setButton(btnOne, lblOne, false, 'Sinkron');
+    }
+  }
+  if (btnAll) btnAll.addEventListener('click', clickAll);
+  if (btnOne) btnOne.addEventListener('click', clickOne);
+  if (sel) sel.addEventListener('change', function(){ setButton(btnOne, lblOne, !sel.value, 'Sinkron'); });
+  window.syncHistoryAll = clickAll;
+  window.syncHistoryOne = clickOne;
+  loadAccounts();
+  pollStatus(false);
+})();
+window.syncHistoryAccount = async function(accountId, button) {
+  if (!accountId || (button && button.disabled)) return;
+  if (button) { button.disabled = true; button.textContent = 'Sinkron...'; }
   try {
-    const result = await syncAccounts(accountIds);
-    await refreshOpenStatusRows();
-    alert(`Sinkron selesai. Berhasil: ${result.ok}, gagal: ${result.fail}. Halaman akan dimuat ulang.`);
+    const res = await fetch(merchantSyncUrl(accountId), { method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' } });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.success === false || (data.report && data.report.success === false)) throw new Error(data.error || (data.report && data.report.message) || `HTTP ${res.status}`);
     window.location.reload();
-  } catch (error) {
-    alert(`Sinkron gagal: ${error?.message || 'Terjadi kesalahan'}`);
-  } finally {
-    setSyncButton(button, labelId, false, idleText);
+  } catch (err) {
+    alert('Sinkron akun gagal: ' + (err?.message || 'Kesalahan jaringan.'));
+    if (button) { button.disabled = false; button.textContent = 'Sync'; }
   }
-}
-
-window.syncHistoryAll = function(button) {
-  return runHistorySync(button, 'btnSyncAllTxLabel', syncableAccounts.map((account) => account.id), 'Sinkron All');
-};
-
-window.syncHistoryVisible = function(button) {
-  return runHistorySync(button, 'btnSyncOneTxLabel', uniqueAccountIds(tableData), 'Sinkron');
-};
-
-window.syncHistoryAccount = function(accountId, button) {
-  return runHistorySync(button, null, [accountId], 'Sync');
 };
 
 async function showStatus(qrId) {
