@@ -7,6 +7,7 @@ import type { OutboxEvent, QrisAccount, Prisma } from '@prisma/client';
 import { config } from '../../config';
 import { db } from '../../config/database';
 import { qrisReceivedTodayMap } from '../../shared/daily-usage.service';
+import { selectQrisAccountForSite, NoEligibleAccountError } from '../../shared/qris-account-selector';
 import { logger } from '../../config/logger';
 import { withBasePath } from '../../core/base-path';
 import { decrypt } from '../../core/encryption';
@@ -3188,7 +3189,8 @@ export async function showGenerateQr(req: Request, res: Response): Promise<void>
 }
 
 const DashboardGenerateQrSchema = z.object({
-  accountId: z.string().min(1, 'Akun QRIS wajib dipilih'),
+  accountId: z.string().optional(),
+  siteId: z.string().optional(),
   amount: z.number().int().min(1, 'Nominal minimal Rp 1').max(10000000, 'Nominal terlalu besar'),
   username: z.string().trim().min(1, 'Username wajib diisi').max(100, 'Username terlalu panjang'),
 });
@@ -3203,13 +3205,29 @@ export async function handleDashboardGenerateQr(req: Request, res: Response): Pr
       });
       return;
     }
+    // Auto round-robin per site: kalau akun tak dipilih, sistem pilih akun paling merata (limit terbagi).
+    let chosenAccountId = parsed.data.accountId || '';
+    if (!chosenAccountId) {
+      const siteAcctIds = accountIdsForSite(parsed.data.siteId || null);
+      try {
+        const sel = await selectQrisAccountForSite(siteAcctIds);
+        chosenAccountId = sel.id;
+      } catch (e) {
+        if (e instanceof NoEligibleAccountError) {
+          res.status(409).json({ ok: false, error: 'HUBUNGI CS DI LIVE CHAT & LAMPIRKAN SCREENSHOT' });
+          return;
+        }
+        throw e;
+      }
+    }
     // Fase 6: alias-tenant tak boleh generate di akun luar site-nya.
-    if (!accountInScope(req.session.user as AccessUser | undefined, parsed.data.accountId)) {
+    if (!accountInScope(req.session.user as AccessUser | undefined, chosenAccountId)) {
       res.status(403).json({ ok: false, error: 'Akun di luar site Anda.' });
       return;
     }
     const result = await generateDashboardQrTransaction({
       ...parsed.data,
+      accountId: chosenAccountId,
       createdBy: req.session.user?.username || 'dashboard',
     });
     res.status(201).json({

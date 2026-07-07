@@ -19,57 +19,58 @@ type TxClient = Omit<
 >;
 
 /**
- * Selects the most eligible QRIS account using round-robin (oldest lastAssignedAt first).
+ * Round-robin: pilih akun QRIS yang paling lama tak dipakai (lastAssignedAt asc = giliran).
  *
- * Selection criteria:
- *   1. status = 'active'
- *   2. healthStatus = 'healthy'
- *   3. usedToday < dailyLimit (or dailyLimit = 0 for unlimited)
+ * Kriteria LAYAK (skip yang tak layak):
+ *   1. status = 'active'          (akun yang di-OFF/nonaktif dilewati)
+ *   2. healthStatus = 'healthy'   (akun bermasalah: login expired / rate-limit — dilewati)
+ *   3. usedToday < dailyLimit     (akun yang sudah tembus limit harian — dilewati; 0 = unlimited)
  *
- * After selection, updates lastAssignedAt to now() so the next call
- * picks a different account (round-robin). Must be called inside a
- * Prisma transaction to guarantee atomicity.
+ * @param restrictAccountIds  Batasi giliran ke akun-akun ini saja (mis. akun 1 site). Kalau array
+ *   (termasuk kosong) → hanya akun tsb; kalau null/undefined → semua akun. Array kosong = tak ada layak.
  *
- * @param tx  A Prisma transaction client (from db.$transaction callback).
+ * Update lastAssignedAt = now() untuk akun terpilih → giliran berikutnya dapat akun lain (merata).
+ * Wajib dipanggil di dalam transaksi Prisma agar atomik.
  */
-export async function selectQrisAccount(tx: TxClient): Promise<QrisAccount> {
+export async function selectQrisAccount(
+  tx: TxClient,
+  restrictAccountIds?: string[] | null,
+): Promise<QrisAccount> {
   const accounts = await tx.qrisAccount.findMany({
     where: {
       status: 'active',
       healthStatus: 'healthy',
+      ...(restrictAccountIds ? { id: { in: restrictAccountIds } } : {}),
     },
-    orderBy: { lastAssignedAt: 'asc' }, // oldest-assigned first = round-robin
+    orderBy: { lastAssignedAt: 'asc' }, // paling lama tak dipakai = giliran
   });
 
-  const eligible = accounts.filter(
-    (a) => a.dailyLimit === 0 || a.usedToday < a.dailyLimit,
-  );
+  const eligible = accounts.filter((a) => a.dailyLimit === 0 || a.usedToday < a.dailyLimit);
 
   if (eligible.length === 0) {
     logger.warn(
-      { totalAccounts: accounts.length },
-      'No eligible QRIS account found (all at limit or inactive)',
+      { totalAccounts: accounts.length, scoped: !!restrictAccountIds },
+      'No eligible QRIS account found (all at limit, off, or unhealthy)',
     );
     throw new NoEligibleAccountError();
   }
 
   const selected = eligible[0];
-
-  // Update lastAssignedAt in the same transaction to ensure atomicity
   await tx.qrisAccount.update({
     where: { id: selected.id },
     data: { lastAssignedAt: new Date() },
   });
 
-  logger.debug({ accountCode: selected.code }, 'QRIS account selected');
+  logger.debug({ accountCode: selected.code }, 'QRIS account selected (round-robin)');
   return selected;
 }
 
-/**
- * Convenience wrapper: runs selectQrisAccount outside a transaction
- * (creates its own). Use this only when you don't need to combine it
- * with other writes atomically.
- */
+/** Round-robin global (semua akun) di transaksi sendiri. */
 export async function selectQrisAccountStandalone(): Promise<QrisAccount> {
   return db.$transaction((tx) => selectQrisAccount(tx as TxClient));
+}
+
+/** Round-robin khusus 1 site — dipakai Generate QR auto (giliran per site). */
+export async function selectQrisAccountForSite(accountIds: string[]): Promise<QrisAccount> {
+  return db.$transaction((tx) => selectQrisAccount(tx as TxClient, accountIds));
 }

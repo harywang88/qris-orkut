@@ -228,29 +228,14 @@
     </select>
   </div>
 
-  <!-- Account selector toolbar -->
-  <div class="gq-toolbar">
-    <p class="gq-label" style="margin-bottom:0">Pilih Akun <span style="color:#f87171">*</span></p>
-  </div>
+  <!-- Akun otomatis (round-robin per site) -->
   <div style="padding:12px 20px;border-bottom:1px solid var(--color-line)">
-    <div style="position:relative">
-      <button class="gq-scroll-btn" style="left:0" onclick="scrollTabs(-1)"><i class="fa-solid fa-chevron-left"></i></button>
-      <button class="gq-scroll-btn" style="right:0" onclick="scrollTabs(1)"><i class="fa-solid fa-chevron-right"></i></button>
-      <div class="gq-tab-bar">
-        <div class="gq-tab-pills">
-          <% accounts.forEach((acct, idx) => { %>
-          <button class="gq-tab"
-                  data-id="<%= acct.id %>"
-                  data-site="<%= acct.siteId || 'none' %>"
-                  onclick="selectAccount('<%= acct.id %>', this)">
-            <span class="t-num">Akun <%= idx + 1 %></span>
-            <span class="t-name"><%= acct.merchantName %></span>
-          </button>
-          <% }) %>
-        </div>
-      </div>
-      <p id="account-empty-hint" style="font-size:12px;color:var(--color-muted);padding:8px 2px;margin:0">Pilih site dulu untuk melihat akun.</p>
+    <p class="gq-label" style="margin-bottom:6px">Akun QRIS</p>
+    <div style="display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.22)">
+      <i class="fa-solid fa-shuffle" style="color:#60a5fa;font-size:15px"></i>
+      <span style="font-size:13px;color:var(--color-ink)">Otomatis <b>bergiliran</b> — sistem memilih akun paling merata di site ini (limit terbagi rata). Akun terpilih tampil setelah QR dibuat.</span>
     </div>
+    <p id="account-empty-hint" style="font-size:12px;color:var(--color-muted);padding:8px 2px 0;margin:0;display:none"></p>
   </div>
 
   <!-- Form body -->
@@ -364,32 +349,13 @@
     validateForm();
   };
 
-  // Fase 4: wajib pilih Site dulu -> chip akun difilter ke site itu; auto-pilih akun pertama.
+  // Auto round-robin: cukup pilih Site — akun dipilih otomatis oleh server saat generate (merata).
   window.selectSite = function (siteId) {
     currentSiteId = siteId;
-    currentAccountId = null;
+    currentAccountId = siteId ? 'auto' : null;
     const out = document.getElementById('qr-output'); if (out) out.style.display = 'none';
     stopStatusPolling();
-    const hint = document.getElementById('account-empty-hint');
-    let firstVisible = null;
-    document.querySelectorAll('.gq-tab').forEach(function (p) {
-      const match = !!siteId && p.dataset.site === siteId;
-      p.style.display = match ? '' : 'none';
-      p.classList.remove('active');
-      if (match && !firstVisible) firstVisible = p;
-    });
-    if (!siteId) {
-      if (hint) { hint.style.display = ''; hint.textContent = 'Pilih site dulu untuk melihat akun.'; }
-      validateForm();
-      return;
-    }
-    if (firstVisible) {
-      if (hint) hint.style.display = 'none';
-      selectAccount(firstVisible.dataset.id, firstVisible);
-    } else {
-      if (hint) { hint.style.display = ''; hint.textContent = 'Belum ada akun di site ini. Assign akun di menu Akun QRIS.'; }
-      validateForm();
-    }
+    validateForm();
   };
 
   // FIX #7: ambil batas min/max merchant (endpoint sudah ada tapi dulu tak dipakai). Cache per akun.
@@ -609,7 +575,7 @@
           'Accept': 'application/json',
         },
         body: JSON.stringify({
-          accountId: currentAccountId,
+          siteId: currentSiteId,
           amount,
           username,
         }),

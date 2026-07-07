@@ -163,6 +163,7 @@ export async function createQrisAccount(data: {
       dailyLimit: data.dailyLimit ?? 30_000_000,
       status: 'active',
       healthStatus: 'healthy',
+      lastAssignedAt: new Date(),
       qrisPayload: data.qrisPayload || null,
       sessionTokenEncrypted: data.sessionToken ? encrypt(data.sessionToken) : null,
       cookiesEncrypted: normalizedAppRegId ? encrypt(normalizedAppRegId) : null,
