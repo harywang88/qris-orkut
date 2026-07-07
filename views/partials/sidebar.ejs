@@ -94,6 +94,7 @@
         <% if (can('generate-qr')) { %><a href="<%= url('/dashboard/history') %>" class="qris-subnav-link">History Generate QR</a><% } %>
         <% if (can('transactions')) { %><a href="<%= url('/dashboard/transactions') %>" class="qris-subnav-link">Transaction</a><% } %>
         <% if (can('mutasi-qris')) { %><a href="<%= url('/dashboard/mutations/qris') %>" class="qris-subnav-link">Mutasi QRIS</a><% } %>
+        <% if (can('mutasi-qris')) { %><a href="<%= url('/dashboard/pending-money') %>" class="qris-subnav-link">Uang Pending</a><% } %>
         <% if (can('mutasi-utama')) { %><a href="<%= url('/dashboard/mutations/utama') %>" class="qris-subnav-link">Mutasi Utama</a><% } %>
         <% if (can('mutasi-madera')) { %><a href="<%= url('/dashboard/mutations/madera') %>" class="qris-subnav-link">Mutasi Madera</a><% } %>
       </div>

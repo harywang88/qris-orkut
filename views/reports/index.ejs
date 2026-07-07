@@ -64,7 +64,7 @@
 </div>
 
 <!-- Overall Summary Cards -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5 qris-card-enter">
+<div class="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-5 qris-card-enter">
   <div class="qris-stat-card">
     <div class="qris-stat-icon qris-stat-icon-blue">
       <i class="fa-solid fa-qrcode"></i>
@@ -103,6 +103,16 @@
       <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Net Amount</p>
       <p class="text-base font-bold leading-tight" style="color:#86efac">Rp <%= overall.netAmount.toLocaleString('id-ID') %></p>
       <p class="text-xs text-muted-2 mt-0.5">setelah Fee + FEE 2</p>
+    </div>
+  </div>
+  <div class="qris-stat-card" style="border-color:rgba(251,191,36,0.25)">
+    <div class="qris-stat-icon" style="background:rgba(251,191,36,0.12);color:#fbbf24">
+      <i class="fa-solid fa-hourglass-half"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Total Uang Pending</p>
+      <p class="text-base font-bold leading-tight" style="color:#fbbf24">Rp <%= (overall.pendingTotal || 0).toLocaleString('id-ID') %></p>
+      <p class="text-xs text-muted-2 mt-0.5"><%= overall.pendingCount || 0 %> mutasi belum ter-match</p>
     </div>
   </div>
 </div>

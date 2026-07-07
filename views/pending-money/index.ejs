@@ -1,0 +1,131 @@
+<%
+  function fmtWib(d) {
+    try {
+      var t = new Date(new Date(d).getTime() + 7 * 3600000);
+      var p = function (n) { return String(n).padStart(2, '0'); };
+      return p(t.getUTCDate()) + '/' + p(t.getUTCMonth() + 1) + ' ' + p(t.getUTCHours()) + ':' + p(t.getUTCMinutes());
+    } catch (e) { return '-'; }
+  }
+%>
+<!-- Header -->
+<div class="qris-page-header flex flex-wrap items-start justify-between gap-4">
+  <div>
+    <h1 class="qris-page-title">Uang <span>Pending</span></h1>
+    <p class="qris-section-sub mt-1">Uang masuk QRIS yang belum ter-match ke transaksi (bayar 2× / QR kadaluarsa)</p>
+  </div>
+</div>
+
+<!-- Ringkasan -->
+<div class="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-5 qris-card-enter">
+  <div class="qris-stat-card" style="border-color:rgba(251,191,36,0.25)">
+    <div class="qris-stat-icon" style="background:rgba(251,191,36,0.12);color:#fbbf24">
+      <i class="fa-solid fa-hourglass-half"></i>
+    </div>
+    <div>
+      <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Total Uang Pending</p>
+      <p class="text-base font-bold leading-tight" style="color:#fbbf24">Rp <%= totalPending.toLocaleString('id-ID') %></p>
+      <p class="text-xs text-muted-2 mt-0.5"><%= rows.length %> mutasi belum ter-match</p>
+    </div>
+  </div>
+</div>
+
+<div class="qris-card p-3 mb-4" style="border-color:rgba(251,191,36,0.2);background:rgba(251,191,36,0.04)">
+  <p class="text-xs text-muted-2"><i class="fa-solid fa-circle-info mr-1" style="color:#fbbf24"></i>
+    "Kaitkan ke member" hanya <b>menandai</b> dugaan pemilik uang (tidak otomatis kredit/refund). Proses kredit/refund tetap manual oleh Anda. Dugaan member diambil dari transaksi hari yang sama dengan nominal yang persis sama.</p>
+</div>
+
+<div class="qris-card p-4 mb-5">
+  <% if (!rows || rows.length === 0) { %>
+    <div class="text-center py-10 text-muted-2">
+      <i class="fa-solid fa-circle-check text-3xl mb-2" style="color:#86efac"></i>
+      <p>Tidak ada uang pending. Semua uang masuk sudah ter-match. 🎉</p>
+    </div>
+  <% } else { %>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-muted border-b border-white/10 text-xs uppercase tracking-wider">
+          <th class="text-left py-2 pr-3">Waktu</th>
+          <th class="text-left py-2 pr-3">Akun / Site</th>
+          <th class="text-right py-2 pr-3">Nominal</th>
+          <th class="text-left py-2 pr-3">Pengirim / RRN</th>
+          <th class="text-left py-2 pr-3">Dugaan Member</th>
+          <th class="text-left py-2">Kaitkan ke Member</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% rows.forEach(function (r) { %>
+          <tr class="border-b border-white/5 align-top">
+            <td class="py-2 pr-3 whitespace-nowrap text-muted-2">
+              <%= fmtWib(r.transactionTime) %>
+              <span class="block text-[10px] text-muted">(<%= r.ageMinutes %> mnt lalu)</span>
+            </td>
+            <td class="py-2 pr-3 whitespace-nowrap">
+              <span class="text-ink font-semibold"><%= r.accountCode %></span>
+              <% if (r.siteName) { %><span class="block text-[10px] text-muted"><%= r.siteName %></span><% } %>
+            </td>
+            <td class="py-2 pr-3 text-right font-mono font-bold whitespace-nowrap" style="color:#fbbf24">Rp <%= r.amount.toLocaleString('id-ID') %></td>
+            <td class="py-2 pr-3">
+              <span class="text-ink"><%= r.issuerName || '-' %></span>
+              <% if (r.rrn) { %><span class="block text-[10px] text-muted font-mono"><%= r.rrn %></span><% } %>
+            </td>
+            <td class="py-2 pr-3">
+              <% if (r.guesses && r.guesses.length) { %>
+                <% r.guesses.forEach(function (g) { %>
+                  <span class="inline-block mb-1 px-2 py-0.5 rounded text-[11px]" style="background:rgba(96,165,250,0.15);color:#93c5fd">
+                    <%= g.userIdExt %> <span class="text-muted">(<%= g.statusPay %>)</span>
+                  </span><br>
+                <% }); %>
+              <% } else { %>
+                <span class="text-[11px] text-muted">— tak ada dugaan —</span>
+              <% } %>
+            </td>
+            <td class="py-2">
+              <% if (r.tag) { %>
+                <div class="text-[11px]">
+                  <span class="px-2 py-0.5 rounded" style="background:rgba(134,239,172,0.15);color:#86efac">
+                    <i class="fa-solid fa-link"></i> <%= r.tag.userIdExt || '(tanpa id)' %>
+                  </span>
+                  <% if (r.tag.note) { %><span class="block text-muted mt-0.5"><%= r.tag.note %></span><% } %>
+                  <button class="text-[11px] text-red-300 mt-1 underline" data-id="<%= r.id %>" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/untag') %>" onclick="untagPending(this)">Lepas</button>
+                </div>
+              <% } else { %>
+                <div class="flex items-center gap-1">
+                  <input id="m_<%= r.id %>" type="text" placeholder="ID member"
+                    value="<%= (r.guesses && r.guesses[0]) ? r.guesses[0].userIdExt : '' %>"
+                    class="text-xs" style="width:120px;padding:4px 8px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.15);border-radius:6px;color:inherit">
+                  <button class="text-xs font-semibold" style="padding:5px 12px;background:#3b82f6;color:#fff;border-radius:6px;border:none;cursor:pointer" data-id="<%= r.id %>" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>" onclick="tagPending(this)">Kaitkan</button>
+                </div>
+              <% } %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<script>
+  async function tagPending(btn) {
+    var id = btn.dataset.id;
+    var el = document.getElementById('m_' + id);
+    var v = el ? el.value.trim() : '';
+    btn.disabled = true;
+    try {
+      var r = await fetch(btn.dataset.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userIdExt: v }),
+      });
+      if (r.ok) { location.reload(); } else { alert('Gagal menyimpan tag'); btn.disabled = false; }
+    } catch (e) { alert('Gagal: ' + e.message); btn.disabled = false; }
+  }
+  async function untagPending(btn) {
+    if (!confirm('Lepas tag member dari uang pending ini?')) return;
+    try {
+      var r = await fetch(btn.dataset.url, { method: 'POST' });
+      if (r.ok) { location.reload(); } else { alert('Gagal'); }
+    } catch (e) { alert('Gagal: ' + e.message); }
+  }
+</script>

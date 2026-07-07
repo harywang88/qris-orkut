@@ -1,0 +1,173 @@
+/**
+ * Uang Pending — mutasi KREDIT QRIS yang belum ter-match ke transaksi
+ * (matchedTransactionId = null), umur > 2 menit.
+ *
+ * Ini uang fisik yang masuk ke saldo tapi tak ada order-nya: bayar QR statis 2×,
+ * bayar QR yang sudah kadaluarsa, dsb. Tujuan: buku tak selisih + tahu pelakunya.
+ *
+ * - Dugaan member: cari Transaction di HARI mutasi, akun sama, finalAmount == amount
+ *   → userIdExt. Akurat karena nominal unik stabil seharian.
+ * - Tag "Kaitkan ke member" (Fase A): TAG saja di JSON sidecar (data/pending-tags.json),
+ *   TANPA auto-kredit — koko kredit/refund manual. Tidak mengubah DB / transaksi.
+ */
+import fs from 'fs';
+import path from 'path';
+import { db } from '../config/database';
+import { logger } from '../config/logger';
+
+const PENDING_MIN_AGE_MS = 2 * 60 * 1000; // 2 menit
+const WIB_MS = 7 * 60 * 60 * 1000;
+const DATA_DIR = path.join(process.cwd(), 'data');
+const TAGS_FILE = path.join(DATA_DIR, 'pending-tags.json');
+
+export interface PendingTag {
+  userIdExt?: string;
+  note?: string;
+  taggedAt: number;
+  taggedBy?: string;
+}
+type PendingTagMap = Record<string, PendingTag>;
+
+function ensureDir(): void {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+  } catch {
+    /* ignore */
+  }
+}
+
+function readTags(): PendingTagMap {
+  try {
+    if (!fs.existsSync(TAGS_FILE)) return {};
+    const raw = JSON.parse(fs.readFileSync(TAGS_FILE, 'utf8'));
+    return raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as PendingTagMap) : {};
+  } catch (err) {
+    logger.error({ err }, 'pending-money: gagal baca tags');
+    return {};
+  }
+}
+
+function writeTags(map: PendingTagMap): void {
+  ensureDir();
+  const tmp = TAGS_FILE + '.tmp';
+  fs.writeFileSync(tmp, JSON.stringify(map, null, 2), 'utf8');
+  fs.renameSync(tmp, TAGS_FILE);
+}
+
+export function setPendingTag(
+  mutationId: string,
+  tag: { userIdExt?: string; note?: string; taggedBy?: string },
+): void {
+  const map = readTags();
+  map[mutationId] = {
+    userIdExt: tag.userIdExt || undefined,
+    note: tag.note || undefined,
+    taggedBy: tag.taggedBy || undefined,
+    taggedAt: Date.now(),
+  };
+  writeTags(map);
+}
+
+export function removePendingTag(mutationId: string): void {
+  const map = readTags();
+  if (map[mutationId]) {
+    delete map[mutationId];
+    writeTags(map);
+  }
+}
+
+function wibDayRange(t: Date): { start: Date; end: Date } {
+  const startMs = Math.floor((t.getTime() + WIB_MS) / 86400000) * 86400000 - WIB_MS;
+  return { start: new Date(startMs), end: new Date(startMs + 86400000) };
+}
+
+export interface PendingGuess {
+  userIdExt: string;
+  qrId: string;
+  finalAmount: number;
+  statusPay: string;
+}
+
+export interface PendingMoneyRow {
+  id: string;
+  qrisAccountId: string;
+  accountCode: string;
+  siteName: string | null;
+  amount: number;
+  issuerName: string | null;
+  rrn: string | null;
+  transactionTime: Date;
+  ageMinutes: number;
+  guesses: PendingGuess[];
+  tag: PendingTag | null;
+}
+
+/** Daftar uang pending (unmatched IN > 2 menit). accountIds opsional = filter scope. */
+export async function listPendingMoney(accountIds?: string[] | null): Promise<PendingMoneyRow[]> {
+  const cutoff = new Date(Date.now() - PENDING_MIN_AGE_MS);
+  const where: Record<string, unknown> = {
+    walletCategory: 'qris',
+    type: 'credit',
+    matchedTransactionId: null,
+    transactionTime: { lte: cutoff },
+  };
+  if (accountIds) where.qrisAccountId = { in: accountIds };
+
+  const muts = await db.mutation.findMany({
+    where,
+    orderBy: { transactionTime: 'desc' },
+    take: 200,
+    include: { qrisAccount: { select: { code: true } } },
+  });
+
+  const tags = readTags();
+  const rows: PendingMoneyRow[] = [];
+  for (const m of muts) {
+    const { start, end } = wibDayRange(m.transactionTime);
+    const cands = await db.transaction.findMany({
+      where: {
+        qrisAccountId: m.qrisAccountId,
+        finalAmount: m.amount,
+        createdAt: { gte: start, lt: end },
+      },
+      select: { qrId: true, userIdExt: true, finalAmount: true, statusPay: true },
+      take: 5,
+    });
+    rows.push({
+      id: m.id,
+      qrisAccountId: m.qrisAccountId,
+      accountCode: m.qrisAccount?.code || '-',
+      siteName: null,
+      amount: m.amount,
+      issuerName: m.issuerName,
+      rrn: m.rrn,
+      transactionTime: m.transactionTime,
+      ageMinutes: Math.floor((Date.now() - m.transactionTime.getTime()) / 60000),
+      guesses: cands.map((c) => ({
+        userIdExt: c.userIdExt,
+        qrId: c.qrId,
+        finalAmount: c.finalAmount,
+        statusPay: c.statusPay,
+      })),
+      tag: tags[m.id] || null,
+    });
+  }
+  return rows;
+}
+
+/** Total uang pending (unmatched IN) dalam periode utk akun tertentu — untuk Laporan (④). */
+export async function pendingMoneyTotal(
+  from: Date,
+  to: Date,
+  accountIds?: string[] | null,
+): Promise<{ total: number; count: number }> {
+  const where: Record<string, unknown> = {
+    walletCategory: 'qris',
+    type: 'credit',
+    matchedTransactionId: null,
+    transactionTime: { gte: from, lte: to },
+  };
+  if (accountIds) where.qrisAccountId = { in: accountIds };
+  const agg = await db.mutation.aggregate({ where, _sum: { amount: true }, _count: true });
+  return { total: agg._sum.amount || 0, count: agg._count || 0 };
+}

@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { db } from '../../config/database';
 import { logger } from '../../config/logger';
 import { listSites, getAccountSiteMap } from '../../shared/site.service';
+import { pendingMoneyTotal } from '../../shared/pending-money.service';
 import { getSiteScopeForUser } from '../../shared/alias-access.service';
 
 // FIX #1: Batas hari dihitung dalam WIB (Asia/Jakarta, UTC+7), BUKAN zona server (UTC).
@@ -235,6 +236,7 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     const chartCounts = bucketResults.map((r) => r.count);
     const chartAmounts = bucketResults.map((r) => r.amount);
 
+    const _pendingAgg = await pendingMoneyTotal(from, to, overallAccIds);
     res.render('reports/index', {
       title: 'Laporan',
       range,
@@ -259,6 +261,8 @@ export async function showReports(req: Request, res: Response): Promise<void> {
         totalFee: overallTotalFee,
         fee2: overallFee2,
         netAmount: overallTotalPaid - overallTotalFee - overallFee2,
+        pendingTotal: _pendingAgg.total,
+        pendingCount: _pendingAgg.count,
       },
       chartBucketDays,
       chartData: {
