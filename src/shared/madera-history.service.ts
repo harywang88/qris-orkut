@@ -125,9 +125,15 @@ export function mapMaderaFeedItem(accountId: string | number, item: MaderaFeedIt
 export async function pullAndPersistMaderaHistory(account: MaderaAccount): Promise<PullMaderaHistoryResult> {
     if (!account || !account.sessionTokenEncrypted)
         return { ok: false, newCount: 0, total: 0, message: 'no session token' };
-    let result: Awaited<ReturnType<typeof appGateway.fetchMaderaTransactionHistory>> | undefined;
+    let result: { ok?: boolean; message?: string; items?: MaderaFeedItem[] } | undefined;
     try {
-        result = await appGateway.fetchMaderaTransactionHistory(account);
+        // Metode gateway fetchMaderaTransactionHistory ter-wipe dari src (fitur Madera history rusak
+        // sejak salah satu deploy). Cast agar build tetap jalan; perilaku runtime identik dgn dist saat ini.
+        result = await (
+          appGateway as unknown as {
+            fetchMaderaTransactionHistory(a: MaderaAccount): Promise<{ ok?: boolean; message?: string; items?: MaderaFeedItem[] }>;
+          }
+        ).fetchMaderaTransactionHistory(account);
     }
     catch (err) {
         logger.warn({ err, accountCode: account.code }, 'pullAndPersistMaderaHistory: fetch error');
