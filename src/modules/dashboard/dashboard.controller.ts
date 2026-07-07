@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
-import type { OutboxEvent } from '@prisma/client';
+import path from 'path';
+import fs from 'fs';
+import { spawnSync } from 'child_process';
+import type { OutboxEvent, QrisAccount, Prisma } from '@prisma/client';
 import { config } from '../../config';
 import { db } from '../../config/database';
 import { logger } from '../../config/logger';
@@ -15,7 +18,7 @@ import {
   reconcileProcessingMaderaTransfers,
 } from '../../shared/settlement.service';
 import { writeAuditLog } from '../../shared/audit-log.service';
-import { getWalletBalance, getWalletLedger } from '../../shared/wallet-ledger.service';
+import { getWalletBalance } from '../../shared/wallet-ledger.service';
 import {
   classifyOrkutMutationDescription,
   resolveOrkutAccountIndex,
@@ -40,8 +43,39 @@ import {
 } from '../../shared/orkut-app-detail.service';
 import { publishMutationUpdated, storeMutationIfNew } from '../../shared/mutation-ingest.service';
 import { listOutboxEventsSince, parseOutboxPayload } from '../../shared/outbox.service';
-import { getPostgresMonitorSnapshot } from '../../shared/postgres-monitor.service';
 import { generateDashboardQrTransaction } from '../../shared/dashboard-generate-qr.service';
+import { mapMaderaFeedItem } from '../../shared/madera-history.service';
+import {
+  getSiteScopeForUser,
+  listAccounts,
+  createAlias,
+  updateAlias,
+  deleteAlias,
+  MENU_DEFS,
+  type AccessUser,
+} from '../../shared/alias-access.service';
+import {
+  accountIdsForSite,
+  attachSiteInfo,
+  buildResolver,
+  getAccountSiteMap,
+  listSites,
+  siteNameForAccount,
+} from '../../shared/site.service';
+
+// ── Scope site untuk alias-tenant (Fase 6) ────────────────────────────────────
+// null = tak dibatasi (master / alias "semua site"). Array = hanya akun site tsb.
+function getScopeAccountIds(user: AccessUser | undefined): string[] | null {
+  const scope = getSiteScopeForUser(user);
+  if (!scope) return null;
+  return accountIdsForSite(scope);
+}
+
+function accountInScope(user: AccessUser | undefined, accountId: string | null | undefined): boolean {
+  const ids = getScopeAccountIds(user);
+  if (ids === null) return true;
+  return !!accountId && ids.includes(accountId);
+}
 
 function startOfDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 0, 0, 0, 0);
@@ -207,7 +241,6 @@ function isUtamaShadowMutation(rawDataJson: string): boolean {
       note?: string;
       ket?: string;
     };
-
     const description = readString(parsed.description || parsed.keterangan || parsed.note || parsed.ket).toLowerCase();
     // Row "Pencairan Saldo QRIS ..." diperlakukan sebagai bayangan QRIS
     // agar Mutasi Utama tetap mengikuti format saldo utama aplikasi.
@@ -232,6 +265,7 @@ function readMutationCategory(rawDataJson: string, storedCategory?: unknown): Mu
     const text = description.toLowerCase();
 
     if (description) {
+      if (text.includes('pencairan saldo qris')) return 'qris';
       if (hasExplicitMaderaMarker(text)) return 'madera';
       if (hasExplicitUtamaMarker(text)) return 'utama';
     }
@@ -636,7 +670,7 @@ function buildMaderaPresentedMutations(
     const inferredFeeAmount = balanceDrift > 2500 ? 2500 : balanceDrift;
 
     if (inferredTransferAmount > 0) {
-      const transferTime = new Date(latestEntryTime.getTime() - 2000);
+      const transferTime = new Date(latestEntryTime.getTime() + 1000);
       const transferDescription = 'BI FAST OUT (Auto Sinkron)';
       dedupedEntries.push({
         id: `${account.id}:inferred:transfer:${transferTime.getTime()}:${inferredTransferAmount}`,
@@ -657,7 +691,7 @@ function buildMaderaPresentedMutations(
     }
 
     if (inferredFeeAmount > 0) {
-      const feeTime = new Date(latestEntryTime.getTime() - 1000);
+      const feeTime = new Date(latestEntryTime.getTime() + 2000);
       const feeDescription = 'BIAYA TRANSFER BI FAST (Auto Sinkron)';
       dedupedEntries.push({
         id: `${account.id}:inferred:fee:${feeTime.getTime()}:${inferredFeeAmount}`,
@@ -702,7 +736,7 @@ function buildMaderaPresentedMutations(
   const projectedEntries = chronologicalEntries.map((entry) => {
     runningBalance = entry.type === 'credit'
       ? runningBalance + entry.amount
-      : Math.max(0, runningBalance - entry.amount);
+      : runningBalance - entry.amount;
     return {
       ...entry,
       balanceAfter: runningBalance,
@@ -716,6 +750,7 @@ function buildMaderaPresentedMutations(
       return right.weight - left.weight;
     });
 
+  const __maderaSiteName = siteNameForAccount(account.id);
   const mutations = sortedEntries.map((entry) => {
     const rrnValue = 'referenceNo' in entry ? entry.referenceNo : null;
 
@@ -755,7 +790,7 @@ function buildMaderaPresentedMutations(
       balanceAfter: entry.balanceAfter,
       time: entry.time,
       createdAt: entry.time,
-      siteName: null,
+      siteName: __maderaSiteName,
       userIdExt: null,
     };
   });
@@ -862,6 +897,19 @@ async function renderMutationsPage(req: Request, res: Response, source: Mutation
 }
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
+// "Kesehatan" LIVE (bukan snapshot Tes Koneksi yg basi & memasukkan cek Report-Web/469 yg kita LEWATI).
+// healthy = aktif + token ada + saldo-sync tak error & tak basi. degraded = jalan tapi error/parsial. down = tak ada token.
+function computeLiveHealth(a: QrisAccount): string {
+  if (a.status !== 'active') return a.healthStatus || 'down';
+  if (!a.sessionTokenEncrypted) return 'down';
+  const errored = !!a.lastBalanceSyncError
+    || a.lastBalanceSyncStatus === 'error'
+    || a.lastBalanceSyncStatus === 'failed';
+  if (errored) return 'degraded';
+  const ageMs = a.lastBalanceSyncAt ? (Date.now() - new Date(a.lastBalanceSyncAt).getTime()) : null;
+  if (ageMs !== null && ageMs > 24 * 60 * 60 * 1000) return 'degraded'; // sync macet >24 jam
+  return 'healthy';
+}
 
 export async function showDashboard(req: Request, res: Response): Promise<void> {
   try {
@@ -920,21 +968,35 @@ export async function showDashboard(req: Request, res: Response): Promise<void> 
       const dayEnd = endOfDay(d);
       const dayTx = recentTx.filter((t) => t.createdAt >= dayStart && t.createdAt <= dayEnd);
       chartCounts.push(dayTx.length);
-      chartAmounts.push(
-        dayTx.filter((t) => t.statusPay === 'paid').reduce((sum, t) => sum + t.finalAmount, 0),
-      );
+      chartAmounts.push(dayTx.filter((t) => t.statusPay === 'paid').reduce((sum, t) => sum + t.finalAmount, 0));
     }
 
-    const recentTransactions = await db.transaction.findMany({
+    const recentTransactionsRaw = await db.transaction.findMany({
       take: 10,
       orderBy: { createdAt: 'desc' },
       include: {
         client: { select: { name: true, panelCode: true } },
-        qrisAccount: { select: { code: true, merchantName: true } },
+        qrisAccount: { select: { id: true, code: true, merchantName: true } },
       },
     });
+    const _resolveSite = buildResolver();
+    const recentTransactions = recentTransactionsRaw.map((tx) => Object.assign({}, tx, { siteName: _resolveSite(tx.qrisAccountId).siteName }));
 
-    const qrisAccounts = await db.qrisAccount.findMany({ orderBy: { code: 'asc' } });
+    const qrisAccountsRaw = await db.qrisAccount.findMany({ orderBy: { code: 'asc' } });
+    // Limit Harian = total PAID hari ini (WIB) per akun (bukan reserve saat generate); auto-reset ganti hari.
+    // Kesehatan = LIVE (computeLiveHealth), bukan snapshot basi -> normal jadi "healthy", bukan "degraded".
+    const WIB_MS = 7 * 60 * 60 * 1000;
+    const todayWibStart = new Date(Math.floor((Date.now() + WIB_MS) / 86400000) * 86400000 - WIB_MS);
+    const paidAggAcc = await db.transaction.groupBy({
+      by: ['qrisAccountId'],
+      where: { statusPay: 'paid', paidAt: { gte: todayWibStart } },
+      _sum: { finalAmount: true },
+    });
+    const paidTodayMap: Record<string, number> = {};
+    for (const r of paidAggAcc) {
+      if (r.qrisAccountId) paidTodayMap[r.qrisAccountId] = r._sum.finalAmount || 0;
+    }
+    const qrisAccounts = qrisAccountsRaw.map((a) => Object.assign({}, a, { usedToday: paidTodayMap[a.id] || 0, healthStatus: computeLiveHealth(a) }));
 
     res.render('dashboard/index', {
       title: 'Dashboard',
@@ -963,69 +1025,19 @@ export async function showDashboard(req: Request, res: Response): Promise<void> 
   }
 }
 
-// ── History: Generate QR ──────────────────────────────────────────────────────
-
-export async function showHistory(req: Request, res: Response): Promise<void> {
-  const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = 50;
-  const offset = (page - 1) * limit;
-
-  try {
-    const where: Record<string, unknown> = {};
-    if (req.query.statusPay) where.statusPay = req.query.statusPay;
-    if (req.query.statusBot) where.statusBot = req.query.statusBot;
-    if (req.query.clientId) where.clientId = req.query.clientId;
-
-    const [transactions, total] = await Promise.all([
-      db.transaction.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        take: limit,
-        skip: offset,
-        include: {
-          client: { select: { name: true, panelCode: true } },
-          qrisAccount: { select: { id: true, code: true, merchantName: true } },
-        },
-      }),
-      db.transaction.count({ where }),
-    ]);
-
-    const [clients, qrisAccounts] = await Promise.all([
-      db.client.findMany({
-        select: { id: true, name: true },
-        orderBy: { name: 'asc' },
-      }),
-      db.qrisAccount.findMany({
-        where: { status: 'active' },
-        select: { id: true, code: true, merchantName: true },
-        orderBy: { code: 'asc' },
-      }),
-    ]);
-
-    res.render('history/index', {
-      title: 'Generate QR',
-      transactions,
-      total,
-      page,
-      totalPages: Math.ceil(total / limit),
-      clients,
-      qrisAccounts,
-      query: req.query,
-      isDev: process.env.NODE_ENV !== 'production',
-    });
-  } catch (err) {
-    logger.error({ err }, 'showHistory error');
-    res.status(500).render('error/500', { title: 'Error' });
-  }
-}
-
+// ── History Generate QR & Transaction: SATU mesin (showTransactions).
+//    /dashboard/history  -> semua status (History Generate QR)
+//    /dashboard/transactions -> dikunci paid (opts.paidOnly). Halaman lama history/index.ejs DIPENSIUNKAN.
 // ── Paid Transactions ─────────────────────────────────────────────────────────
-
-export async function showTransactions(req: Request, res: Response): Promise<void> {
+export async function showTransactions(
+  req: Request,
+  res: Response,
+  opts: { paidOnly?: boolean; title?: string } = {},
+): Promise<void> {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
   const limit = 50;
   const offset = (page - 1) * limit;
-
+  const paidOnly = !!(opts && opts.paidOnly); // menu Transaction = dikunci paid
   try {
     const dateRange = getTransactionDateRange(req.query);
     const where: Record<string, unknown> = {};
@@ -1034,8 +1046,8 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
     const statusPay = typeof req.query.statusPay === 'string' ? req.query.statusPay.trim() : '';
     const statusBot = typeof req.query.statusBot === 'string' ? req.query.statusBot.trim() : '';
     const keyword = typeof req.query.keyword === 'string' ? req.query.keyword.trim() : '';
-    const minAmount = parsePositiveNumber(req.query.minAmount);
-    const maxAmount = parsePositiveNumber(req.query.maxAmount);
+    const nominalRaw = typeof req.query.nominal === 'string' ? req.query.nominal : '';
+    const nominal = parsePositiveNumber(nominalRaw.replace(/[^\d]/g, ''));
 
     if (clientId) where.clientId = clientId;
     if (statusPay) where.statusPay = statusPay;
@@ -1049,11 +1061,8 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
         ...(dateRange.to ? { lte: dateRange.to } : {}),
       };
     }
-    if (minAmount !== null || maxAmount !== null) {
-      where.finalAmount = {
-        ...(minAmount !== null ? { gte: minAmount } : {}),
-        ...(maxAmount !== null ? { lte: maxAmount } : {}),
-      };
+    if (nominal !== null) {
+      where.finalAmount = nominal;
     }
     if (keyword) {
       where.OR = [
@@ -1069,6 +1078,24 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
         { client: { panelCode: { contains: keyword, mode: 'insensitive' } } },
       ];
     }
+    // Filter Site (dari sites.json via akun->site) + scope alias-tenant (Fase 6: showTransactions dulu belum discope).
+    const site = typeof req.query.site === 'string' ? req.query.site.trim() : '';
+    const scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    let siteAccountIds: string[] | null = null;
+    if (site === 'none') {
+      const _allAccts = await db.qrisAccount.findMany({ select: { id: true } });
+      const _map = getAccountSiteMap();
+      siteAccountIds = _allAccts.filter((a) => !_map[a.id]).map((a) => a.id);
+    } else if (site) {
+      siteAccountIds = accountIdsForSite(site);
+    }
+    let effectiveAccountIds: string[] | null = null;
+    if (scopeIds && siteAccountIds) effectiveAccountIds = siteAccountIds.filter((id) => scopeIds.includes(id));
+    else if (scopeIds) effectiveAccountIds = scopeIds;
+    else if (siteAccountIds) effectiveAccountIds = siteAccountIds;
+    if (effectiveAccountIds) where.qrisAccountId = { in: effectiveAccountIds };
+    // Menu Transaction: KUNCI hanya paid (server-side) — QR generate/open/expired mustahil masuk walau via URL.
+    if (paidOnly) where.statusPay = 'paid';
 
     const [transactionsRaw, total] = await Promise.all([
       db.transaction.findMany({
@@ -1094,41 +1121,31 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
       db.transaction.count({ where }),
     ]);
 
-    const transactions = await Promise.all(
-      transactionsRaw.map(async (tx) => {
-        const fallbackMutation = tx.mutations.find((mutation) => mutation.rrn || mutation.issuerName) ?? tx.mutations[0];
-        if (tx.statusPay !== 'paid' || !fallbackMutation) {
-          return tx;
-        }
-
-        const patch: { rrn?: string; issuerName?: string; paidAt?: Date } = {};
-        if (!tx.rrn && fallbackMutation.rrn) patch.rrn = fallbackMutation.rrn;
-        if (!tx.issuerName && fallbackMutation.issuerName) patch.issuerName = fallbackMutation.issuerName;
-        if (!tx.paidAt && fallbackMutation.transactionTime) patch.paidAt = fallbackMutation.transactionTime;
-
-        if (Object.keys(patch).length === 0) {
-          return tx;
-        }
-
-        await db.transaction.update({
-          where: { id: tx.id },
-          data: patch,
-        });
-
-        return {
-          ...tx,
-          ...patch,
-        };
-      }),
-    );
+    const transactions = await Promise.all(transactionsRaw.map(async (tx) => {
+      const fallbackMutation = tx.mutations.find((mutation) => mutation.rrn || mutation.issuerName) ?? tx.mutations[0];
+      if (tx.statusPay !== 'paid' || !fallbackMutation) {
+        return tx;
+      }
+      const patch: { rrn?: string; issuerName?: string; paidAt?: Date } = {};
+      if (!tx.rrn && fallbackMutation.rrn) patch.rrn = fallbackMutation.rrn;
+      if (!tx.issuerName && fallbackMutation.issuerName) patch.issuerName = fallbackMutation.issuerName;
+      if (!tx.paidAt && fallbackMutation.transactionTime) patch.paidAt = fallbackMutation.transactionTime;
+      if (Object.keys(patch).length === 0) {
+        return tx;
+      }
+      await db.transaction.update({
+        where: { id: tx.id },
+        data: patch,
+      });
+      return {
+        ...tx,
+        ...patch,
+      };
+    }));
 
     const [clients, qrisAccounts, paidAgg, statusPayAgg, statusBotAgg] = await Promise.all([
       db.client.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-      db.qrisAccount.findMany({
-        where: { status: 'active' },
-        select: { id: true, code: true, merchantName: true },
-        orderBy: { code: 'asc' },
-      }),
+      db.qrisAccount.findMany({ select: { id: true, code: true, merchantName: true }, orderBy: { code: 'asc' } }),
       db.transaction.aggregate({ where, _sum: { finalAmount: true, feeAmount: true } }),
       db.transaction.groupBy({
         by: ['statusPay'],
@@ -1141,7 +1158,6 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
         _count: { _all: true },
       }),
     ]);
-
     const totalPaid = paidAgg._sum.finalAmount ?? 0;
     const totalFee = paidAgg._sum.feeAmount ?? 0;
     const statusPayMap = statusPayAgg.reduce<Record<string, number>>((acc, row) => {
@@ -1156,15 +1172,22 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
     const paidCount = statusPayMap.paid ?? 0;
     const expiredCount = statusPayMap.expired ?? 0;
     const reviewCount = statusBotMap.manual_review ?? 0;
-
+    const _resolveSite = buildResolver();
+    const transactionsWithSite = transactions.map((tx) => Object.assign({}, tx, { siteName: _resolveSite(tx.qrisAccountId).siteName }));
+    // Sematkan siteId ke tiap akun QRIS agar dropdown filter Akun bisa disaring per Site (client-side).
+    const qrisAccountsWithSite = qrisAccounts.map((a) => ({ id: a.id, code: a.code, merchantName: a.merchantName, siteId: _resolveSite(a.id).siteId || 'none' }));
+    const _scopeSite = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const sites = _scopeSite ? listSites().filter((s) => s.id === _scopeSite) : listSites();
     res.render('transactions/index', {
-      title: 'Transaksi QR',
-      transactions,
+      title: opts.title || 'Transaksi QR',
+      paidOnly,
+      transactions: transactionsWithSite,
       total,
       page,
       totalPages: Math.ceil(total / limit),
       clients,
-      qrisAccounts,
+      qrisAccounts: qrisAccountsWithSite,
+      sites,
       totalPaid,
       totalFee,
       query: {
@@ -1177,8 +1200,7 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
         clientId,
         statusPay,
         statusBot,
-        minAmount: minAmount !== null ? String(minAmount) : typeof req.query.minAmount === 'string' ? req.query.minAmount : '',
-        maxAmount: maxAmount !== null ? String(maxAmount) : typeof req.query.maxAmount === 'string' ? req.query.maxAmount : '',
+        nominal: nominalRaw,
       },
       stats: {
         openCount,
@@ -1195,18 +1217,15 @@ export async function showTransactions(req: Request, res: Response): Promise<voi
 }
 
 // ── Mutations ─────────────────────────────────────────────────────────────────
-
 export async function getTransactionsSnapshotApi(req: Request, res: Response): Promise<void> {
   try {
     const qrIds = Array.isArray(req.body?.qrIds)
       ? req.body.qrIds.filter((value: unknown): value is string => typeof value === 'string' && value.trim().length > 0).slice(0, 100)
       : [];
-
     if (qrIds.length === 0) {
       res.json({ ok: true, transactions: [] });
       return;
     }
-
     const transactions = await db.transaction.findMany({
       where: { qrId: { in: qrIds } },
       select: {
@@ -1231,43 +1250,95 @@ export async function getTransactionsSnapshotApi(req: Request, res: Response): P
         },
       },
     });
-
-    const snapshot = await Promise.all(
-      transactions.map(async (tx) => {
-        const fallbackMutation = tx.mutations.find((mutation) => mutation.rrn || mutation.issuerName) ?? tx.mutations[0] ?? null;
-        const nextRrn = tx.rrn || fallbackMutation?.rrn || null;
-        const nextIssuer = tx.issuerName || fallbackMutation?.issuerName || null;
-        const nextPaidAt = tx.paidAt || fallbackMutation?.transactionTime || null;
-
-        if (tx.statusPay === 'paid' && ((!tx.rrn && nextRrn) || (!tx.issuerName && nextIssuer) || (!tx.paidAt && nextPaidAt))) {
-          await db.transaction.update({
-            where: { qrId: tx.qrId },
-            data: {
-              ...(tx.rrn ? {} : { rrn: nextRrn ?? undefined }),
-              ...(tx.issuerName ? {} : { issuerName: nextIssuer ?? undefined }),
-              ...(tx.paidAt ? {} : { paidAt: nextPaidAt ?? undefined }),
-            },
-          });
-        }
-
-        return {
-          qrId: tx.qrId,
-          qrisAccountId: tx.qrisAccountId,
-          statusPay: tx.statusPay,
-          statusBot: tx.statusBot,
-          rrn: nextRrn,
-          issuerName: nextIssuer,
-          paidAt: nextPaidAt,
-          createdAt: tx.createdAt,
-          expiresAt: tx.expiresAt,
-        };
-      }),
-    );
-
+    const snapshot = await Promise.all(transactions.map(async (tx) => {
+      const fallbackMutation = tx.mutations.find((mutation) => mutation.rrn || mutation.issuerName) ?? tx.mutations[0] ?? null;
+      const nextRrn = tx.rrn || fallbackMutation?.rrn || null;
+      const nextIssuer = tx.issuerName || fallbackMutation?.issuerName || null;
+      const nextPaidAt = tx.paidAt || fallbackMutation?.transactionTime || null;
+      if (tx.statusPay === 'paid' && ((!tx.rrn && nextRrn) || (!tx.issuerName && nextIssuer) || (!tx.paidAt && nextPaidAt))) {
+        await db.transaction.update({
+          where: { qrId: tx.qrId },
+          data: {
+            ...(tx.rrn ? {} : { rrn: nextRrn ?? undefined }),
+            ...(tx.issuerName ? {} : { issuerName: nextIssuer ?? undefined }),
+            ...(tx.paidAt ? {} : { paidAt: nextPaidAt ?? undefined }),
+          },
+        });
+      }
+      return {
+        qrId: tx.qrId,
+        qrisAccountId: tx.qrisAccountId,
+        statusPay: tx.statusPay,
+        statusBot: tx.statusBot,
+        rrn: nextRrn,
+        issuerName: nextIssuer,
+        paidAt: nextPaidAt,
+        createdAt: tx.createdAt,
+        expiresAt: tx.expiresAt,
+      };
+    }));
     res.json({ ok: true, transactions: snapshot });
   } catch (err) {
     logger.error({ err }, 'getTransactionsSnapshotApi error');
     res.status(500).json({ ok: false, error: 'Gagal mengambil snapshot transaksi.' });
+  }
+}
+
+// Transaksi TERBARU (utk live "baris baru" di menu Transaction). Murni baca DB LOKAL (tanpa OrderKuota).
+// Format baris IDENTIK dgn tableData di views/transactions/index.ejs supaya bisa langsung addData.
+export async function getLatestTransactionsApi(req: Request, res: Response): Promise<void> {
+  try {
+    const take = Math.min(50, Math.max(1, parseInt(String(req.query?.take ?? '30'), 10) || 30));
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const transactionsRaw = await db.transaction.findMany({
+      where: _scopeIds ? { qrisAccountId: { in: _scopeIds } } : undefined,
+      orderBy: [{ createdAt: 'desc' }, { updatedAt: 'desc' }],
+      take,
+      include: {
+        client: { select: { name: true, panelCode: true } },
+        qrisAccount: { select: { id: true, code: true, merchantName: true } },
+        mutations: {
+          select: { rrn: true, issuerName: true, transactionTime: true, createdAt: true },
+          orderBy: [{ transactionTime: 'desc' }, { createdAt: 'desc' }],
+          take: 3,
+        },
+      },
+    });
+    const _resolveSite = buildResolver();
+    const transactions = transactionsRaw.map((tx) => {
+      const fb = tx.mutations.find((m) => m.rrn || m.issuerName) ?? tx.mutations[0] ?? null;
+      return {
+        id: tx.id,
+        qrId: tx.qrId,
+        qrisAccountId: tx.qrisAccountId,
+        clientName: tx.client?.name || '-',
+        panelCode: tx.client?.panelCode || '-',
+        accountCode: tx.qrisAccount.code,
+        merchantName: tx.qrisAccount.merchantName,
+        requestedAmount: tx.requestedAmount,
+        finalAmount: tx.finalAmount,
+        feeAmount: tx.feeAmount || 0,
+        uniqueCode: tx.uniqueCode,
+        statusPay: tx.statusPay,
+        statusBot: tx.statusBot,
+        expiresAt: tx.expiresAt,
+        paidAt: tx.paidAt || fb?.transactionTime || null,
+        createdAt: tx.createdAt,
+        note: tx.note,
+        issuerName: tx.issuerName || fb?.issuerName || null,
+        rrn: tx.rrn || fb?.rrn || null,
+        receiptUrl: tx.receiptUrl,
+        qrImageBase64: tx.qrImageBase64,
+        userIdExt: tx.userIdExt,
+        externalReference: tx.externalReference,
+        metadataJson: tx.metadataJson,
+        siteName: _resolveSite(tx.qrisAccountId).siteName,
+      };
+    });
+    res.json({ ok: true, transactions });
+  } catch (err) {
+    logger.error({ err }, 'getLatestTransactionsApi error');
+    res.status(500).json({ ok: false, error: 'Gagal mengambil transaksi terbaru.' });
   }
 }
 
@@ -1296,10 +1367,15 @@ export async function showMutationsQris(req: Request, res: Response): Promise<vo
         healthStatus: true,
       },
     });
-
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const _scopeSite = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const sites = _scopeSite ? listSites().filter((s) => s.id === _scopeSite) : listSites();
+    const _resolveSite = buildResolver();
+    const accountsWithSite = (_scopeIds ? accounts.filter((a) => _scopeIds.includes(a.id)) : accounts).map((a) => Object.assign({}, a, { siteName: _resolveSite(a.id).siteName || '' }));
     res.render('mutations/qris', {
       title: 'Mutasi QRIS',
-      accounts,
+      accounts: accountsWithSite,
+      sites,
       streamUrl: withBasePath('/dashboard/api/mutations/stream', config.APP_BASE_PATH),
     });
   } catch (err) {
@@ -1321,35 +1397,29 @@ function formatOutboxSseEvent(event: OutboxEvent) {
 
 export async function streamMutationsSse(req: Request, res: Response): Promise<void> {
   const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : undefined;
-  let cursor = new Date(Date.now() - 5_000);
+  let cursor = new Date(Date.now() - 5000);
   let lastEventId = '';
-
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
-
   const send = (eventName: string, data: Record<string, unknown>) => {
     res.write(`event: ${eventName}\n`);
     res.write(`data: ${JSON.stringify(data)}\n\n`);
   };
-
   send('ready', {
     ok: true,
     accountId: accountId ?? null,
     connectedAt: new Date().toISOString(),
   });
-
   const heartbeat = setInterval(() => {
     send('heartbeat', { ts: new Date().toISOString() });
-  }, 15_000);
-
+  }, 15000);
   const watcher = setInterval(async () => {
     try {
       const events = await listOutboxEventsSince(cursor, lastEventId, accountId);
       if (events.length === 0) return;
-
       cursor = events[events.length - 1].createdAt;
       lastEventId = events[events.length - 1].id;
       send('mutation.delta', {
@@ -1361,8 +1431,7 @@ export async function streamMutationsSse(req: Request, res: Response): Promise<v
       logger.error({ err, accountId }, 'streamMutationsSse watcher error');
       send('error', { message: 'stream_error' });
     }
-  }, 1_000);
-
+  }, 1000);
   req.on('close', () => {
     clearInterval(heartbeat);
     clearInterval(watcher);
@@ -1381,9 +1450,15 @@ export async function showMutationsUtama(req: Request, res: Response): Promise<v
         lastBalanceSyncStatus: true, healthStatus: true,
       },
     });
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const _scopeSite = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const sites = _scopeSite ? listSites().filter((s) => s.id === _scopeSite) : listSites();
+    const _resolveSite = buildResolver();
+    const accountsWithSite = (_scopeIds ? accounts.filter((a) => _scopeIds.includes(a.id)) : accounts).map((a) => Object.assign({}, a, { siteName: _resolveSite(a.id).siteName || '' }));
     res.render('mutations/utama', {
       title: 'Saldo Utama',
-      accounts,
+      accounts: accountsWithSite,
+      sites,
       walletBucket: 'utama',
       walletRefresh: 'utama',
       walletField: 'lastMainBalance',
@@ -1414,9 +1489,16 @@ export async function showMutationsMadera(req: Request, res: Response): Promise<
         lastBalanceSyncStatus: true, healthStatus: true,
       },
     });
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const _scopeSite = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const sites = _scopeSite ? listSites().filter((s) => s.id === _scopeSite) : listSites();
+    const _resolveSite = buildResolver();
+    const accountsWithSite = (_scopeIds ? accounts.filter((a) => _scopeIds.includes(a.id)) : accounts).map((a) => Object.assign({}, a, { siteName: _resolveSite(a.id).siteName || '' }));
     res.render('mutations/utama', {
       title: 'Saldo Madera',
-      accounts,
+      accounts: accountsWithSite,
+      sites,
+      streamUrl: withBasePath('/dashboard/api/mutations/stream', config.APP_BASE_PATH),
       walletBucket: 'madera',
       walletRefresh: 'madera',
       walletField: 'lastMaderaBalance',
@@ -1434,13 +1516,267 @@ export async function showMutationsMadera(req: Request, res: Response): Promise<
 }
 
 // ── Mutations JSON (for 2-second frontend poll) ───────────────────────────────
+export async function showMaderaNobuHistory(req: Request, res: Response): Promise<void> {
+  try {
+    const accountsRaw = await db.qrisAccount.findMany({
+      where: { status: 'active' },
+      orderBy: { code: 'asc' },
+      select: { id: true, code: true, merchantName: true, lastMaderaBalance: true, healthStatus: true },
+    });
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const _scoped = _scopeIds ? accountsRaw.filter((a) => _scopeIds.includes(a.id)) : accountsRaw;
+    const _resolveSite = buildResolver();
+    const accounts = _scoped.map((a) => Object.assign({}, a, { siteName: _resolveSite(a.id).siteName }));
+    const _scopeSite = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const sites = _scopeSite ? listSites().filter((s) => s.id === _scopeSite) : listSites();
+    res.render('madera-nobu/index', { title: 'History Transaksi Nobu', accounts, sites });
+  } catch (err) {
+    logger.error({ err }, 'showMaderaNobuHistory error');
+    res.status(500).render('error/500', { title: 'Error' });
+  }
+}
+
+const capturingProofs = new Set<string>();
+
+export async function handleCaptureSettlementProofApi(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id || '');
+    const dir = path.join(process.cwd(), 'data', 'nobu-proofs');
+    const outPath = path.join(dir, id + '.png');
+    if (fs.existsSync(outPath)) { res.json({ ok: true, status: 'ready' }); return; }
+    if (capturingProofs.has(id)) { res.json({ ok: true, status: 'processing' }); return; }
+    const settlement = await db.settlementRequest.findUnique({ where: { id } });
+    if (!settlement || !settlement.qrisAccountId) { res.status(404).json({ ok: false, message: 'Transaksi tidak ditemukan.' }); return; }
+    const account = await db.qrisAccount.findUnique({ where: { id: settlement.qrisAccountId } });
+    if (!account) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; }
+    capturingProofs.add(id);
+    (async () => {
+      try {
+        const urlRes = await (appGateway as any).fetchMaderaHistoryWebviewUrl(account);
+        if (urlRes && urlRes.ok && urlRes.url) {
+          try { fs.mkdirSync(dir, { recursive: true }); } catch (e) {}
+          const shot = await (appGateway as any).captureMaderaHistoryScreenshotAsync(urlRes.url, outPath, account, settlement.amount);
+          logger.info({ id, ok: shot && shot.ok, msg: shot && shot.message }, 'captureProof done');
+        }
+        else { logger.warn({ id, msg: urlRes && urlRes.message }, 'captureProof: url gagal'); }
+      }
+      catch (err) { logger.error({ err, id }, 'captureProof background error'); }
+      finally { capturingProofs.delete(id); }
+    })();
+    res.json({ ok: true, status: 'processing' });
+  } catch (err) {
+    logger.error({ err }, 'handleCaptureSettlementProofApi error');
+    res.status(500).json({ ok: false, message: 'Gagal memulai pengambilan bukti.' });
+  }
+}
+
+export async function getSettlementProofApi(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String(req.params.id || '').replace(/[^A-Za-z0-9_-]/g, '');
+    const file = path.join(process.cwd(), 'data', 'nobu-proofs', id + '.png');
+    if (!id || !fs.existsSync(file)) { res.status(404).send('Bukti belum tersedia.'); return; }
+    res.setHeader('Content-Type', 'image/png');
+    res.setHeader('Content-Disposition', 'attachment; filename="bukti-nobu-' + id + '.png"');
+    fs.createReadStream(file).pipe(res);
+  } catch (err) {
+    logger.error({ err }, 'getSettlementProofApi error');
+    res.status(500).send('Gagal mengunduh bukti.');
+  }
+}
+
+export async function getSettlementProofsListApi(req: Request, res: Response): Promise<void> {
+  try {
+    const dir = path.join(process.cwd(), 'data', 'nobu-proofs');
+    let ids: string[] = [];
+    try { ids = fs.readdirSync(dir).filter((f) => f.endsWith('.png')).map((f) => f.slice(0, -4)); } catch (e) {}
+    res.json({ ok: true, ids, processing: Array.from(capturingProofs) });
+  } catch (err) {
+    res.status(500).json({ ok: false, ids: [], processing: [] });
+  }
+}
+
+export async function getMaderaNobuWebviewApi(req: Request, res: Response): Promise<void> {
+  try {
+    const account = await db.qrisAccount.findUnique({ where: { id: req.params.accountId } });
+    if (!account) {
+      res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' });
+      return;
+    }
+    const result = await (appGateway as any).fetchMaderaHistoryWebviewUrl(account);
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, 'getMaderaNobuWebviewApi error');
+    res.status(500).json({ ok: false, message: 'Gagal mengambil link webview.' });
+  }
+}
+
+export async function getMaderaNobuHistoryApi(req: Request, res: Response): Promise<void> {
+  try {
+    const account = await db.qrisAccount.findUnique({ where: { id: req.params.accountId } });
+    if (!account) {
+      res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' });
+      return;
+    }
+    const result = await (appGateway as any).fetchMaderaTransactionHistory(account);
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, 'getMaderaNobuHistoryApi error');
+    res.status(500).json({ ok: false, message: 'Gagal mengambil histori Madera.' });
+  }
+}
+
+export async function getBridgeStatusApi(req: Request, res: Response): Promise<void> {
+  try {
+    const account = await db.qrisAccount.findFirst({
+      where: { status: 'active', sessionTokenEncrypted: { not: null } },
+      orderBy: { code: 'asc' },
+    });
+    if (!account) { res.json({ ok: false, reason: 'no_account', message: 'Tidak ada akun aktif bersession.' }); return; }
+    const r = await (appGateway as any).pingEgress(account, 6000);
+    res.json({ ok: !!(r && r.ok), latencyMs: r && r.latencyMs, message: (r && r.message) || null });
+  } catch (err) {
+    logger.error({ err }, 'getBridgeStatusApi error');
+    res.status(500).json({ ok: false, message: 'Gagal cek status bridge.' });
+  }
+}
+
+async function buildAllAccountsMaderaFromDb(limit: number) {
+  const take = Math.min(Math.max(limit, 500) * 3, 3000);
+  const accounts = await db.qrisAccount.findMany({
+    where: { status: 'active' },
+    orderBy: { code: 'asc' },
+    select: { id: true, code: true, merchantName: true, orkutAccountIndex: true, lastMaderaBalance: true },
+  });
+  if (accounts.length === 0)
+    return { mutations: [] as PresentedQrisMutation[], note: null, balances: {} as Record<string, number> };
+  const balances: Record<string, number> = {};
+  for (const acc of accounts)
+    balances[acc.id] = acc.lastMaderaBalance ?? 0;
+  const [allMutations, allSettlements] = await Promise.all([
+    db.mutation.findMany({
+      // Future-proof: ambil HANYA baris topup Madera (langka) di DB, jangan 3000 baris semua kategori.
+      // Superset dari isMaderaTopupDescription (JS filter tetap jalan) -> tak ada topup Madera hilang
+      // walau mutasi QRIS menumpuk ribuan. Cocokkan penanda di dalam rawDataJson (SQLite LIKE = case-insensitive ASCII).
+      where: {
+        OR: [
+          { rawDataJson: { contains: 'Pindah Saldo ke Madera' } },
+          { rawDataJson: { contains: 'Topup Madera' } },
+        ],
+      },
+      orderBy: { transactionTime: 'desc' },
+      take,
+      select: { qrisAccountId: true, amount: true, rawDataJson: true, transactionTime: true },
+    }),
+    db.settlementRequest.findMany({
+      where: { status: 'done', fromWallet: 'madera', toWallet: 'bank' },
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: { id: true, qrisAccountId: true, fromWallet: true, toWallet: true, amount: true, referenceNo: true, note: true, createdAt: true, processedAt: true },
+    }),
+  ]);
+  const topupsByAccount = new Map<string, MaderaTopupHistoryEntry[]>();
+  for (const mutation of allMutations) {
+    if (!mutation.qrisAccountId)
+      continue;
+    const raw = parseRawMutationPayload(mutation.rawDataJson);
+    const description = readString(raw.keterangan) || readString(raw.description) || readString(raw.note) || readString(raw.ket);
+    if (!isMaderaTopupDescription(description))
+      continue;
+    const referenceNo = extractMaderaReference(description) || readString(raw.no_referensi) || readString(raw.reference_no) || null;
+    const list = topupsByAccount.get(mutation.qrisAccountId) || [];
+    list.push({ amount: mutation.amount, description, rawDataJson: mutation.rawDataJson, referenceNo, time: mutation.transactionTime });
+    topupsByAccount.set(mutation.qrisAccountId, list);
+  }
+  const settlementsByAccount = new Map<string, typeof allSettlements[number][]>();
+  for (const settlement of allSettlements) {
+    if (!settlement.qrisAccountId)
+      continue;
+    const list = settlementsByAccount.get(settlement.qrisAccountId) || [];
+    list.push(settlement);
+    settlementsByAccount.set(settlement.qrisAccountId, list);
+  }
+  let merged: PresentedQrisMutation[] = [];
+  for (const account of accounts) {
+    const topups = topupsByAccount.get(account.id) || [];
+    const settlements = settlementsByAccount.get(account.id) || [];
+    if (topups.length === 0 && settlements.length === 0)
+      continue;
+    const built = buildMaderaPresentedMutations(account, topups, settlements, account.lastMaderaBalance);
+    merged = merged.concat(built.mutations);
+  }
+  merged.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+  return { mutations: merged, note: null, balances };
+}
+
+// System B Madera: baca baris mutasi Madera ASLI dari DB (walletCategory='madera') utk 1 akun.
+// Saldo per baris DIHITUNG dari lastMaderaBalance (saldo terkini asli) berjalan mundur:
+// baris terbaru saldoAkhir = lastMaderaBalance, lalu tiap baris lebih lama dibalik sesuai debet/kredit.
+// TIDAK ada rekonstruksi / Auto Sinkron — deskripsi, nominal, tipe, waktu semua dari feed OrderKuota.
+async function buildMaderaRealRowsForAccount(
+  account: { id: string; code: string; merchantName: string; orkutAccountIndex: number | null; lastMaderaBalance: number | null },
+  source: MutationSource,
+  limit: number,
+) {
+  const rows = await db.mutation.findMany({
+    where: { qrisAccountId: account.id, walletCategory: 'madera' },
+    orderBy: { transactionTime: 'desc' },
+    take: limit,
+  });
+  let running = typeof account.lastMaderaBalance === 'number' ? account.lastMaderaBalance : 0;
+  const __accSiteName = siteNameForAccount(account.id);
+  return rows.map((m) => {
+    const balanceAfter = running;
+    const balanceBefore = m.type === 'credit' ? running - m.amount : running + m.amount;
+    running = balanceBefore;
+    const parsedRaw = parseRawMutationPayload(m.rawDataJson) as { description?: string; keterangan?: string };
+    const description = parsedRaw.description ?? parsedRaw.keterangan ?? '';
+    const presentation = parseMutationPresentation(m.rawDataJson, {
+      type: m.type,
+      issuerName: m.issuerName,
+      rrn: m.rrn ?? null,
+      description,
+      transactionTime: m.transactionTime,
+      matched: false,
+    });
+    return {
+      id: m.id,
+      source,
+      accountCode: account.code,
+      merchant: account.merchantName,
+      settlementIndex: account.orkutAccountIndex ?? null,
+      qrisAccountId: account.id,
+      category: 'madera',
+      categoryLabel: getCategoryLabel('madera'),
+      walletLabel: getCategoryLabel('madera'),
+      amount: m.amount,
+      type: m.type,
+      issuerName: m.issuerName,
+      rrn: presentation.rrnDisplay,
+      matched: false,
+      statusLabel: presentation.reconciliationLabel,
+      statusKind: 'unmatched',
+      statusCode: presentation.statusCode,
+      statusText: presentation.statusText,
+      description: presentation.descriptionLine,
+      senderName: presentation.senderName,
+      bankEwallet: presentation.bankEwallet,
+      brandName: presentation.brandName,
+      displayTime: presentation.displayTime,
+      rawDataJson: m.rawDataJson,
+      balanceAfter,
+      time: m.transactionTime,
+      createdAt: m.createdAt,
+      siteName: __accSiteName,
+      userIdExt: null,
+    };
+  });
+}
 
 export async function getMutationsJson(req: Request, res: Response): Promise<void> {
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
     const source = normalizeMutationSource(req.query.source);
     const bucket = normalizeQrisBucket(req.query.bucket);
-
     if (source === 'qris') {
       const where: Record<string, unknown> = {};
       const targetAccountId = typeof req.query.accountId === 'string' ? req.query.accountId : null;
@@ -1463,157 +1799,58 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
           },
         })
         : null;
-      if (
-        targetAccountId &&
+      // Fase 6: scope alias-tenant. Akun di luar site -> tolak (kosong).
+      const scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+      if (scopeIds && targetAccountId && !scopeIds.includes(targetAccountId)) {
+        res.json({ ok: true, source, bucket, total: 0, currentBalance: null, balanceSummary: await getQrisBalanceSummary(), note: null, bucketCounts: { qris: 0, utama: 0, madera: 0 }, mutations: [] });
+        return;
+      }
+      // Web report keblok 469 dari IP VPS. Akun yang punya app-API (session token) sudah dapat mutasi
+      // dari worker (app-API via bridge) -> LEWATI web report. Hanya akun tanpa app-API yang coba report.
+      if (targetAccountId &&
         targetAccount &&
         (bucket === 'qris' || bucket === 'utama') &&
-        (targetAccount.webCookiesEncrypted || targetAccount.cookiesEncrypted)
-      ) {
-        await syncMerchantMutationsFromReportIfStale(targetAccount, bucket, 15_000).catch((err) => {
-          logger.warn(
-            { err, accountCode: targetAccount.code, bucket },
-            'getMutationsJson: unable to sync report mutations before reading table',
-          );
+        !targetAccount.sessionTokenEncrypted &&
+        (targetAccount.webCookiesEncrypted || targetAccount.cookiesEncrypted)) {
+        await syncMerchantMutationsFromReportIfStale(targetAccount, bucket, 15000).catch((err) => {
+          logger.warn({ err, accountCode: targetAccount.code, bucket }, 'getMutationsJson: unable to sync report mutations before reading table');
         });
       }
+      if (bucket === 'madera' && !targetAccountId) {
+        // Semua Akun: baca baris Madera ASLI per akun dari DB (worker yang menariknya saat saldo berubah),
+        // hitung saldo berjalan per akun, lalu gabung & urut waktu. Baca DB murni -> cepat seperti QRIS.
+        const maderaAccounts = await db.qrisAccount.findMany({
+          where: scopeIds ? { status: 'active', id: { in: scopeIds } } : { status: 'active' },
+          orderBy: { code: 'asc' },
+          select: { id: true, code: true, merchantName: true, orkutAccountIndex: true, lastMaderaBalance: true },
+        });
+        const perAccount = await Promise.all(maderaAccounts.map((acc) => buildMaderaRealRowsForAccount(acc, source, limit)));
+        const merged = perAccount.flat().sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+        const balances: Record<string, number> = {};
+        for (const acc of maderaAccounts) {
+          balances[acc.id] = typeof acc.lastMaderaBalance === 'number' ? acc.lastMaderaBalance : 0;
+        }
+        res.json({
+          ok: true,
+          source,
+          bucket,
+          total: merged.length,
+          currentBalance: null,
+          accountBalances: balances,
+          balanceSummary: await getQrisBalanceSummary(),
+          note: null,
+          bucketCounts: { qris: 0, utama: 0, madera: merged.length },
+          mutations: merged.slice(0, limit),
+        });
+        return;
+      }
       if (bucket === 'madera' && targetAccountId && targetAccount) {
-        await reconcileProcessingMaderaTransfers(targetAccountId).catch((err) => {
-          logger.warn({ err, accountId: targetAccountId }, 'getMutationsJson: unable to reconcile madera transfers');
-        });
-
-        let nextMainBalance = targetAccount.lastMainBalance;
-        let nextMaderaBalance = targetAccount.lastMaderaBalance;
-        let topupHistory: MaderaTopupHistoryEntry[] = [];
-
-        if (targetAccount.sessionTokenEncrypted) {
-          const [history, overview] = await Promise.all([
-            appGateway.fetchBalanceHistory(targetAccount),
-            appGateway.fetchMaderaTransferOverview(targetAccount).catch(() => null),
-          ]);
-
-          nextMainBalance = history.mainBalance ?? nextMainBalance;
-          nextMaderaBalance = overview?.accountBalance ?? nextMaderaBalance;
-
-          for (const mutation of history.mutations) {
-            await storeMutationIfNew({
-              qrisAccountId: targetAccount.id,
-              amount: mutation.amount,
-              type: mutation.type,
-              balanceBefore: mutation.balanceBefore,
-              balanceAfter: mutation.balanceAfter,
-              issuerName: mutation.issuerName ?? null,
-              rrn: mutation.rrn ?? null,
-              walletCategory: mutation.walletCategory ?? null,
-              transactionTime: mutation.transactionTime,
-              rawHash: mutation.rawHash,
-              rawDataJson: mutation.rawDataJson,
-            }).catch(() => null);
-          }
-
-          topupHistory = history.mutations
-            .map((mutation) => {
-              const raw = parseRawMutationPayload(mutation.rawDataJson);
-              const description =
-                readString(raw.keterangan) ||
-                readString(raw.description) ||
-                readString(raw.note) ||
-                readString(raw.ket);
-              if (!isMaderaTopupDescription(description)) return null;
-              const referenceNo = extractMaderaReference(description)
-                || readString(raw.no_referensi)
-                || readString(raw.reference_no)
-                || null;
-              return {
-                amount: mutation.amount,
-                description,
-                rawDataJson: mutation.rawDataJson,
-                referenceNo,
-                time: mutation.transactionTime,
-              };
-            })
-            .filter((entry): entry is MaderaTopupHistoryEntry => entry !== null);
-        }
-
-        if (topupHistory.length === 0) {
-          const fallbackTopups = await db.mutation.findMany({
-            where: {
-              qrisAccountId: targetAccountId,
-            },
-            orderBy: { transactionTime: 'desc' },
-            take: Math.max(limit, 500),
-            select: {
-              amount: true,
-              rawDataJson: true,
-              transactionTime: true,
-            },
-          });
-
-          topupHistory = fallbackTopups
-            .map((mutation) => {
-              const raw = parseRawMutationPayload(mutation.rawDataJson);
-              const description =
-                readString(raw.keterangan) ||
-                readString(raw.description) ||
-                readString(raw.note) ||
-                readString(raw.ket);
-              if (!isMaderaTopupDescription(description)) return null;
-              const referenceNo = extractMaderaReference(description)
-                || readString(raw.no_referensi)
-                || readString(raw.reference_no)
-                || null;
-              return {
-                amount: mutation.amount,
-                description,
-                rawDataJson: mutation.rawDataJson,
-                referenceNo,
-                time: mutation.transactionTime,
-              };
-            })
-            .filter((entry): entry is MaderaTopupHistoryEntry => entry !== null);
-        }
-
-        const settlements = await db.settlementRequest.findMany({
-          where: {
-            qrisAccountId: targetAccountId,
-            status: 'done',
-            OR: [
-              { fromWallet: 'madera', toWallet: 'bank' },
-            ],
-          },
-          orderBy: { createdAt: 'desc' },
-          take: Math.max(limit, 500),
-          select: {
-            id: true,
-            fromWallet: true,
-            toWallet: true,
-            amount: true,
-            referenceNo: true,
-            note: true,
-            createdAt: true,
-            processedAt: true,
-          },
-        });
-
-        const maderaBuild = buildMaderaPresentedMutations(
-          targetAccount,
-          topupHistory,
-          settlements,
-          nextMaderaBalance,
-        );
-        const presentedMutations = maderaBuild.mutations;
-        const currentBalance = nextMaderaBalance ?? presentedMutations[0]?.balanceAfter ?? 0;
-
-        await db.qrisAccount.update({
-          where: { id: targetAccount.id },
-          data: {
-            lastMainBalance: nextMainBalance,
-            lastMaderaBalance: currentBalance,
-            lastBalanceSyncAt: new Date(),
-            lastBalanceSyncStatus: 'synced',
-            lastBalanceSyncError: null,
-          },
-        });
-
+        // Baris Madera ASLI dari DB (worker menariknya saat saldo Madera berubah via System B).
+        // Baca DB murni -> cepat seperti menu QRIS. Saldo berjalan dihitung dari lastMaderaBalance.
+        const presentedMutations = await buildMaderaRealRowsForAccount(targetAccount, source, limit);
+        const currentBalance = typeof targetAccount.lastMaderaBalance === 'number'
+          ? targetAccount.lastMaderaBalance
+          : (presentedMutations[0]?.balanceAfter ?? 0);
         res.json({
           ok: true,
           source,
@@ -1621,7 +1858,7 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
           total: presentedMutations.length,
           currentBalance,
           balanceSummary: await getQrisBalanceSummary(),
-          note: maderaBuild.note,
+          note: null,
           bucketCounts: { qris: 0, utama: 0, madera: presentedMutations.length },
           mutations: presentedMutations.slice(0, limit),
         });
@@ -1631,7 +1868,10 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
       if (targetAccountId) {
         where.qrisAccountId = targetAccountId;
       }
-
+      else if (scopeIds) {
+        // Fase 6: "Semua Akun" utk alias-tenant = hanya akun site-nya.
+        where.qrisAccountId = { in: scopeIds };
+      }
       // Date range filter
       if (req.query.dateFrom || req.query.dateTo) {
         const timeFilter: Record<string, Date> = {};
@@ -1645,7 +1885,12 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
           where.transactionTime = timeFilter;
         }
       }
-
+      // Bucket UTAMA: filter walletCategory di DB supaya window `take` terisi baris utama,
+      // tidak tertimbun mutasi QRIS yang jauh lebih banyak (future-proof saat total mutasi > limit).
+      // Bucket qris/madera/all TIDAK disentuh (qris perlu ikut baris 'Pencairan Saldo QRIS' walletCategory=utama).
+      if (bucket === 'utama') {
+        where.walletCategory = 'utama';
+      }
       const mutations = await db.mutation.findMany({
         where,
         orderBy: { transactionTime: 'desc' },
@@ -1660,6 +1905,7 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
         mutation: m,
         category: readMutationCategory(m.rawDataJson, m.walletCategory),
       }));
+      const resolveSite = buildResolver();
       let presentedMutations: PresentedQrisMutation[] = resolvedMutations.map(({ mutation: m, category }) => {
         const parsedRaw = parseRawMutationPayload(m.rawDataJson) as { description?: string; keterangan?: string };
         const description = parsedRaw.description ?? parsedRaw.keterangan ?? '';
@@ -1671,7 +1917,6 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
           transactionTime: m.transactionTime,
           matched: !!m.matchedTransactionId,
         });
-
         return {
           id: m.id,
           source,
@@ -1699,25 +1944,24 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
           balanceAfter: m.balanceAfter,
           time: m.transactionTime,
           createdAt: m.createdAt,
-          siteName: m.matchedTransaction?.client?.name ?? null,
+          siteName: resolveSite(m.qrisAccountId).siteName,
           userIdExt: m.matchedTransaction?.userIdExt ?? null,
         };
       });
-
       presentedMutations = presentedMutations.filter((mutation) => {
-        if (mutation.category !== 'utama') return true;
+        if (mutation.category !== 'utama')
+          return true;
         return !isUtamaShadowMutation(mutation.rawDataJson);
       });
-
       if (bucket !== 'all') {
         presentedMutations = presentedMutations.filter((mutation) => mutation.category === bucket);
       }
-
       let maderaInferenceNote: string | null = null;
       if (bucket === 'madera' && targetAccount && presentedMutations.length === 0) {
         const inferred = await inferMaderaStateFromAppHistory(targetAccount);
         if (inferred.mutations.length > 0) {
           maderaInferenceNote = inferred.note;
+          const __infSiteName = siteNameForAccount(targetAccount.id);
           presentedMutations = inferred.mutations.map((mutation) => {
             const presentation = parseMutationPresentation(mutation.rawDataJson, {
               type: mutation.type,
@@ -1727,7 +1971,6 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
               transactionTime: mutation.time,
               matched: false,
             });
-
             return {
               id: mutation.id,
               source,
@@ -1755,15 +1998,13 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
               balanceAfter: mutation.balanceAfter,
               time: mutation.time,
               createdAt: mutation.time,
-              siteName: null,
+              siteName: __infSiteName,
               userIdExt: null,
             };
           });
         }
       }
-
       const allowLiveUpstreamEnrichment = req.query.upstream === '1';
-
       if (allowLiveUpstreamEnrichment && targetAccountId) {
         const activeAccounts = await db.qrisAccount.findMany({
           where: { status: 'active' },
@@ -1779,7 +2020,6 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
         });
         const fallbackIndex = activeAccounts.findIndex((account) => account.id === targetAccountId) + 1;
         const liveAccount = activeAccounts.find((account) => account.id === targetAccountId);
-
         if (liveAccount && fallbackIndex > 0) {
           const accountIndex = resolveOrkutAccountIndex(liveAccount, fallbackIndex);
           const webReportPayments = await fetchOrkutWebReportPayments(liveAccount, accountIndex);
@@ -1787,16 +2027,14 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
             presentedMutations = enrichPresentedQrisMutationsWithWebReport(presentedMutations, webReportPayments);
           }
         }
-
         if (liveAccount?.sessionTokenEncrypted) {
           const detailTargets = presentedMutations
             .filter((row) => {
               const rawId = readPresentedMutationRawId(row.rawDataJson);
-              if (!rawId) return false;
-              return (
-                (!row.rrn || !hasDisplayTimeSeconds(row.displayTime) || row.senderName === 'Tidak terbaca') &&
-                shouldAttemptQrisDetailEnrichment(targetAccountId, rawId)
-              );
+              if (!rawId)
+                return false;
+              return ((!row.rrn || !hasDisplayTimeSeconds(row.displayTime) || row.senderName === 'Tidak terbaca') &&
+                shouldAttemptQrisDetailEnrichment(targetAccountId, rawId));
             })
             .map((row) => ({
               mutationId: row.id,
@@ -1805,87 +2043,62 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
             }))
             .filter((row, index, rows) => row.rawId && rows.findIndex((item) => item.rawId === row.rawId) === index)
             .slice(0, 12);
-
           if (detailTargets.length > 0) {
             detailTargets.forEach((target) => markQrisDetailEnrichmentAttempt(targetAccountId, target.rawId));
-            const detailResults = await Promise.all(
-              detailTargets.map(async (target) => {
-                try {
-                  const detail = await appGateway.fetchQrisMutationDetail(liveAccount, target.rawId);
-                  return detail ? { ...target, detail } : null;
-                } catch {
-                  return null;
-                }
-              }),
-            );
-
+            const detailResults = await Promise.all(detailTargets.map(async (target) => {
+              try {
+                const detail = await appGateway.fetchQrisMutationDetail(liveAccount, target.rawId);
+                return detail ? { ...target, detail } : null;
+              }
+              catch {
+                return null;
+              }
+            }));
             const resolvedDetails = detailResults
               .filter((item): item is { detail: AppQrisMutationDetail; mutationId: string; rawDataJson: string; rawId: string } => item !== null);
-
             if (resolvedDetails.length > 0) {
-              presentedMutations = enrichPresentedQrisMutationsWithAppDetails(
-                presentedMutations,
-                resolvedDetails.map((item) => item.detail),
-              );
-
-              await Promise.allSettled(
-                resolvedDetails.map(async ({ detail, mutationId, rawDataJson }) => {
-                  const nextIssuerName =
-                    [detail.brandName, detail.senderName?.split('/')[0]?.trim()]
-                      .filter(Boolean)
-                      .join(' / ') || undefined;
-
-                  const updatedMutation = await db.mutation.update({
-                    where: { id: mutationId },
-                    data: {
-                      issuerName: nextIssuerName,
-                      rawDataJson: mergeRawMutationWithAppDetail(rawDataJson, detail),
-                      rrn: detail.rrn ?? undefined,
-                    },
-                  });
-
-                  await publishMutationUpdated(updatedMutation, 'detail_enriched');
-                }),
-              );
+              presentedMutations = enrichPresentedQrisMutationsWithAppDetails(presentedMutations, resolvedDetails.map((item) => item.detail));
+              await Promise.allSettled(resolvedDetails.map(async ({ detail, mutationId, rawDataJson }) => {
+                const nextIssuerName = [detail.brandName, detail.senderName?.split('/')[0]?.trim()]
+                  .filter(Boolean)
+                  .join(' / ') || undefined;
+                const updatedMutation = await db.mutation.update({
+                  where: { id: mutationId },
+                  data: {
+                    issuerName: nextIssuerName,
+                    rawDataJson: mergeRawMutationWithAppDetail(rawDataJson, detail),
+                    rrn: detail.rrn ?? undefined,
+                  },
+                });
+                await publishMutationUpdated(updatedMutation, 'detail_enriched');
+              }));
             }
           }
         }
       }
-
       presentedMutations = dedupePresentedQrisMutations(presentedMutations);
-      const dedupedBucketCounts = presentedMutations.reduce<Record<MutationCategory, number>>(
-        (acc, mutation) => {
-          const category =
-            mutation.category === 'qris' || mutation.category === 'utama' || mutation.category === 'madera'
-              ? mutation.category
-              : 'utama';
-          acc[category] += 1;
-          return acc;
-        },
-        { qris: 0, utama: 0, madera: 0 },
-      );
+      const dedupedBucketCounts = presentedMutations.reduce<Record<MutationCategory, number>>((acc, mutation) => {
+        const category = mutation.category === 'qris' || mutation.category === 'utama' || mutation.category === 'madera'
+          ? mutation.category
+          : 'utama';
+        acc[category] += 1;
+        return acc;
+      }, { qris: 0, utama: 0, madera: 0 });
       const currentBalance = bucket === 'madera'
-        ? (
-          targetAccount?.lastMaderaBalance
+        ? (targetAccount?.lastMaderaBalance
           ?? presentedMutations[0]?.balanceAfter
-          ?? 0
-        )
+          ?? 0)
         : bucket === 'utama'
-          ? (
-            targetAccount?.lastMainBalance
+          ? (targetAccount?.lastMainBalance
             ?? presentedMutations[0]?.balanceAfter
             ?? balanceSummary?.mainBalance
-            ?? 0
-          )
+            ?? 0)
           : bucket === 'qris'
-            ? (
-              targetAccount?.lastQrisBalance
+            ? (targetAccount?.lastQrisBalance
               ?? presentedMutations[0]?.balanceAfter
               ?? balanceSummary?.qrisBalance
-              ?? 0
-            )
+              ?? 0)
             : balanceSummary?.qrisBalance ?? presentedMutations[0]?.balanceAfter ?? 0;
-
       res.json({
         ok: true,
         source,
@@ -1899,16 +2112,13 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
       });
       return;
     }
-
     const walletEntries = await db.walletLedger.findMany({
       where: { walletCode: source },
       orderBy: { createdAt: 'desc' },
       take: limit,
     });
-
     const currentBalance = walletEntries[0]?.balanceAfter ?? 0;
     const sourceLabel = getMutationSourceLabel(source);
-
     res.json({
       ok: true,
       source,
@@ -1945,8 +2155,283 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
   }
 }
 
-// ── Settlement ────────────────────────────────────────────────────────────────
+// ── Rekonsiliasi Saldo QRIS ───────────────────────────────────────────────────
+// Cocokkan "saldo akhir menurut catatan OrderKuota" (balanceAfter baris terbaru) dengan
+// "saldo fisik" (lastQrisBalance, diintip worker tiap 2 detik). Pakai ANGKA OrderKuota sendiri
+// -> nol risiko selisih pembulatan. Dua sinyal:
+//  (1) Ekor: balanceAfter baris terbaru == saldo fisik? -> deteksi mutasi TERBARU belum tertarik.
+//  (2) Lonjakan NAIK: saldo tiba-tiba naik antar-baris tanpa baris pencatat (uang masuk hilang).
+//      Penurunan diabaikan karena itu Pencairan/settlement (OrderKuota catat pencairan sbg baris net-0
+//      sehingga saldo turun tanpa mengubah balanceBefore/After baris itu -> WAJAR, bukan data hilang).
+async function computeWalletReconcileForAccount(
+  account: { id: string; code: string; merchantName: string | null },
+  walletCategory: string,
+  physicalBalance: number | null,
+) {
+  const rows = await db.mutation.findMany({
+    where: { qrisAccountId: account.id, walletCategory },
+    orderBy: { transactionTime: 'asc' },
+    take: 3000,
+    select: { balanceBefore: true, balanceAfter: true, transactionTime: true, amount: true, type: true, rawDataJson: true },
+  });
+  const physical = typeof physicalBalance === 'number' ? physicalBalance : 0;
+  const base = {
+    accountId: account.id,
+    code: account.code,
+    merchant: account.merchantName ?? null,
+    physicalBalance: physical,
+    rowsChecked: rows.length,
+  };
+  if (rows.length === 0) {
+    // Tak ada baris: cocok hanya jika saldo fisik juga 0; kalau ada saldo tapi 0 baris -> belum bisa diverifikasi.
+    const okEmpty = physical === 0;
+    return { ...base, computedBalance: physical, diff: 0, match: okEmpty, status: okEmpty ? 'match' : 'no_data', gap: null };
+  }
+  const newestAfter = rows[rows.length - 1].balanceAfter ?? 0;
+  const tailDiff = physical - newestAfter;
+  // Cari lonjakan NAIK pertama (saldo masuk tanpa baris = mutasi masuk hilang).
+  let upwardGap: { jump: number; atTime: Date; keterangan: string } | null = null;
+  for (let i = 1; i < rows.length; i++) {
+    const prevAfter = rows[i - 1].balanceAfter ?? 0;
+    const curBefore = rows[i].balanceBefore ?? 0;
+    if (curBefore > prevAfter) {
+      const raw = parseRawMutationPayload(rows[i].rawDataJson);
+      upwardGap = {
+        jump: curBefore - prevAfter,
+        atTime: rows[i].transactionTime,
+        keterangan: readString(raw.keterangan) || readString(raw.description) || '',
+      };
+      break;
+    }
+  }
+  const match = tailDiff === 0 && !upwardGap;
+  return {
+    ...base,
+    computedBalance: newestAfter,
+    diff: tailDiff,
+    match,
+    status: match ? 'match' : 'mismatch',
+    missingRecent: tailDiff !== 0 ? tailDiff : 0,
+    gap: upwardGap,
+  };
+}
 
+// ── Rekonsiliasi Madera (feed-vs-DB) ──────────────────────────────────────────
+// Madera TIDAK punya saldo per baris dari provider -> metode rantai/agregat TIDAK dipakai
+// (feed cuma window beberapa hari, saldo awal window tak diketahui -> false-alarm).
+// Metode JUJUR: tarik feed app Madera live -> tiap baris hitung rawHash (rumus sama dgn persist)
+// -> cek apakah sudah ada di DB. Baris feed yg BELUM ada di DB = mutasi ketinggalan tarik.
+// Bonus: menangkap kasus topup+BIFAST yg net-saldo-nol dalam 1 window (trigger worker tak nyala).
+// Feed Madera (madera_history) SENSITIF -> bisa balas "Feature Not Allowed At This Time" kalau sering.
+// Cache 60s + pemanggilan HANYA on-demand (tombol di UI) supaya tidak rebutan endpoint dgn worker.
+const maderaReconcileCache = new Map<string, { ts: number; result: Record<string, unknown> }>();
+const MADERA_RECONCILE_TTL_MS = 60000;
+async function computeMaderaReconcileForAccount(
+  account: { id: string; code: string; merchantName: string | null; lastMaderaBalance: number | null; sessionTokenEncrypted: string | null },
+) {
+  const physical = typeof account.lastMaderaBalance === 'number' ? account.lastMaderaBalance : 0;
+  const base = { accountId: account.id, code: account.code, merchant: account.merchantName ?? null, physicalBalance: physical, walletKind: 'madera' };
+  if (!account.sessionTokenEncrypted) {
+    return { ...base, match: false, status: 'no_data', feedCount: 0, missingCount: 0, missing: [], okText: null, detailText: 'Akun tanpa sesi app-API, tak bisa diverifikasi.' };
+  }
+  const cached = maderaReconcileCache.get(account.id);
+  if (cached && (Date.now() - cached.ts) < MADERA_RECONCILE_TTL_MS) {
+    return cached.result;
+  }
+  let feed: any;
+  try {
+    feed = await (appGateway as any).fetchMaderaTransactionHistory(
+      account,
+    );
+  }
+  catch (err) {
+    return { ...base, match: false, status: 'error', feedCount: 0, missingCount: 0, missing: [], okText: null, detailText: 'Gagal ambil feed Madera (bridge/app-API). Coba lagi.' };
+  }
+  if (!feed || !feed.ok) {
+    return { ...base, match: false, status: 'error', feedCount: 0, missingCount: 0, missing: [], okText: null, detailText: (feed && feed.message) || 'Feed Madera tak tersedia.' };
+  }
+  const items: any[] = Array.isArray(feed.items) ? feed.items : [];
+  const mapped = items
+    .map((it) => mapMaderaFeedItem(account.id, it))
+    .filter((m): m is NonNullable<ReturnType<typeof mapMaderaFeedItem>> => Boolean(m));
+  const hashes = mapped.map((m) => m.rawHash);
+  let existing = new Set<string>();
+  if (hashes.length > 0) {
+    const rows = await db.mutation.findMany({ where: { rawHash: { in: hashes } }, select: { rawHash: true } });
+    existing = new Set(rows.map((r) => r.rawHash));
+  }
+  const missing = mapped
+    .filter((m) => !existing.has(m.rawHash))
+    .map((m) => ({ amount: m.amount, type: m.type, description: m.description, time: m.transactionTime }));
+  const match = missing.length === 0;
+  const result = {
+    ...base,
+    match,
+    status: match ? 'match' : 'mismatch',
+    feedCount: mapped.length,
+    missingCount: missing.length,
+    missing: missing.slice(0, 5),
+    okText: 'Semua ' + mapped.length + ' mutasi Madera dari app sudah tertarik ke sistem.',
+    detailText: match ? null : (missing.length + ' mutasi di app Madera belum tertarik ke sistem — worker akan menarik saat saldo berubah.'),
+  };
+  maderaReconcileCache.set(account.id, { ts: Date.now(), result });
+  return result;
+}
+
+export async function getQrisReconcileApi(req: Request, res: Response): Promise<void> {
+  try {
+    // Wallet mana yang dicocokkan: 'qris' (default), 'utama', atau 'madera'.
+    // qris/utama pakai rantai balanceAfter provider vs saldo fisik.
+    // madera pakai feed-vs-DB (saldo per baris tak ada dari provider).
+    const wallet = req.query.wallet === 'utama' ? 'utama' : (req.query.wallet === 'madera' ? 'madera' : 'qris');
+    const accountSelect = { id: true, code: true, merchantName: true, lastQrisBalance: true, lastMainBalance: true, lastMaderaBalance: true, sessionTokenEncrypted: true } satisfies Prisma.QrisAccountSelect;
+    const computeOne = (acc: ReconcileAccount) => wallet === 'madera'
+      ? computeMaderaReconcileForAccount(acc)
+      : computeWalletReconcileForAccount(acc, wallet, wallet === 'utama' ? acc.lastMainBalance : acc.lastQrisBalance);
+    const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : null;
+    if (accountId) {
+      const account = await db.qrisAccount.findUnique({
+        where: { id: accountId },
+        select: accountSelect,
+      });
+      if (!account) {
+        res.status(404).json({ ok: false, error: 'Akun tidak ditemukan' });
+        return;
+      }
+      const result = await computeOne(account);
+      res.json({ ok: true, wallet, account: result });
+      return;
+    }
+    const accounts = await db.qrisAccount.findMany({
+      where: { status: 'active' },
+      orderBy: { code: 'asc' },
+      select: accountSelect,
+    });
+    const results = await Promise.all(accounts.map((a) => computeOne(a)));
+    // 'no_data' & 'error' = tak bisa diverifikasi -> JANGAN dihitung sebagai selisih (bukan bukti data hilang).
+    const mismatches = results.filter((r) => !r.match && r.status !== 'no_data' && r.status !== 'error');
+    res.json({
+      ok: true,
+      wallet,
+      accounts: results,
+      summary: {
+        total: results.length,
+        match: results.filter((r) => r.match).length,
+        mismatch: mismatches.length,
+        noData: results.filter((r) => r.status === 'no_data' || r.status === 'error').length,
+        allMatch: mismatches.length === 0,
+      },
+    });
+  } catch (err) {
+    logger.error({ err }, 'getQrisReconcileApi error');
+    res.status(500).json({ ok: false });
+  }
+}
+
+type ReconcileAccount = {
+  id: string;
+  code: string;
+  merchantName: string | null;
+  lastQrisBalance: number | null;
+  lastMainBalance: number | null;
+  lastMaderaBalance: number | null;
+  sessionTokenEncrypted: string | null;
+};
+
+// ── Status transaksi Generate QR (untuk polling live PAID/EXPIRED di halaman) ──
+export async function getGenerateQrStatusApi(req: Request, res: Response): Promise<void> {
+  try {
+    const id = typeof req.query.id === 'string' ? req.query.id : '';
+    if (!id) {
+      res.status(400).json({ ok: false, error: 'id wajib' });
+      return;
+    }
+    const tx = await db.transaction.findUnique({
+      where: { id },
+      select: { statusPay: true, paidAt: true, expiresAt: true, finalAmount: true },
+    });
+    if (!tx) {
+      res.status(404).json({ ok: false, error: 'Transaksi tidak ditemukan' });
+      return;
+    }
+    res.json({
+      ok: true,
+      status: tx.statusPay,
+      paidAt: tx.paidAt ? tx.paidAt.toISOString() : null,
+      expiresAt: tx.expiresAt.toISOString(),
+      finalAmount: tx.finalAmount,
+    });
+  } catch (err) {
+    logger.error({ err }, 'getGenerateQrStatusApi error');
+    res.status(500).json({ ok: false });
+  }
+}
+
+// ── Akun Alias (RBAC per-menu, master-only) ───────────────────────────────────
+export async function showAkunAlias(req: Request, res: Response): Promise<void> {
+  try {
+    const accounts = listAccounts(req.session.user as AccessUser | undefined);
+    res.render('settings/akun-alias', {
+      title: 'Akun Alias',
+      menuDefs: MENU_DEFS,
+      accounts,
+      sites: listSites(),
+    });
+  } catch (err) {
+    logger.error({ err }, 'showAkunAlias error');
+    res.status(500).render('error/500', { title: 'Error' });
+  }
+}
+
+export async function getAliasAccountsApi(req: Request, res: Response): Promise<void> {
+  try {
+    res.json({ ok: true, accounts: listAccounts(req.session.user as AccessUser | undefined), menuDefs: MENU_DEFS });
+  } catch (err) {
+    logger.error({ err }, 'getAliasAccountsApi error');
+    res.status(500).json({ ok: false, error: 'Gagal memuat akun' });
+  }
+}
+
+export async function createAliasApi(req: Request, res: Response): Promise<void> {
+  try {
+    const b = req.body || {};
+    await createAlias({ username: b.username, name: b.name, password: b.password, perms: b.perms || {}, siteScope: b.siteScope });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'Gagal membuat akun' });
+  }
+}
+
+export async function updateAliasApi(req: Request, res: Response): Promise<void> {
+  try {
+    const username = String(req.params.username || '');
+    if (username.toLowerCase() === 'harywang') {
+      res.status(400).json({ ok: false, error: 'Akun master tidak bisa diubah di sini' });
+      return;
+    }
+    const b = req.body || {};
+    await updateAlias(username, { name: b.name, password: b.password, perms: b.perms, siteScope: b.siteScope });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'Gagal update akun' });
+  }
+}
+
+export async function deleteAliasApi(req: Request, res: Response): Promise<void> {
+  try {
+    const username = String(req.params.username || '');
+    if (username.toLowerCase() === 'harywang') {
+      res.status(400).json({ ok: false, error: 'Akun master tidak bisa dihapus' });
+      return;
+    }
+    deleteAlias(username);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'Gagal hapus akun' });
+  }
+}
+
+// ── Settlement ────────────────────────────────────────────────────────────────
 export async function showSettlement(req: Request, res: Response): Promise<void> {
   try {
     await reconcileProcessingMaderaTransfers().catch((err) => {
@@ -1966,6 +2451,7 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
           id: true,
           code: true,
           merchantName: true,
+          status: true,
           lastQrisBalance: true,
           lastMainBalance: true,
           lastMaderaBalance: true,
@@ -1980,15 +2466,22 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
         },
       }),
     ]);
-
+    // Penerimaan QRIS hari ini (WIB) per akun — untuk Limit Harian (basis PAID, bukan generated).
+    const _todayWibStart = new Date(Math.floor((Date.now() + 25200000) / 86400000) * 86400000 - 25200000);
+    const _paidAggToday = await db.transaction.groupBy({ by: ['qrisAccountId'], where: { statusPay: 'paid', paidAt: { gte: _todayWibStart } }, _sum: { finalAmount: true } });
+    const _paidTodayMap: Record<string, number> = {};
+    for (const _r of _paidAggToday) { if (_r.qrisAccountId) _paidTodayMap[_r.qrisAccountId] = _r._sum.finalAmount || 0; }
     let inferredMaderaAggregate = 0;
-    const accounts = await Promise.all(rawAccounts.map(async (account) => {
+    // Fase 6: alias-tenant -> hanya akun site-nya. Fase 5: siteName tiap akun.
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const scopedRawAccounts = _scopeIds ? rawAccounts.filter((a) => _scopeIds.includes(a.id)) : rawAccounts;
+    const _siteResolve = buildResolver();
+    const accounts = await Promise.all(scopedRawAccounts.map(async (account) => {
       let withdrawEnabled: boolean | null = null;
-      let withdrawMin = 1_000;
-      let withdrawMax = 10_000_000;
+      let withdrawMin = 1000;
+      let withdrawMax = 10000000;
       let withdrawMessage: string | null = null;
       let nextMaderaBalance = account.lastMaderaBalance;
-
       if (account.sessionTokenEncrypted) {
         try {
           const [terms, maderaOverview] = await Promise.all([
@@ -2000,20 +2493,32 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
             withdrawMin = terms.min > 0 ? terms.min : withdrawMin;
             withdrawMax = terms.max > 0 ? terms.max : withdrawMax;
             withdrawMessage = terms.message ?? null;
-          } else {
+          }
+          else {
             withdrawMessage = 'Belum bisa membaca info tarik saldo dari akun ini.';
           }
-
           if (maderaOverview?.accountBalance !== null && maderaOverview?.accountBalance !== undefined) {
             nextMaderaBalance = maderaOverview.accountBalance;
+            if (maderaOverview.accountBalance !== account.lastMaderaBalance) {
+              await db.qrisAccount.update({
+                where: { id: account.id },
+                data: {
+                  lastMaderaBalance: maderaOverview.accountBalance,
+                  lastBalanceSyncAt: new Date(),
+                  lastBalanceSyncStatus: 'live',
+                  lastBalanceSyncError: null,
+                },
+              }).catch(() => { });
+            }
           }
-        } catch (err) {
+        }
+        catch (err) {
           withdrawMessage = err instanceof Error ? err.message : 'Gagal membaca info tarik saldo.';
         }
-      } else {
+      }
+      else {
         withdrawMessage = 'Session Token belum tersedia.';
       }
-
       if (nextMaderaBalance === null || nextMaderaBalance === undefined) {
         try {
           const inferred = await inferMaderaStateFromAppHistory(account);
@@ -2029,33 +2534,46 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
               },
             });
           }
-        } catch (err) {
+        }
+        catch (err) {
           logger.warn({ err, accountCode: account.code }, 'showSettlement: unable to infer madera balance');
         }
       }
       inferredMaderaAggregate += nextMaderaBalance ?? 0;
-
       return {
         id: account.id,
         code: account.code,
         merchantName: account.merchantName,
+        siteName: _siteResolve(account.id).siteName,
         lastQrisBalance: account.lastQrisBalance,
         lastMainBalance: account.lastMainBalance,
         lastMaderaBalance: nextMaderaBalance,
         lastBalanceSyncAt: account.lastBalanceSyncAt,
         lastBalanceSyncStatus: account.lastBalanceSyncStatus,
         dailyLimit: account.dailyLimit,
-        usedToday: account.usedToday,
+        usedToday: _paidTodayMap[account.id] || 0,
         hasTransferPin: Boolean(account.transferPinEncrypted),
         withdrawEnabled,
         withdrawMin,
         withdrawMax,
+        status: account.status,
         withdrawMessage,
       };
     }));
-
+    const _scopeSite = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const sites = _scopeSite ? listSites().filter((s) => s.id === _scopeSite) : listSites();
+    // Total saldo gabungan (SUM akun ter-scope; aman utk alias-tenant -> hanya site-nya).
+    const walletTotals = accounts.reduce((t, a) => {
+      t.qris += Number(a.lastQrisBalance || 0);
+      t.utama += Number(a.lastMainBalance || 0);
+      t.madera += Number(a.lastMaderaBalance || 0);
+      return t;
+    }, { qris: 0, utama: 0, madera: 0 } as { qris: number; utama: number; madera: number; grand?: number });
+    walletTotals.grand = walletTotals.qris + walletTotals.utama + walletTotals.madera;
     res.render('settlement/index', {
       title: 'Saldo Per Akun',
+      sites,
+      walletTotals,
       settlements,
       total,
       accounts,
@@ -2070,24 +2588,22 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
 }
 
 // ── Account Transfer API (JSON) ────────────────────────────────────────────────
-
 const AccountTransferSchema = z.object({
-  fromWallet:    z.enum(['qris', 'utama', 'madera']),
-  toWallet:      z.enum(['utama', 'madera', 'bank']),
-  amount:        z.number().int().min(1000, 'Minimal transfer Rp 1.000'),
+  fromWallet: z.enum(['qris', 'utama', 'madera']),
+  toWallet: z.enum(['utama', 'madera', 'bank']),
+  amount: z.number().int().min(1000, 'Minimal transfer Rp 1.000'),
   qrisAccountId: z.string().optional(),
-  bankCode:      z.string().max(50).optional(),
-  bankAccount:   z.string().max(50).optional(),
-  bankName:      z.string().max(100).optional(),
-  note:          z.string().max(500).optional(),
+  bankCode: z.string().max(50).optional(),
+  bankAccount: z.string().max(50).optional(),
+  bankName: z.string().max(100).optional(),
+  note: z.string().max(500).optional(),
 });
-
 const SettlementBankInquirySchema = z.object({
   fromWallet: z.enum(['utama', 'madera']),
   qrisAccountId: z.string().min(1, 'Akun merchant wajib dipilih'),
   bankCode: z.string().trim().min(1, 'Bank wajib dipilih').max(50),
   bankAccount: z.string().trim().min(4, 'Nomor rekening terlalu pendek').max(50),
-  amount: z.number().int().min(0).max(100_000_000).optional(),
+  amount: z.number().int().min(0).max(100000000).optional(),
 });
 
 export async function handleSettlementBankInquiryApi(req: Request, res: Response): Promise<void> {
@@ -2097,7 +2613,6 @@ export async function handleSettlementBankInquiryApi(req: Request, res: Response
       res.json({ ok: false, error: parsed.error.errors.map((item) => item.message).join(', ') });
       return;
     }
-
     const result = await inquireSettlementBankAccount(parsed.data);
     res.json({
       ok: true,
@@ -2117,26 +2632,16 @@ export async function handleAccountTransferApi(req: Request, res: Response): Pro
       res.status(400).json({ ok: false, error: parsed.error.errors.map((e) => e.message).join(', ') });
       return;
     }
-
     const { fromWallet, toWallet, amount, qrisAccountId, bankCode, bankAccount, bankName, note } = parsed.data;
-
     // Validate bank fields if toWallet is 'bank'
     if (toWallet === 'bank' && (!bankCode || !bankAccount)) {
       res.status(400).json({ ok: false, error: 'Kode bank dan nomor rekening wajib diisi' });
       return;
     }
-
-    const settlementId = await createSettlement(
-      { fromWallet, toWallet, amount, qrisAccountId, bankCode, bankAccount, bankName, note },
-      req.session.user?.id,
-      req.ip,
-    );
-
+    const settlementId = await createSettlement({ fromWallet, toWallet, amount, qrisAccountId, bankCode, bankAccount, bankName, note }, req.session.user?.id, req.ip);
     // Process immediately (don't wait for the sweep loop)
     const processResult = await processSettlement(settlementId);
-
     const settlement = await db.settlementRequest.findUnique({ where: { id: settlementId } });
-
     if (!settlement || settlement.status === 'failed') {
       res.json({
         ok: false,
@@ -2146,7 +2651,6 @@ export async function handleAccountTransferApi(req: Request, res: Response): Pro
       });
       return;
     }
-
     res.json({
       ok: true,
       settlementId,
@@ -2169,7 +2673,6 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
       res.status(400).json({ ok: false, error: 'settlementId wajib diisi.' });
       return;
     }
-
     const settlement = await db.settlementRequest.findUnique({ where: { id: settlementId } });
     if (!settlement) {
       res.status(404).json({ ok: false, error: 'Settlement tidak ditemukan.' });
@@ -2179,7 +2682,6 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
       res.json({ ok: false, error: `Settlement sudah berstatus "${settlement.status}", tidak bisa retry.` });
       return;
     }
-
     // Extract redirect URL from note markers
     const redirectMatch = String(settlement.note || '').match(/\[\[REDIRECT_URL:(.+?)\]\]/);
     const redirectUrl = redirectMatch?.[1];
@@ -2187,12 +2689,10 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
       res.json({ ok: false, error: 'Redirect URL tidak ditemukan pada settlement ini.' });
       return;
     }
-
     if (!settlement.qrisAccountId) {
       res.json({ ok: false, error: 'Akun merchant tidak terkait dengan settlement ini.' });
       return;
     }
-
     const account = await db.qrisAccount.findUnique({
       where: { id: settlement.qrisAccountId },
       select: {
@@ -2212,10 +2712,8 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
       res.json({ ok: false, error: 'PIN merchant belum diisi. Tambahkan PIN di menu Merchant QR.' });
       return;
     }
-
     const transferPin = decrypt(account.transferPinEncrypted);
     const pinResult = await appGateway.finalizeMaderaTransferPin(redirectUrl, transferPin, account);
-
     if (pinResult.success) {
       // Parse existing note markers to preserve fee/total
       const feeMatch = String(settlement.note || '').match(/\[\[FEE:(\d+)\]\]/);
@@ -2224,11 +2722,11 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
         .replace(/\s*\[\[(?:FEE|TOTAL|REDIRECT_URL):.+?\]\]\s*/g, ' ')
         .replace(/\s+\|\s*$/g, '')
         .trim();
-
       const noteParts = [cleanNote, pinResult.message].filter(Boolean);
-      if (feeMatch) noteParts.push(`[[FEE:${feeMatch[1]}]]`);
-      if (totalMatch) noteParts.push(`[[TOTAL:${totalMatch[1]}]]`);
-
+      if (feeMatch)
+        noteParts.push(`[[FEE:${feeMatch[1]}]]`);
+      if (totalMatch)
+        noteParts.push(`[[TOTAL:${totalMatch[1]}]]`);
       await db.settlementRequest.update({
         where: { id: settlementId },
         data: {
@@ -2237,7 +2735,6 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
           note: noteParts.join('\n') || null,
         },
       });
-
       await writeAuditLog(db, {
         action: 'settlement_processed',
         entityType: 'SettlementRequest',
@@ -2250,13 +2747,13 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
         userId: req.session.user?.id,
         ip: req.ip,
       });
-
       res.json({
         ok: true,
         status: 'done',
         message: pinResult.message || 'Auto PIN berhasil, transfer selesai.',
       });
-    } else {
+    }
+    else {
       res.json({
         ok: false,
         status: 'processing',
@@ -2272,7 +2769,6 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
 }
 
 // ── Bank List API (for dynamic Kirim Uang bank picker) ─────────────────────────
-
 export async function handleBankListApi(req: Request, res: Response): Promise<void> {
   try {
     const qrisAccountId = String(req.query.qrisAccountId || '');
@@ -2318,22 +2814,13 @@ export async function handleCreateSettlement(req: Request, res: Response): Promi
       res.redirect(withBasePath('/dashboard/settlement', config.APP_BASE_PATH));
       return;
     }
-
-    const { fromWallet, toWallet, amount, qrisAccountId, bankCode, bankAccount, bankName, note } =
-      parsed.data;
-
+    const { fromWallet, toWallet, amount, qrisAccountId, bankCode, bankAccount, bankName, note } = parsed.data;
     if (isNaN(amount) || amount < 1) {
       req.session.flash = { type: 'error', message: 'Jumlah harus berupa angka positif' };
       res.redirect(withBasePath('/dashboard/settlement', config.APP_BASE_PATH));
       return;
     }
-
-    await createSettlement(
-      { fromWallet, toWallet, amount, qrisAccountId, bankCode, bankAccount, bankName, note },
-      req.session.user?.id,
-      req.ip,
-    );
-
+    await createSettlement({ fromWallet, toWallet, amount, qrisAccountId, bankCode, bankAccount, bankName, note }, req.session.user?.id, req.ip);
     req.session.flash = {
       type: 'success',
       message: `Permintaan settlement Rp ${amount.toLocaleString('id-ID')} dibuat. Worker akan memprosesnya.`,
@@ -2348,13 +2835,11 @@ export async function handleCreateSettlement(req: Request, res: Response): Promi
 }
 
 // ── Login Logs ────────────────────────────────────────────────────────────────
-
 export async function showLoginLogs(req: Request, res: Response): Promise<void> {
   try {
     const page = Math.max(1, parseInt(req.query.page as string) || 1);
     const limit = 100;
     const offset = (page - 1) * limit;
-
     const [logs, total] = await Promise.all([
       db.loginLog.findMany({
         orderBy: { createdAt: 'desc' },
@@ -2364,7 +2849,6 @@ export async function showLoginLogs(req: Request, res: Response): Promise<void> 
       }),
       db.loginLog.count(),
     ]);
-
     res.render('settings/login-logs', {
       title: 'Log Login',
       logs,
@@ -2379,12 +2863,50 @@ export async function showLoginLogs(req: Request, res: Response): Promise<void> 
 }
 
 // ── Aliases (stub) ────────────────────────────────────────────────────────────
-
 export async function showAliases(req: Request, res: Response): Promise<void> {
   res.render('settings/aliases', { title: 'Alias Pengguna' });
 }
 
 // ── Account Settings (Webhook / Web Game / Akun QRIS) ────────────────────────
+export async function checkWebGamePanelApi(req: Request, res: Response): Promise<void> {
+  try {
+    const body = req.body || {};
+    const platform = String(body.platform || '').trim().toLowerCase();
+    const okPlatforms = ['idn', 'default', 'idntoto', 'pay4d', 'sulebet'];
+    if (!okPlatforms.includes(platform)) {
+      res.status(400).json({ ok: false, online: false, message: 'Tipe panel tidak valid (idn/pay4d).' });
+      return;
+    }
+    const siteId = typeof body.siteId === 'string' ? body.siteId.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64) : '';
+    const creds = (body.creds && typeof body.creds === 'object') ? body.creds : {};
+    const projectRoot = process.cwd();
+    const pyBin = (process.env.GAME_PYTHON_BIN || '/opt/ayuchenbot/venv/bin/python3');
+    const script = path.join(projectRoot, 'python', 'game_panel.py');
+    const sessDir = path.join(projectRoot, 'data', 'webgame-sessions');
+    try { fs.mkdirSync(sessDir, { recursive: true }); } catch (e) {}
+    const sessFile = siteId ? path.join(sessDir, siteId + '.json') : null;
+    let cookies: Record<string, unknown> = {};
+    if (sessFile) { try { cookies = (JSON.parse(fs.readFileSync(sessFile, 'utf8')).cookies) || {}; } catch (e) {} }
+    const input = JSON.stringify({ platform, creds, cookies });
+    const proc = spawnSync(pyBin, [script], { input, encoding: 'utf8', timeout: 45000, maxBuffer: 4 * 1024 * 1024 });
+    const out = String(proc.stdout || '');
+    const m = out.match(/GAMECHK_JSON_BEGIN\s*([\s\S]*?)\s*GAMECHK_JSON_END/);
+    if (!m) {
+      logger.warn({ stderr: String(proc.stderr || '').slice(-300), siteId }, 'checkWebGamePanelApi: no marker');
+      res.json({ ok: false, online: false, message: 'Gagal menjalankan cek panel.' });
+      return;
+    }
+    let parsed: any;
+    try { parsed = JSON.parse(m[1].trim()); } catch (e) { res.json({ ok: false, online: false, message: 'Output cek tidak valid.' }); return; }
+    if (sessFile && parsed.cookies && Object.keys(parsed.cookies).length) {
+      try { fs.writeFileSync(sessFile, JSON.stringify({ cookies: parsed.cookies, updatedAt: new Date().toISOString() }), 'utf8'); } catch (e) {}
+    }
+    res.json({ ok: true, online: !!parsed.online, platform: parsed.platform || platform, message: parsed.message || '' });
+  } catch (err) {
+    logger.error({ err }, 'checkWebGamePanelApi error');
+    res.status(500).json({ ok: false, online: false, message: 'Error internal saat cek panel.' });
+  }
+}
 
 export async function showAccountSettings(req: Request, res: Response): Promise<void> {
   try {
@@ -2400,7 +2922,6 @@ export async function showAccountSettings(req: Request, res: Response): Promise<
 }
 
 // ── QRIS Accounts JSON (for per-account mutation tabs) ────────────────────────
-
 export async function getQrisAccountsJson(req: Request, res: Response): Promise<void> {
   try {
     const accounts = await db.qrisAccount.findMany({
@@ -2421,7 +2942,6 @@ export async function getQrisAccountsJson(req: Request, res: Response): Promise<
         usedToday: true,
       },
     });
-
     const countRows = await db.mutation.findMany({
       select: {
         qrisAccountId: true,
@@ -2436,38 +2956,35 @@ export async function getQrisAccountsJson(req: Request, res: Response): Promise<
       },
       orderBy: { transactionTime: 'desc' },
     });
-    const dedupedCountRows = dedupePresentedQrisMutations(
-      countRows.map((row) => ({
-        accountCode: row.qrisAccountId,
-        amount: row.amount,
-        balanceAfter: row.balanceAfter,
-        bankEwallet: '',
-        brandName: null,
-        category: readMutationCategory(row.rawDataJson, row.walletCategory),
-        createdAt: row.createdAt,
-        description: '',
-        displayTime: formatMutationTimestamp(row.transactionTime),
-        id: row.qrisAccountId,
-        issuerName: null,
-        matched: false,
-        merchant: '',
-        rawDataJson: row.rawDataJson,
-        rrn: row.rrn,
-        senderName: '',
-        source: 'qris',
-        statusCode: row.type === 'credit' ? 'IN' : 'OUT',
-        statusKind: 'count',
-        statusLabel: 'count',
-        statusText: row.type === 'credit' ? 'Dana Masuk' : 'Dana Keluar',
-        time: row.transactionTime,
-        type: row.type,
-      })),
-    );
+    const dedupedCountRows = dedupePresentedQrisMutations(countRows.map((row) => ({
+      accountCode: row.qrisAccountId,
+      amount: row.amount,
+      balanceAfter: row.balanceAfter,
+      bankEwallet: '',
+      brandName: null,
+      category: readMutationCategory(row.rawDataJson, row.walletCategory),
+      createdAt: row.createdAt,
+      description: '',
+      displayTime: formatMutationTimestamp(row.transactionTime),
+      id: row.qrisAccountId,
+      issuerName: null,
+      matched: false,
+      merchant: '',
+      rawDataJson: row.rawDataJson,
+      rrn: row.rrn,
+      senderName: '',
+      source: 'qris',
+      statusCode: row.type === 'credit' ? 'IN' : 'OUT',
+      statusKind: 'count',
+      statusLabel: 'count',
+      statusText: row.type === 'credit' ? 'Dana Masuk' : 'Dana Keluar',
+      time: row.transactionTime,
+      type: row.type,
+    })));
     const countMap = dedupedCountRows.reduce<Record<string, number>>((acc, row) => {
       acc[row.accountCode] = (acc[row.accountCode] ?? 0) + 1;
       return acc;
     }, {});
-
     res.json({
       ok: true,
       accounts: accounts.map((a, idx) => ({
@@ -2494,7 +3011,6 @@ export async function getQrisAccountsJson(req: Request, res: Response): Promise<
 }
 
 // ── Generate QR Page ──────────────────────────────────────────────────────────
-
 const RefreshWalletSchema = z.object({
   wallet: z.enum(['qris', 'utama', 'madera']),
 });
@@ -2507,44 +3023,32 @@ export async function handleRefreshAccountBalanceApi(req: Request, res: Response
       res.status(400).json({ ok: false, error: 'Permintaan refresh saldo tidak valid.' });
       return;
     }
-
     const account = await db.qrisAccount.findUnique({ where: { id: accountId } });
     if (!account) {
       res.status(404).json({ ok: false, error: 'Merchant tidak ditemukan.' });
       return;
     }
-
     const wallet = parsed.data.wallet;
     let nextMainBalance = account.lastMainBalance;
     let nextQrisBalance = account.lastQrisBalance;
     let nextMaderaBalance = account.lastMaderaBalance;
     let nextStatus = account.lastBalanceSyncStatus ?? 'synced';
     let nextError: string | null = null;
-
     if (wallet === 'qris' || wallet === 'utama') {
-      if (account.webCookiesEncrypted || account.cookiesEncrypted) {
-        const reportStats = await syncMerchantMutationsFromReport(account, wallet);
-        nextMainBalance = reportStats.mainBalance ?? nextMainBalance;
-        nextQrisBalance = reportStats.qrisBalance ?? nextQrisBalance;
-        nextStatus = 'synced';
-        nextError = null;
-      } else {
-        if (!account.sessionTokenEncrypted) {
-          res.status(400).json({ ok: false, error: 'Session token atau Web Session Cookie merchant belum diisi.' });
-          return;
-        }
-
+      // App-API DULU (fetchAccountSummary bebas-limit via bridge). Web report keblok 469 dari IP VPS,
+      // jadi hanya dipakai kalau app-API tak tersedia (tak ada session token).
+      if (account.sessionTokenEncrypted) {
         const summary = await appGateway.fetchAccountSummary(account);
         if (wallet === 'qris') {
           nextQrisBalance = summary.qrisBalance ?? nextQrisBalance;
           nextStatus = summary.qrisBalance !== null ? 'synced' : 'partial';
           nextError = summary.qrisBalance !== null ? null : 'Provider belum mengirim saldo QRIS terbaru.';
-        } else {
+        }
+        else {
           nextMainBalance = summary.mainBalance ?? nextMainBalance;
           nextStatus = summary.mainBalance !== null ? 'synced' : 'partial';
           nextError = summary.mainBalance !== null ? null : 'Provider belum mengirim saldo utama terbaru.';
         }
-
         await db.qrisAccount.update({
           where: { id: account.id },
           data: {
@@ -2556,25 +3060,33 @@ export async function handleRefreshAccountBalanceApi(req: Request, res: Response
           },
         });
       }
-    } else {
+      else if (account.webCookiesEncrypted || account.cookiesEncrypted) {
+        const reportStats = await syncMerchantMutationsFromReport(account, wallet);
+        nextMainBalance = reportStats.mainBalance ?? nextMainBalance;
+        nextQrisBalance = reportStats.qrisBalance ?? nextQrisBalance;
+        nextStatus = 'synced';
+        nextError = null;
+      }
+      else {
+        res.status(400).json({ ok: false, error: 'Session token atau Web Session Cookie merchant belum diisi.' });
+        return;
+      }
+    }
+    else {
       await reconcileProcessingMaderaTransfers(account.id).catch((err) => {
         logger.warn({ err, accountCode: account.code }, 'handleRefreshAccountBalanceApi: unable to reconcile madera transfers');
       });
-
       let snapshot: Awaited<ReturnType<typeof syncOrkutBalanceSnapshot>> | null = null;
-
       if (account.sessionTokenEncrypted) {
         const [overview, history] = await Promise.all([
           appGateway.fetchMaderaTransferOverview(account).catch(() => null),
           appGateway.fetchBalanceHistory(account).catch(() => null),
         ]);
-
         if (overview?.accountBalance !== null && overview?.accountBalance !== undefined) {
           nextMaderaBalance = overview.accountBalance;
           nextStatus = 'synced';
           nextError = null;
         }
-
         if (history) {
           nextMainBalance = history.mainBalance ?? nextMainBalance;
           for (const mutation of history.mutations) {
@@ -2594,7 +3106,6 @@ export async function handleRefreshAccountBalanceApi(req: Request, res: Response
           }
         }
       }
-
       if (nextMaderaBalance === null || nextMaderaBalance === undefined) {
         const activeAccounts = await db.qrisAccount.findMany({
           where: { status: 'active' },
@@ -2604,7 +3115,6 @@ export async function handleRefreshAccountBalanceApi(req: Request, res: Response
         const fallbackIndex = activeAccounts.findIndex((row) => row.id === account.id) + 1;
         const resolvedIndex = resolveOrkutAccountIndex(account, fallbackIndex > 0 ? fallbackIndex : 1);
         snapshot = await syncOrkutBalanceSnapshot(account, resolvedIndex);
-
         if (snapshot) {
           nextMainBalance = snapshot.mainBalance ?? nextMainBalance;
           nextQrisBalance = snapshot.qrisBalance ?? nextQrisBalance;
@@ -2613,7 +3123,6 @@ export async function handleRefreshAccountBalanceApi(req: Request, res: Response
           nextError = snapshot.errorMessage ?? null;
         }
       }
-
       if (nextMaderaBalance === null || nextMaderaBalance === undefined) {
         const inferred = await inferMaderaStateFromAppHistory(account);
         if (typeof inferred.balance === 'number') {
@@ -2622,7 +3131,6 @@ export async function handleRefreshAccountBalanceApi(req: Request, res: Response
           nextError = inferred.note;
         }
       }
-
       await db.qrisAccount.update({
         where: { id: account.id },
         data: {
@@ -2635,7 +3143,6 @@ export async function handleRefreshAccountBalanceApi(req: Request, res: Response
         },
       });
     }
-
     res.json({
       ok: true,
       wallet,
@@ -2659,7 +3166,7 @@ export async function handleRefreshAccountBalanceApi(req: Request, res: Response
 
 export async function showGenerateQr(req: Request, res: Response): Promise<void> {
   try {
-    const accounts = await db.qrisAccount.findMany({
+    const accountsRaw = await db.qrisAccount.findMany({
       where: {
         status: 'active',
         OR: [
@@ -2670,7 +3177,17 @@ export async function showGenerateQr(req: Request, res: Response): Promise<void>
       orderBy: { code: 'asc' },
       select: { id: true, code: true, merchantName: true },
     });
-    res.render('generate-qr/index', { title: 'Generate QR', accounts });
+    // Fase 4: sematkan site tiap akun + daftar site utk selektor "wajib pilih Site".
+    let accounts = attachSiteInfo(accountsRaw);
+    let sites = listSites();
+    // Fase 6: alias-tenant -> hanya site & akun miliknya.
+    const _scope = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    if (_scope) {
+      accounts = accounts.filter((a) => a.siteId === _scope);
+      sites = sites.filter((s) => s.id === _scope);
+    }
+    const hasUnassigned = _scope ? false : accounts.some((a) => !a.siteId);
+    res.render('generate-qr/index', { title: 'Generate QR', accounts, sites, hasUnassigned });
   } catch (err) {
     logger.error({ err }, 'showGenerateQr error');
     res.status(500).render('error/500', { title: 'Error' });
@@ -2679,7 +3196,7 @@ export async function showGenerateQr(req: Request, res: Response): Promise<void>
 
 const DashboardGenerateQrSchema = z.object({
   accountId: z.string().min(1, 'Akun QRIS wajib dipilih'),
-  amount: z.number().int().min(1, 'Nominal minimal Rp 1').max(10_000_000, 'Nominal terlalu besar'),
+  amount: z.number().int().min(1, 'Nominal minimal Rp 1').max(10000000, 'Nominal terlalu besar'),
   username: z.string().trim().min(1, 'Username wajib diisi').max(100, 'Username terlalu panjang'),
 });
 
@@ -2693,12 +3210,15 @@ export async function handleDashboardGenerateQr(req: Request, res: Response): Pr
       });
       return;
     }
-
+    // Fase 6: alias-tenant tak boleh generate di akun luar site-nya.
+    if (!accountInScope(req.session.user as AccessUser | undefined, parsed.data.accountId)) {
+      res.status(403).json({ ok: false, error: 'Akun di luar site Anda.' });
+      return;
+    }
     const result = await generateDashboardQrTransaction({
       ...parsed.data,
       createdBy: req.session.user?.username || 'dashboard',
     });
-
     res.status(201).json({
       ok: true,
       data: result,
@@ -2719,42 +3239,41 @@ export async function getQrisTemplate(req: Request, res: Response): Promise<void
       res.status(400).json({ ok: false, error: 'accountId required' });
       return;
     }
-
+    // Fase 6: alias-tenant hanya boleh akun site-nya.
+    if (!accountInScope(req.session.user as AccessUser | undefined, accountId)) {
+      res.status(403).json({ ok: false, error: 'Akun di luar site Anda' });
+      return;
+    }
     const account = await db.qrisAccount.findUnique({ where: { id: accountId } });
     if (!account || account.status !== 'active') {
       res.status(404).json({ ok: false, error: 'Akun tidak ditemukan atau tidak aktif' });
       return;
     }
-
     // Try live API first, fall back to stored qrisPayload
     let qrisData: string | null = null;
-    let min = 1, max = 10_000_000, expired = 300;
-
+    let min = 1, max = 10000000, expired = 300;
     if (account.sessionTokenEncrypted) {
       const result = await appGateway.fetchQrisMerchantTerms(account);
       if (result) {
         qrisData = result.qrisData;
-        min      = result.min;
-        max      = result.max;
-        expired  = result.expired;
+        min = result.min;
+        max = result.max;
+        expired = result.expired;
         // Keep stored payload fresh
         if (account.qrisPayload !== qrisData) {
-          db.qrisAccount.update({ where: { id: account.id }, data: { qrisPayload: qrisData } }).catch(() => {});
+          db.qrisAccount.update({ where: { id: account.id }, data: { qrisPayload: qrisData } }).catch(() => { });
         }
       }
     }
-
     // Fallback to stored payload
     if (!qrisData && account.qrisPayload) {
       qrisData = account.qrisPayload;
       logger.info({ accountCode: account.code }, 'getQrisTemplate: using stored qrisPayload as fallback');
     }
-
     if (!qrisData) {
       res.status(502).json({ ok: false, error: 'QRIS template tidak tersedia. Pastikan akun memiliki token atau QRIS payload tersimpan.' });
       return;
     }
-
     res.json({
       ok: true,
       qrisData,
@@ -2762,7 +3281,7 @@ export async function getQrisTemplate(req: Request, res: Response): Promise<void
       max,
       expired,
       merchantName: account.merchantName,
-      code:        account.code,
+      code: account.code,
     });
   } catch (err) {
     logger.error({ err }, 'getQrisTemplate error');

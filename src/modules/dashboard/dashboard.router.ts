@@ -1,21 +1,30 @@
-import { Router } from 'express';
-import { requirePermission } from '../../core/rbac.middleware';
+import { Router, Request, Response } from 'express';
+import { requireMenu, requirePermission, requireMaster } from '../../core/rbac.middleware';
 import {
   showDashboard,
-  showHistory,
   showTransactions,
   showMutations,
   showMutationsQris,
   showMutationsUtama,
   showMutationsMadera,
-  getMutationsJson,
-  streamMutationsSse,
-  getQrisAccountsJson,
-  handleRefreshAccountBalanceApi,
+  showMaderaNobuHistory,
+  getMaderaNobuHistoryApi,
+  getMaderaNobuWebviewApi,
+  handleCaptureSettlementProofApi,
+  getSettlementProofApi,
+  getSettlementProofsListApi,
+  getBridgeStatusApi,
   showGenerateQr,
   handleDashboardGenerateQr,
-  getQrisTemplate,
+  getGenerateQrStatusApi,
   getTransactionsSnapshotApi,
+  getLatestTransactionsApi,
+  getMutationsJson,
+  streamMutationsSse,
+  getQrisReconcileApi,
+  getQrisAccountsJson,
+  handleRefreshAccountBalanceApi,
+  getQrisTemplate,
   showSettlement,
   handleCreateSettlement,
   handleSettlementBankInquiryApi,
@@ -25,43 +34,68 @@ import {
   showLoginLogs,
   showAliases,
   showAccountSettings,
+  checkWebGamePanelApi,
+  showAkunAlias,
+  getAliasAccountsApi,
+  createAliasApi,
+  updateAliasApi,
+  deleteAliasApi,
 } from './dashboard.controller';
-import { getPostgresMonitorJson, showPostgresMonitor } from './postgres-monitor.controller';
+import { showPostgresMonitor, getPostgresMonitorJson } from './postgres-monitor.controller';
 import { showSaldoUtama, showMadera } from './wallet.controller';
 
 const router = Router();
 
-router.get('/', showDashboard);
-
-router.get('/history', showHistory);
-router.get('/transactions', showTransactions);
+router.get('/', requireMenu('dashboard'), showDashboard);
+// History Generate QR: mesin Transaction, SEMUA status.
+router.get('/history', requireMenu('generate-qr'), (req: Request, res: Response) =>
+  showTransactions(req, res, { title: 'History Generate QR' }),
+);
+// Transaction: mesin sama, DIKUNCI paid (server).
+router.get('/transactions', requireMenu('transactions'), (req: Request, res: Response) =>
+  showTransactions(req, res, { paidOnly: true, title: 'Transaction' }),
+);
 router.get('/mutations', showMutations);
-router.get('/mutations/qris', showMutationsQris);
-router.get('/mutations/utama', showMutationsUtama);
-router.get('/mutations/madera', showMutationsMadera);
-router.get('/generate-qr', showGenerateQr);
+router.get('/mutations/qris', requireMenu('mutasi-qris'), showMutationsQris);
+router.get('/mutations/utama', requireMenu('mutasi-utama'), showMutationsUtama);
+router.get('/mutations/madera', requireMenu('mutasi-madera'), showMutationsMadera);
+router.get('/madera-nobu', showMaderaNobuHistory);
+router.get('/api/madera-nobu/:accountId', getMaderaNobuHistoryApi);
+router.get('/api/madera-nobu/:accountId/webview', getMaderaNobuWebviewApi);
+router.post('/api/settlement/:id/capture-proof', requirePermission('setting:manage'), handleCaptureSettlementProofApi);
+router.get('/api/settlement/:id/proof', getSettlementProofApi);
+router.get('/api/settlement-proofs', getSettlementProofsListApi);
+router.get('/api/bridge-status', getBridgeStatusApi);
+router.get('/generate-qr', requireMenu('generate-qr'), showGenerateQr);
 router.post('/api/generate-qr', handleDashboardGenerateQr);
+router.get('/api/generate-qr/status', requireMenu('generate-qr'), getGenerateQrStatusApi);
 router.post('/api/transactions/snapshot', getTransactionsSnapshotApi);
+router.get('/api/transactions/latest', getLatestTransactionsApi);
 router.get('/api/mutations', getMutationsJson);
 router.get('/api/mutations/stream', streamMutationsSse);
+router.get('/api/mutations/reconcile', getQrisReconcileApi);
 router.get('/api/qris-accounts', getQrisAccountsJson);
 router.post('/api/qris-accounts/:id/refresh-balance', handleRefreshAccountBalanceApi);
 router.get('/api/qris-template', getQrisTemplate);
-
 router.get('/wallet/saldo-utama', requirePermission('report:view'), showSaldoUtama);
 router.get('/wallet/madera', requirePermission('report:view'), showMadera);
-
-router.get('/settlement', showSettlement);
-router.post('/settlement', requirePermission('setting:manage'), handleCreateSettlement);
-router.post('/settlement/inquiry', requirePermission('setting:manage'), handleSettlementBankInquiryApi);
-router.post('/settlement/transfer', requirePermission('setting:manage'), handleAccountTransferApi);
-router.post('/settlement/retry-pin', requirePermission('setting:manage'), handleRetryAutoPinApi);
-router.get('/settlement/banks', requirePermission('setting:manage'), handleBankListApi);
-
-router.get('/postgres-monitor', requirePermission('setting:manage'), showPostgresMonitor);
-router.get('/api/postgres-monitor', requirePermission('setting:manage'), getPostgresMonitorJson);
-router.get('/login-logs', requirePermission('log:view'), showLoginLogs);
+router.get('/settlement', requireMenu('settlement'), showSettlement);
+router.post('/settlement', requireMenu('settlement', 'transfer'), handleCreateSettlement);
+router.post('/settlement/inquiry', requireMenu('settlement', 'transfer'), handleSettlementBankInquiryApi);
+router.post('/settlement/transfer', requireMenu('settlement', 'transfer'), handleAccountTransferApi);
+router.post('/settlement/retry-pin', requireMenu('settlement', 'transfer'), handleRetryAutoPinApi);
+router.get('/settlement/banks', requireMenu('settlement', 'transfer'), handleBankListApi);
+router.get('/postgres-monitor', requireMenu('postgres'), showPostgresMonitor);
+router.get('/api/postgres-monitor', requireMenu('postgres'), getPostgresMonitorJson);
+router.get('/login-logs', requireMenu('login-logs'), showLoginLogs);
 router.get('/aliases', requirePermission('setting:manage'), showAliases);
-router.get('/account-settings', requirePermission('setting:manage'), showAccountSettings);
+router.get('/account-settings', requireMenu('settings'), showAccountSettings);
+router.post('/api/webgame/check', requirePermission('setting:manage'), checkWebGamePanelApi);
+// ── Akun Alias (master-only) ──────────────────────────────────────────────────
+router.get('/akun-alias', requireMaster, showAkunAlias);
+router.get('/api/akun-alias', requireMaster, getAliasAccountsApi);
+router.post('/api/akun-alias', requireMaster, createAliasApi);
+router.put('/api/akun-alias/:username', requireMaster, updateAliasApi);
+router.delete('/api/akun-alias/:username', requireMaster, deleteAliasApi);
 
 export { router as dashboardRouter };

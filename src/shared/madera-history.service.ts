@@ -149,7 +149,7 @@ export async function pullAndPersistMaderaHistory(account: MaderaAccount): Promi
             continue;
         try {
             const stored = await storeMutationIfNew({
-                qrisAccountId: account.id,
+                qrisAccountId: String(account.id),
                 amount: mapped.amount,
                 type: mapped.type,
                 // Saldo per baris tak tersedia dari API -> dihitung saat tampil dari lastMaderaBalance.

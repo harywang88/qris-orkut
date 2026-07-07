@@ -359,7 +359,7 @@ export async function handleSyncAllMerchants(req: Request, res: Response): Promi
 
 export async function getSyncAllStatusApi(req: Request, res: Response): Promise<void> {
   try {
-    res.json({ ok: true, ...getSyncAllStatus() });
+    res.json(Object.assign({ ok: true }, getSyncAllStatus()));
   } catch (err) {
     logger.error({ err }, 'getSyncAllStatusApi error');
     res.status(500).json({ ok: false, error: 'Gagal mengambil status Sinkron ALL.' });
