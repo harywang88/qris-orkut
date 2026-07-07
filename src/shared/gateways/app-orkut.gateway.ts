@@ -1467,6 +1467,112 @@ export class AppOrkutGateway implements IOrkutGateway {
    * Fetch daftar bank yang didukung untuk transfer Madera via `action=get`.
    * Hasilnya di-cache per account selama 30 menit.
    */
+  // ── Nobu/Madera bridge (dipulihkan 7 Jul 2026; sempat ter-wipe deploy lama) ──
+  async fetchMaderaTransactionHistory(account: any) {
+    try {
+      const json = await this.runMaderaTransferRequest(account, { 'requests[madera_history][action]': 'get' } as any, 15000);
+      const mh = json && (json as any).madera_history;
+      if (!mh || mh.success === false) {
+        return { ok: false, message: (mh && mh.message) || 'Gagal mengambil histori Madera.', items: [] };
+      }
+      const results = Array.isArray(mh.results) ? mh.results : [];
+      const items = results.map((r: any) => ({
+        type: r.type || null,
+        direction: r.type === 'debet' ? 'out' : (r.type === 'kredit' ? 'in' : null),
+        amount: r.amount || null,
+        status: r.status || '',
+        description: r.description || '',
+        date: r.date || '',
+        icon: r.icon || null,
+      }));
+      return { ok: true, title: mh.title || 'Mutasi Madera', fromDate: mh.from_date || null, toDate: mh.to_date || null, items };
+    } catch (err) {
+      logger.error({ err, accountCode: account.code }, 'app-orkut fetchMaderaTransactionHistory error');
+      return { ok: false, message: err instanceof Error ? err.message : 'error', items: [] };
+    }
+  }
+
+  async fetchMaderaHistoryWebviewUrl(account: any) {
+    try {
+      const json = await this.runMaderaTransferRequest(account, { 'requests[madera_redirect][action]': 'transactions' } as any, 20000);
+      const mr = json && (json as any).madera_redirect;
+      if (mr && mr.success !== false && mr.redirect_url) {
+        return { ok: true, url: mr.redirect_url };
+      }
+      return { ok: false, message: (mr && mr.message) || 'Gagal mengambil link webview Madera.' };
+    } catch (err) {
+      logger.error({ err, accountCode: account.code }, 'app-orkut fetchMaderaHistoryWebviewUrl error');
+      return { ok: false, message: err instanceof Error ? err.message : 'error' };
+    }
+  }
+
+  async captureMaderaHistoryScreenshot(url: string, outPath: string, account: any, amount?: number | null) {
+    const { spawnSync } = require('child_process');
+    const py = process.env.NOBU_PIN_PYTHON?.trim() || '/opt/ayuchenbot/venv/bin/python3';
+    const script = process.env.NOBU_SHOT_SCRIPT?.trim() || 'python/nobu_history_screenshot.py';
+    const display = process.env.NOBU_PIN_DISPLAY?.trim() || ':99';
+    const cwd = process.env.NOBU_PIN_CWD?.trim() || process.cwd();
+    let pin: string | null = null;
+    try { if (account && account.transferPinEncrypted) pin = decrypt(account.transferPinEncrypted); } catch (e) { /* ignore */ }
+    const input = JSON.stringify({ url, out_path: outPath, pin, amount: amount || null, wait: 10 });
+    let res: any;
+    try {
+      res = spawnSync(py, [script], { cwd, input, encoding: 'utf8', timeout: 160000, maxBuffer: 8 * 1024 * 1024, env: { ...process.env, DISPLAY: display } });
+    } catch (err: any) {
+      return { ok: false, message: 'Screenshot headless gagal dijalankan: ' + (err && err.message) };
+    }
+    const stdout = String(res.stdout || '');
+    const stderr = String(res.stderr || '');
+    const m = stdout.match(/SHOT_JSON_BEGIN\s*([\s\S]*?)\s*SHOT_JSON_END/);
+    if (!m) {
+      logger.warn({ status: res.status, stderr: stderr.slice(0, 400) }, 'app-orkut captureMaderaHistoryScreenshot: no result');
+      return { ok: false, message: 'Screenshot tidak mengembalikan hasil.' };
+    }
+    let parsed: any;
+    try { parsed = JSON.parse(m[1].trim()); } catch (err) { return { ok: false, message: 'Hasil screenshot tidak valid.' }; }
+    return { ok: Boolean(parsed.success), path: parsed.out_path || outPath, size: parsed.size || 0, message: parsed.message || null };
+  }
+
+  async captureMaderaHistoryScreenshotAsync(url: string, outPath: string, account: any, amount?: number | null) {
+    const { spawn } = require('child_process');
+    const py = process.env.NOBU_PIN_PYTHON?.trim() || '/opt/ayuchenbot/venv/bin/python3';
+    const script = process.env.NOBU_SHOT_SCRIPT?.trim() || 'python/nobu_history_screenshot.py';
+    const display = process.env.NOBU_PIN_DISPLAY?.trim() || ':99';
+    const cwd = process.env.NOBU_PIN_CWD?.trim() || process.cwd();
+    let pin: string | null = null;
+    try { if (account && account.transferPinEncrypted) pin = decrypt(account.transferPinEncrypted); } catch (e) { /* ignore */ }
+    const input = JSON.stringify({ url, out_path: outPath, pin, amount: amount || null, wait: 10 });
+    return await new Promise<any>((resolve) => {
+      let stdout = '', stderr = '', done = false;
+      let timer: any = null;
+      const finish = (r: any) => { if (done) return; done = true; try { clearTimeout(timer); } catch (e) { /* ignore */ } resolve(r); };
+      let child: any;
+      try { child = spawn(py, [script], { cwd, env: { ...process.env, DISPLAY: display } }); }
+      catch (err) { finish({ ok: false, message: 'Screenshot headless gagal dijalankan.' }); return; }
+      timer = setTimeout(() => { try { child.kill('SIGKILL'); } catch (e) { /* ignore */ } finish({ ok: false, message: 'Screenshot timeout.' }); }, 175000);
+      child.stdout.on('data', (d: any) => { stdout += d; });
+      child.stderr.on('data', (d: any) => { stderr += d; });
+      child.on('error', (err: any) => finish({ ok: false, message: 'spawn error: ' + (err && err.message) }));
+      child.on('close', () => {
+        const m = stdout.match(/SHOT_JSON_BEGIN\s*([\s\S]*?)\s*SHOT_JSON_END/);
+        if (!m) { logger.warn({ stderr: stderr.slice(0, 300) }, 'captureAsync: no result'); finish({ ok: false, message: 'Screenshot tidak mengembalikan hasil.' }); return; }
+        let parsed: any; try { parsed = JSON.parse(m[1].trim()); } catch (e) { finish({ ok: false, message: 'Hasil screenshot tidak valid.' }); return; }
+        finish({ ok: Boolean(parsed.success), path: parsed.out_path || outPath, size: parsed.size || 0, message: parsed.message || null });
+      });
+      try { child.stdin.write(input); child.stdin.end(); } catch (e) { /* ignore */ }
+    });
+  }
+
+  async pingEgress(account: any, timeoutMs?: number) {
+    const t = Date.now();
+    try {
+      await this.runMaderaTransferRequest(account, { 'requests[ping][action]': 'ping' } as any, timeoutMs || 6000);
+      return { ok: true, latencyMs: Date.now() - t };
+    } catch (err) {
+      return { ok: false, latencyMs: Date.now() - t, message: err instanceof Error ? err.message : 'error' };
+    }
+  }
+
   async fetchMaderaBankList(
     account: Pick<QrisAccount, 'code' | 'sessionTokenEncrypted' | 'cookiesEncrypted' | 'deviceId'>,
   ): Promise<Record<string, { name: string; fee: number; status: string }> | null> {
