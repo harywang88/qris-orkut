@@ -37,6 +37,54 @@ function isDisbursement(issuerName: string | null): boolean {
   return s.includes('pencairan');
 }
 
+// ── Pengirim: PORT PERSIS dari views/mutations/qris.ejs (getPengirim/getBank/stripNobuText) ──
+// Supaya kolom Pengirim di Uang Pending IDENTIK dengan menu Mutasi QRIS ("DANA / HA******").
+function stripNobuText(value: string): string {
+  return String(value || '')
+    .split('/')
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .filter((p) => p.toUpperCase() !== 'NOBU')
+    .join(' / ');
+}
+
+function getBankLabel(raw: Record<string, unknown>, issuerName: string | null): string {
+  const brand = raw.brand as { name?: string } | undefined;
+  const brandName = brand && typeof brand === 'object' ? String(brand.name || '') : '';
+  const desc = String(raw.description || raw.keterangan || '');
+  const parts = desc.split('/').map((p) => p.trim()).filter(Boolean);
+  const bankParts = [brandName, raw.bank as string, raw.bank_name as string, parts[0], issuerName]
+    .filter(Boolean)
+    .filter((part, index, arr) => arr.indexOf(part) === index && part !== 'Orderkuota QRIS') as string[];
+  const full = bankParts.join(' / ') || 'OrderKuota';
+  const seen = new Set<string>();
+  const uniq: string[] = [];
+  for (const p of full.split('/').map((s) => s.trim()).filter(Boolean)) {
+    const k = p.toUpperCase();
+    if (!seen.has(k)) { seen.add(k); uniq.push(p); }
+  }
+  return stripNobuText(uniq.join(' / ') || full);
+}
+
+function computePengirim(rawDataJson: string | null, issuerName: string | null): string {
+  let raw: Record<string, unknown> = {};
+  try { raw = JSON.parse(rawDataJson || '{}'); } catch { raw = {}; }
+  const bankLabel = getBankLabel(raw, issuerName);
+  let sender = stripNobuText(String(raw.sender_name || raw.senderName || ''));
+  if (!sender) {
+    const desc = String(raw.description || raw.keterangan || '');
+    if (desc.includes('/')) {
+      const parts = desc.split('/').map((p) => p.trim()).filter(Boolean);
+      if (parts.length > 1) sender = stripNobuText(parts.slice(1).join(' / '));
+    }
+    if (!sender) sender = stripNobuText(desc || issuerName || 'Tidak terbaca');
+  }
+  if (!bankLabel) return sender || 'Tidak terbaca';
+  if (!sender) return bankLabel;
+  if (sender.toUpperCase() === bankLabel.toUpperCase()) return sender;
+  return bankLabel + ' / ' + sender;
+}
+
 function ensureDir(): void {
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -110,6 +158,7 @@ export interface PendingMoneyRow {
   amount: number;
   reqAmount: number | null; // nominal asli yang diminta member (dari transaksi tebakan)
   issuerName: string | null;
+  pengirim: string; // "bank / nama pengirim" — identik menu Mutasi QRIS
   rrn: string | null;
   transactionTime: Date;
   ageMinutes: number;
@@ -179,6 +228,7 @@ export async function listPendingMoney(accountIds?: string[] | null): Promise<Pe
       amount: m.amount,
       reqAmount: guesses[0] ? guesses[0].requestedAmount : null,
       issuerName: m.issuerName,
+      pengirim: computePengirim(m.rawDataJson, m.issuerName),
       rrn: m.rrn,
       transactionTime: m.transactionTime,
       ageMinutes: Math.floor((Date.now() - m.transactionTime.getTime()) / 60000),

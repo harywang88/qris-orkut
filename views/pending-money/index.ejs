@@ -7,6 +7,14 @@
     } catch (e) { return '-'; }
   }
   function rp(n) { return 'Rp ' + Number(n || 0).toLocaleString('id-ID'); }
+  function ago(mins) {
+    mins = Number(mins) || 0;
+    if (mins < 1) return 'baru saja';
+    var d = Math.floor(mins / 1440), h = Math.floor((mins % 1440) / 60), m = mins % 60;
+    if (d > 0) return d + ' hari' + (h > 0 ? (' ' + h + ' jam') : '') + ' lalu';
+    if (h > 0) return h + ' jam' + (m > 0 ? (' ' + m + ' mnt') : '') + ' lalu';
+    return m + ' mnt lalu';
+  }
   var siteList = typeof websites !== 'undefined' ? websites : [];
 %>
 <style>
@@ -107,7 +115,7 @@
           <tr>
             <td class="whitespace-nowrap text-muted-2">
               <%= fmtWib(r.transactionTime) %>
-              <span class="block text-[10px] text-muted"><%= r.ageMinutes %> mnt lalu</span>
+              <span class="block text-[10px] text-muted"><%= ago(r.ageMinutes) %></span>
             </td>
             <td class="whitespace-nowrap">
               <span class="text-ink font-semibold"><%= r.merchantName || r.accountCode %></span>
@@ -118,7 +126,7 @@
               <% if (r.reqAmount) { %><div class="pm-req">Req: <%= rp(r.reqAmount) %></div><% } %>
             </td>
             <td>
-              <span class="text-ink text-sm"><%= r.issuerName || '-' %></span>
+              <span class="text-ink text-sm"><%= r.pengirim || '-' %></span>
               <% if (r.rrn) { %><span class="block text-[10px] text-muted font-mono"><%= r.rrn %></span><% } %>
             </td>
             <td>
@@ -143,7 +151,7 @@
                   <% } %>
                   <button class="pm-btn pm-btn-push"
                     data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>"
-                    data-issuer="<%= r.issuerName || '-' %>"
+                    data-issuer="<%= r.pengirim || '-' %>"
                     data-amount="<%= rp(r.amount) %>"
                     data-rrn="<%= r.rrn || '-' %>"
                     data-member="<%= guessId %>"
@@ -257,4 +265,7 @@
     } catch (e) { alert('Gagal: ' + e.message); }
   }
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') pmClose(); });
+  // Pindahkan modal ke <body> supaya position:fixed lepas dari ancestor ber-transform
+  // (fix: breakdown tak muncul pas / harus zoom-out+scroll karena kejebak container beranimasi).
+  (function () { var m = document.getElementById('pmModal'); if (m && m.parentElement !== document.body) document.body.appendChild(m); })();
 </script>
