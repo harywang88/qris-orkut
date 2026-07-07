@@ -118,6 +118,15 @@
     </a>
     <% } %>
 
+    <% if (can('mutasi-utama')) { %>
+    <a href="<%= url('/dashboard/reconcile') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-arrows-left-right-to-line qris-nav-icon"></i>
+        <span>Rekonsiliasi Saldo</span>
+      </span>
+    </a>
+    <% } %>
+
     <% if (can('mutasi-madera')) { %>
     <a href="<%= url('/dashboard/madera-nobu') %>" class="qris-nav-link">
       <span class="flex items-center gap-3">
