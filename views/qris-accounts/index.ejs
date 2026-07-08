@@ -159,6 +159,10 @@
           <i class="fa-solid fa-plus text-xs"></i> Tambah
         </button>
       </div>
+      <p class="text-xs text-muted-2" style="margin:-10px 0 14px;display:flex;align-items:center;gap:6px">
+        <i class="fa-solid fa-palette" style="font-size:10px;color:#a855f7"></i>
+        Warna terisi otomatis beda tiap site — klik kotak warna kalau mau ubah.
+      </p>
       <label class="qris-label">Daftar Site</label>
       <div id="siteList" class="mt-2 flex flex-col gap-2"></div>
     </div>
@@ -170,6 +174,14 @@
 <script>
 const SITE_BASE = '<%= url('/qris-accounts') %>';
 let SITES = <%- JSON.stringify(sites || []) %>;
+// Palet warna site — tiap site otomatis dapat warna BERBEDA (yang belum terpakai).
+const SITE_PALETTE = ['#8b5cf6','#ef4444','#f59e0b','#10b981','#3b82f6','#ec4899','#14b8a6','#f97316','#a855f7','#84cc16','#06b6d4','#eab308','#f43f5e','#22d3ee','#fb7185'];
+function nextSiteColor() {
+  const used = new Set((SITES || []).map(function (s) { return String(s.color || '').toLowerCase(); }));
+  for (let i = 0; i < SITE_PALETTE.length; i++) { if (!used.has(SITE_PALETTE[i].toLowerCase())) return SITE_PALETTE[i]; }
+  return SITE_PALETTE[(SITES ? SITES.length : 0) % SITE_PALETTE.length];
+}
+function setNextSiteColorPicker() { const el = document.getElementById('newSiteColor'); if (el) el.value = nextSiteColor(); }
 
 function siteEsc(s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -185,6 +197,7 @@ function siteToast(msg, ok) {
 }
 function openSiteModal() {
   renderSiteList();
+  setNextSiteColorPicker();
   document.getElementById('siteModal').style.display = 'flex';
   setTimeout(() => { const el = document.getElementById('newSiteName'); if (el) el.focus(); }, 50);
 }
@@ -259,6 +272,7 @@ async function addSite() {
     SITES.push(data.site);
     SITES.sort((a, b) => String(a.name).localeCompare(String(b.name), 'id'));
     inp.value = '';
+    setNextSiteColorPicker();
     renderSiteList();
     rebuildAllSiteSelects();
     siteToast('Site "' + data.site.name + '" ditambahkan', true);
