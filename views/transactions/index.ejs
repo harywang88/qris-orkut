@@ -458,9 +458,11 @@
       <button type="button" onclick="exportTransactions()" class="qris-ghost-btn"><span>Export</span></button>
       <div class="tx-toolbar-sep"></div>
       <button type="button" onclick="checkStatusAll()" class="qris-accent-btn">Check Status All</button>
-      <button type="button" id="btnSyncAllTx" class="qris-accent-btn" title="Sinkron semua akun QRIS (maks 1x per menit)"><span id="btnSyncAllTxLabel">Sinkron ALL</span></button>
+      <button type="button" id="btnAppAllTx" title="App Sinkron ALL — tarik dari app OrderKuota (cepat). Akun yang kena 469 dilewati otomatis." style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(99,179,237,0.18),rgba(99,179,237,0.06));border:1px solid rgba(99,179,237,0.3);color:#bfdbfe;padding:9px 15px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;cursor:pointer;transition:opacity .2s;white-space:nowrap"><i class="fa-solid fa-bolt"></i><span id="btnAppAllTxLabel">App Sinkron ALL</span></button>
+      <button type="button" id="btnRepAllTx" title="Report Sinkron ALL — tarik dari web report (bebas limit 469, agak lambat)." style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(52,211,153,0.18),rgba(52,211,153,0.06));border:1px solid rgba(52,211,153,0.32);color:#a7f3d0;padding:9px 15px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;cursor:pointer;transition:opacity .2s;white-space:nowrap"><i class="fa-solid fa-globe"></i><span id="btnRepAllTxLabel">Report Sinkron ALL</span></button>
       <select id="syncOneSelTx" title="Pilih akun untuk disinkron" style="background:rgba(15,23,42,0.6);border:1px solid rgba(255,255,255,0.14);color:inherit;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;max-width:180px"><option value="">Pilih Akun…</option></select>
-      <button type="button" id="btnSyncOneTx" class="qris-accent-btn" title="Sinkron akun terpilih (maks 1x per menit per akun)"><span id="btnSyncOneTxLabel">Sinkron</span></button>
+      <button type="button" id="btnAppOneTx" title="App Sinkron akun terpilih (beku saat 469)" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(99,179,237,0.18),rgba(99,179,237,0.06));border:1px solid rgba(99,179,237,0.3);color:#bfdbfe;padding:9px 13px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;cursor:pointer;transition:opacity .2s;white-space:nowrap"><i class="fa-solid fa-bolt"></i><span id="btnAppOneTxLabel">App</span></button>
+      <button type="button" id="btnRepOneTx" title="Report Sinkron akun terpilih (bebas limit)" style="display:inline-flex;align-items:center;gap:7px;background:linear-gradient(135deg,rgba(52,211,153,0.18),rgba(52,211,153,0.06));border:1px solid rgba(52,211,153,0.32);color:#a7f3d0;padding:9px 13px;border-radius:999px;font-size:12px;font-weight:800;letter-spacing:.03em;cursor:pointer;transition:opacity .2s;white-space:nowrap"><i class="fa-solid fa-globe"></i><span id="btnRepOneTxLabel">Report</span></button>
       <div class="tx-record-info">
         <b><%= totalRecordsText %></b> Records &middot; Page <b><%= page %></b>
       </div>
@@ -1491,5 +1493,120 @@ async function checkStatusAll() {
   loadAccounts();
   pollStatus(false);
 })();
+
+  // -- App/Report Sinkron TERPISAH + freeze 469 + throttle klik (Transaction) --
+  (function initTxSyncSplit(){
+    if (window.__TxSyncSplitReady) return;
+    window.__TxSyncSplitReady = true;
+    const appAll = document.getElementById('btnAppAllTx'), appAllL = document.getElementById('btnAppAllTxLabel');
+    const repAll = document.getElementById('btnRepAllTx'), repAllL = document.getElementById('btnRepAllTxLabel');
+    const sel = document.getElementById('syncOneSelTx');
+    const appOne = document.getElementById('btnAppOneTx'), appOneL = document.getElementById('btnAppOneTxLabel');
+    const repOne = document.getElementById('btnRepOneTx'), repOneL = document.getElementById('btnRepOneTxLabel');
+    if (!appAll && !repAll) return;
+    const APP_ALL = apiUrl('/merchant-qr/sync-app-all'), REP_ALL = apiUrl('/merchant-qr/sync-report-all'), COOLDOWN = apiUrl('/merchant-qr/cooldown-status');
+    const oneUrl = function(id, src){ return apiUrl('/merchant-qr/' + encodeURIComponent(id) + '/sync-' + src); };
+    const busy = { appAll:false, repAll:false, appOne:false, repOne:false };
+    let appAllUntil = 0;
+    let oneUntil = {};
+    function toast(msg, ok){
+      let box = document.getElementById('syncToastBox');
+      if (!box){ box = document.createElement('div'); box.id='syncToastBox'; box.style.cssText='position:fixed;right:18px;bottom:18px;z-index:99999;display:flex;flex-direction:column;gap:8px'; document.body.appendChild(box); }
+      const t = document.createElement('div');
+      t.style.cssText = 'background:' + (ok?'rgba(16,185,129,0.96)':'rgba(239,68,68,0.96)') + ';color:#fff;padding:11px 16px;border-radius:12px;font-size:13px;font-weight:700;box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:380px;opacity:0;transform:translateY(8px);transition:all .25s';
+      t.textContent = msg; box.appendChild(t);
+      requestAnimationFrame(function(){ t.style.opacity='1'; t.style.transform='translateY(0)'; });
+      setTimeout(function(){ t.style.opacity='0'; t.style.transform='translateY(8px)'; setTimeout(function(){ t.remove(); }, 300); }, 4600);
+    }
+    function setBtn(btn, lbl, disabled, text){ if(!btn) return; btn.disabled=disabled; btn.style.opacity=disabled?'.5':'1'; btn.style.cursor=disabled?'not-allowed':'pointer'; if(lbl && text!=null) lbl.textContent=text; }
+    function fmt(ms){ const sec=Math.ceil(ms/1000); const m=Math.floor(sec/60); const ss=sec%60; return m>0 ? (m+':'+String(ss).padStart(2,'0')) : (ss+'s'); }
+    function tick(){
+      const now = Date.now();
+      if (!busy.appAll){ const rem = Math.max(0, appAllUntil - now); setBtn(appAll, appAllL, rem>0, rem>0 ? ('Tunggu '+fmt(rem)) : 'App Sinkron ALL'); }
+      const id = sel ? sel.value : '';
+      const u = id ? oneUntil[id] : null;
+      const cdRem = u ? Math.max(0, u.cd - now) : 0;
+      const thRem = u ? Math.max(0, u.th - now) : 0;
+      const rem = Math.max(cdRem, thRem);
+      if (!busy.appOne){ if (id && rem>0) setBtn(appOne, appOneL, true, (cdRem>0 ? 'Beku ' : 'Tunggu ')+fmt(rem)); else setBtn(appOne, appOneL, !id, 'App'); }
+      if (!busy.repOne) setBtn(repOne, repOneL, !id, 'Report');
+    }
+    async function pollCooldown(){
+      try {
+        const res = await fetch(COOLDOWN, { cache:'no-store', headers:{ 'Accept':'application/json' } });
+        const data = await res.json().catch(function(){ return {}; });
+        const now = Date.now();
+        appAllUntil = now + (Number(data.appAllThrottleRemainingMs) || 0);
+        const map = {};
+        ((data && data.accounts) || []).forEach(function(a){ map[a.id] = { cd: now + (Number(a.cooldownRemainingMs)||0), th: now + (Number(a.throttleRemainingMs)||0) }; });
+        oneUntil = map;
+      } catch(_){}
+      tick();
+    }
+    async function loadAccounts(){
+      if (!sel) return;
+      try {
+        const list = await fetch(apiUrl('/dashboard/api/qris-accounts'), { cache:'no-store' }).then(function(r){ return r.json(); }).then(function(d){ return d.accounts || []; }).catch(function(){ return []; });
+        const cur = sel.value;
+        sel.innerHTML = '<option value="">Pilih Akun...</option>' + (list||[]).filter(function(a){ return a && a.id; }).map(function(a){ const label=a.merchantName||a.code||a.label||a.id; return '<option value="'+a.id+'">'+label+'</option>'; }).join('');
+        if (cur) sel.value = cur;
+      } catch(_){}
+      tick();
+    }
+    async function doAll(kind){
+      const isApp = kind==='app';
+      const bk = isApp?'appAll':'repAll', btn=isApp?appAll:repAll, lbl=isApp?appAllL:repAllL, url=isApp?APP_ALL:REP_ALL, name=isApp?'App Sinkron ALL':'Report Sinkron ALL';
+      if (busy[bk] || btn.disabled) return;
+      busy[bk]=true; setBtn(btn, lbl, true, 'Menyinkron...');
+      try {
+        const res = await fetch(url, { method:'POST', headers:{ 'Accept':'application/json' } });
+        const data = await res.json().catch(function(){ return {}; });
+        if (res.status===429 && (data.throttle||data.cooldown)){
+          if (isApp) appAllUntil = Date.now() + (Number(data.remainingMs)||60000);
+          toast(data.error || 'Tunggu sebentar.', false);
+          busy[bk]=false; tick(); return;
+        }
+        if (!res.ok || data.success===false) throw new Error(data.error || ('HTTP '+res.status));
+        const results=data.results||[], skipped=data.skipped||[], errors=data.errors||[];
+        const totNew = results.reduce(function(a,r){ return a + (r.newQris||0); }, 0);
+        let msg = name+': '+results.length+' akun, '+totNew+' mutasi QRIS baru';
+        if (skipped.length) msg += ' · '+skipped.length+' dilewati (cooldown)';
+        if (errors.length) msg += ' · '+errors.length+' error';
+        toast(msg, errors.length===0);
+        setTimeout(function(){ window.location.reload(); }, 1500);
+      } catch(err){ toast(name+' gagal: '+((err&&err.message)||'jaringan'), false); busy[bk]=false; tick(); }
+    }
+    async function doOne(kind){
+      const id = sel ? sel.value : '';
+      if (!id){ toast('Pilih akun QRIS dulu.', false); return; }
+      const isApp = kind==='app';
+      const bk = isApp?'appOne':'repOne', btn=isApp?appOne:repOne, lbl=isApp?appOneL:repOneL, name=isApp?'App':'Report';
+      if (busy[bk] || btn.disabled) return;
+      busy[bk]=true; setBtn(btn, lbl, true, 'Sinkron...');
+      try {
+        const res = await fetch(oneUrl(id, kind), { method:'POST', headers:{ 'Content-Type':'application/json', 'Accept':'application/json' } });
+        const data = await res.json().catch(function(){ return {}; });
+        if (res.status===429 && (data.cooldown||data.throttle)){
+          const until = Date.now() + (Number(data.remainingMs)||30000);
+          oneUntil[id] = oneUntil[id] || { cd:0, th:0 };
+          if (data.cooldown) oneUntil[id].cd = until; else oneUntil[id].th = until;
+          toast(data.error || 'Tunggu sebentar.', false);
+          busy[bk]=false; tick(); return;
+        }
+        if (!res.ok || data.success===false) throw new Error(data.error || ('HTTP '+res.status));
+        toast(name+' Sinkron OK: '+(data.newQris||0)+' mutasi QRIS baru. Memuat ulang...', true);
+        setTimeout(function(){ window.location.reload(); }, 1100);
+      } catch(err){ toast(name+' Sinkron gagal: '+((err&&err.message)||'jaringan'), false); busy[bk]=false; tick(); }
+    }
+    if (appAll) appAll.addEventListener('click', function(){ doAll('app'); });
+    if (repAll) repAll.addEventListener('click', function(){ doAll('report'); });
+    if (appOne) appOne.addEventListener('click', function(){ doOne('app'); });
+    if (repOne) repOne.addEventListener('click', function(){ doOne('report'); });
+    if (sel) sel.addEventListener('change', tick);
+    loadAccounts();
+    pollCooldown();
+    setInterval(pollCooldown, 3000);
+    setInterval(tick, 1000);
+  })();
 })();
 </script>
