@@ -29,6 +29,8 @@ import {
   getMutationsJson,
   streamMutationsSse,
   getQrisReconcileApi,
+  getReconcileDetailApi,
+  postReconcileBackfillApi,
   getQrisAccountsJson,
   handleRefreshAccountBalanceApi,
   handleAccountBalancesApi,
@@ -96,6 +98,8 @@ router.get('/api/transactions/latest', getLatestTransactionsApi);
 router.get('/api/mutations', getMutationsJson);
 router.get('/api/mutations/stream', streamMutationsSse);
 router.get('/api/mutations/reconcile', getQrisReconcileApi);
+router.get('/api/mutations/reconcile-detail', getReconcileDetailApi);
+router.post('/api/mutations/reconcile-backfill', postReconcileBackfillApi);
 router.get('/api/qris-accounts', getQrisAccountsJson);
 router.post('/api/qris-accounts/:id/refresh-balance', handleRefreshAccountBalanceApi);
 router.get('/api/account-balances', handleAccountBalancesApi);

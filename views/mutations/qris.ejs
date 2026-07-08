@@ -527,6 +527,9 @@
 (function () {
   const apiMutUrl   = '<%= url('/dashboard/api/mutations') %>';
   const apiReconcileUrl = '<%= url('/dashboard/api/mutations/reconcile') %>';
+  const SELISIH_DETAIL_URL = '<%= url('/dashboard/api/mutations/reconcile-detail') %>';
+  const SELISIH_BACKFILL_URL = '<%= url('/dashboard/api/mutations/reconcile-backfill') %>';
+  const SELISIH_WALLET = 'qris';
   const apiAcctUrl  = '<%= url('/dashboard/api/qris-accounts') %>';
   const apiRefreshBalanceUrlTemplate = '<%= url('/dashboard/api/qris-accounts/__ACCOUNT_ID__/refresh-balance') %>';
   const syncMerchantUrlTemplate = '<%= url('/merchant-qr/__ACCOUNT_ID__/sync-now') %>';
@@ -1346,7 +1349,39 @@
       parts.push('kemungkinan mutasi masuk hilang ' + rp(acc.gap.jump) + (jam ? ' sekitar ' + jam : ''));
     }
     strip.innerHTML = reconcileBadge('rgba(239,68,68,.1)', 'rgba(239,68,68,.3)', '#fca5a5', 'fa-triangle-exclamation',
-      'TIDAK COCOK — ' + (parts.join('; ') || 'saldo tidak sesuai') + '.');
+      'TIDAK COCOK — ' + (parts.join('; ') || 'saldo tidak sesuai') + '.') + selisihBtnHtml(acc.accountId);
+  }
+
+  function selisihBtnHtml(id){
+    return '<div style="margin-top:8px"><button onclick="showSelisihDetail(\'' + id + '\')" style="background:rgba(239,68,68,.14);color:#fca5a5;border:1px solid rgba(239,68,68,.3);padding:7px 14px;border-radius:9px;font-size:12px;font-weight:700;cursor:pointer">\uD83D\uDD0D Detail Selisih (nominal \u00b7 user \u00b7 jam)</button></div><div id="selisih-detail"></div>';
+  }
+  function selisihTarikBtn(id){
+    return '<button onclick="tarikSelisih(\'' + id + '\')" style="margin-top:8px;background:#16a34a;color:#fff;border:none;padding:8px 16px;border-radius:9px;font-size:12px;font-weight:800;cursor:pointer">\u2b07 Tarik mutasi hilang \u2192 jadi COCOK</button>';
+  }
+  async function showSelisihDetail(id){
+    var box=document.getElementById('selisih-detail'); if(!box) return;
+    box.innerHTML='<div style="color:#94a3b8;font-size:12px;padding:8px">Menarik detail dari Web Report...</div>';
+    try{
+      var res=await fetch(SELISIH_DETAIL_URL+'?accountId='+encodeURIComponent(id)+'&wallet='+SELISIH_WALLET,{cache:'no-store'});
+      var d=await res.json();
+      if(!d.ok){ box.innerHTML='<div style="color:#fca5a5;font-size:12px;padding:8px">'+esc(d.message||'Gagal.')+'</div>'; return; }
+      if(!d.missing||!d.missing.length){ box.innerHTML='<div style="color:#fcd34d;font-size:12px;padding:8px">'+esc(d.message||'Tak ada mutasi spesifik di window selisih.')+'</div>'+selisihTarikBtn(id); return; }
+      var rows=d.missing.map(function(m){
+        var jam=''; try{ jam=new Date(m.time).toLocaleString('id-ID',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false,timeZone:'Asia/Jakarta'}); }catch(e){}
+        return '<div style="display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border:1px solid rgba(239,68,68,.2);border-radius:10px;background:rgba(239,68,68,.05);margin-bottom:6px;font-size:12px"><div><b style="color:#fca5a5">'+rp(m.amount)+'</b> \u00b7 '+esc(m.user||'-')+'</div><div style="color:#94a3b8;white-space:nowrap">'+esc(jam)+(m.rrn?' \u00b7 RRN '+esc(String(m.rrn).slice(0,14)):'')+'</div></div>';
+      }).join('');
+      box.innerHTML='<div style="font-size:11px;color:#94a3b8;margin:6px 0 4px">'+d.missing.length+' mutasi masuk belum tertarik (biang selisih):</div>'+rows+selisihTarikBtn(id);
+    }catch(e){ box.innerHTML='<div style="color:#fca5a5;font-size:12px;padding:8px">Gagal memuat detail.</div>'; }
+  }
+  async function tarikSelisih(id){
+    var box=document.getElementById('selisih-detail');
+    if(box) box.innerHTML='<div style="color:#94a3b8;font-size:12px;padding:8px">Menarik mutasi hilang...</div>';
+    try{
+      var res=await fetch(SELISIH_BACKFILL_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({accountId:id,wallet:SELISIH_WALLET})});
+      var d=await res.json();
+      if(d.ok){ if(box) box.innerHTML='<div style="color:#86efac;font-size:12px;padding:8px">\u2713 '+(d.newCount||0)+' mutasi ditarik. Menyegarkan...</div>'; setTimeout(function(){ fetchReconcile(true); },1200); }
+      else if(box){ box.innerHTML='<div style="color:#fca5a5;font-size:12px;padding:8px">'+esc(d.message||'Gagal menarik.')+'</div>'; }
+    }catch(e){ if(box) box.innerHTML='<div style="color:#fca5a5;font-size:12px;padding:8px">Gagal menarik.</div>'; }
   }
 
   function renderReconcileAll(data) {

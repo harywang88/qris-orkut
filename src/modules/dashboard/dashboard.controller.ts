@@ -44,7 +44,7 @@ import {
   mergeRawMutationWithAppDetail,
   readPresentedMutationRawId,
 } from '../../shared/orkut-app-detail.service';
-import { publishMutationUpdated, storeMutationIfNew } from '../../shared/mutation-ingest.service';
+import { publishMutationUpdated, storeMutationIfNew, canonicalMutationHash } from '../../shared/mutation-ingest.service';
 import { listOutboxEventsSince, parseOutboxPayload } from '../../shared/outbox.service';
 import { generateDashboardQrTransaction } from '../../shared/dashboard-generate-qr.service';
 import { mapMaderaFeedItem } from '../../shared/madera-history.service';
@@ -2223,7 +2223,7 @@ async function computeWalletReconcileForAccount(
   const newestAfter = chain[chain.length - 1].balanceAfter ?? 0;
   const tailDiff = physical - newestAfter;
   // Cari lonjakan NAIK pertama (saldo masuk tanpa baris = mutasi masuk hilang).
-  let upwardGap: { jump: number; atTime: Date; keterangan: string } | null = null;
+  let upwardGap: { jump: number; atTime: Date; sinceTime: Date; keterangan: string } | null = null;
   for (let i = 1; i < chain.length; i++) {
     const prevAfter = chain[i - 1].balanceAfter ?? 0;
     const curBefore = chain[i].balanceBefore ?? 0;
@@ -2232,6 +2232,7 @@ async function computeWalletReconcileForAccount(
       upwardGap = {
         jump: curBefore - prevAfter,
         atTime: chain[i].transactionTime,
+        sinceTime: chain[i - 1].transactionTime,
         keterangan: readString(raw.keterangan) || readString(raw.description) || '',
       };
       break;
@@ -2358,6 +2359,83 @@ export async function getQrisReconcileApi(req: Request, res: Response): Promise<
   } catch (err) {
     logger.error({ err }, 'getQrisReconcileApi error');
     res.status(500).json({ ok: false });
+  }
+}
+
+// ── Detail selisih (bandingkan Web Report vs DB) + tarik 1-klik ──────────────
+// ── Detail selisih GAP-ANCHORED: hanya mutasi biang selisih yg terdeteksi rantai saldo ──
+// (bukan diff riwayat penuh). Window = (gap.sinceTime, gap.atTime]. CREDIT-only (uang MASUK hilang).
+async function findGapMissingCredits(account: any, wallet: 'qris' | 'utama', gap: { atTime: Date; sinceTime: Date }) {
+  const payload = await fetchReportWalletLive(account, wallet, 8);
+  if (!payload) return null;
+  const since = new Date(gap.sinceTime).getTime() - 60000;
+  const until = new Date(gap.atTime).getTime() + 60000;
+  const inWindow = (payload.mutations || []).filter((m) => {
+    if (m.type !== 'credit' || !(Number(m.balanceAfter) > 0)) return false;
+    const t = new Date(m.transactionTime).getTime();
+    return t >= since && t <= until;
+  });
+  const keys = inWindow.map((m) => canonicalMutationHash({ rrn: m.rrn, amount: m.amount, balanceAfter: m.balanceAfter, transactionTime: m.transactionTime, type: m.type }));
+  const existRows = keys.length ? await db.mutation.findMany({ where: { dedupKey: { in: keys } }, select: { dedupKey: true } }) : [];
+  const existing = new Set(existRows.map((r) => r.dedupKey));
+  return inWindow.filter((_m, i) => !existing.has(keys[i]));
+}
+
+export async function getReconcileDetailApi(req: Request, res: Response): Promise<void> {
+  try {
+    const wallet = req.query.wallet === 'utama' ? 'utama' : 'qris';
+    const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : '';
+    const account = await db.qrisAccount.findUnique({ where: { id: accountId } });
+    if (!account) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; }
+    const physical = wallet === 'utama' ? account.lastMainBalance : account.lastQrisBalance;
+    const recon = (await computeWalletReconcileForAccount(account, wallet, physical)) as { match?: boolean; gap?: { jump: number; atTime: Date; sinceTime: Date } | null };
+    if (recon.match) { res.json({ ok: true, match: true, missing: [], message: 'Sudah cocok — tidak ada selisih.' }); return; }
+    if (!recon.gap || !recon.gap.sinceTime) {
+      res.json({ ok: true, match: false, missing: [], message: 'Selisih pada saldo TERKINI (mutasi terbaru belum tertarik). Tekan Tarik untuk sinkron dari Web Report.' });
+      return;
+    }
+    const missing = await findGapMissingCredits(account, wallet, recon.gap);
+    if (missing === null) { res.json({ ok: false, message: 'Gagal menarik Web Report akun ini (cek Link Web Report).' }); return; }
+    res.json({
+      ok: true, match: false,
+      gap: { jump: recon.gap.jump, sinceTime: recon.gap.sinceTime, atTime: recon.gap.atTime },
+      missingCount: missing.length,
+      missing: missing.map((m) => {
+        const raw = parseRawMutationPayload(m.rawDataJson);
+        return { amount: m.amount, rrn: m.rrn, user: m.issuerName || readString(raw.keterangan) || readString(raw.description) || '-', time: m.transactionTime };
+      }),
+    });
+  } catch (err) {
+    logger.error({ err }, 'getReconcileDetailApi error');
+    res.status(500).json({ ok: false, message: 'Gagal mengambil detail selisih.' });
+  }
+}
+
+export async function postReconcileBackfillApi(req: Request, res: Response): Promise<void> {
+  try {
+    const body = (req.body || {}) as { accountId?: string; wallet?: string };
+    const wallet = body.wallet === 'utama' ? 'utama' : 'qris';
+    const account = await db.qrisAccount.findUnique({ where: { id: String(body.accountId || '') } });
+    if (!account) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; }
+    const physical = wallet === 'utama' ? account.lastMainBalance : account.lastQrisBalance;
+    const recon = (await computeWalletReconcileForAccount(account, wallet, physical)) as { match?: boolean; gap?: { jump: number; atTime: Date; sinceTime: Date } | null };
+    if (recon.match || !recon.gap || !recon.gap.sinceTime) { res.json({ ok: true, wallet, newCount: 0, message: 'Tidak ada selisih terdeteksi untuk ditarik.' }); return; }
+    const missing = await findGapMissingCredits(account, wallet, recon.gap);
+    if (missing === null) { res.json({ ok: false, message: 'Gagal menarik Web Report akun ini.' }); return; }
+    let newCount = 0;
+    for (const m of missing) {
+      const r = await storeMutationIfNew({
+        qrisAccountId: account.id, amount: m.amount, type: m.type,
+        balanceBefore: m.balanceBefore, balanceAfter: m.balanceAfter,
+        issuerName: m.issuerName ?? null, rrn: m.rrn ?? null, walletCategory: wallet,
+        transactionTime: new Date(m.transactionTime), rawHash: m.rawHash, rawDataJson: m.rawDataJson,
+      });
+      if (r.created) newCount++;
+    }
+    res.json({ ok: true, wallet, newCount });
+  } catch (err) {
+    logger.error({ err }, 'postReconcileBackfillApi error');
+    res.status(500).json({ ok: false, message: 'Gagal menarik mutasi hilang.' });
   }
 }
 
