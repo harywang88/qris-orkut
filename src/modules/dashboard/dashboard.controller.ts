@@ -19,7 +19,7 @@ import {
   processSettlement,
   reconcileProcessingMaderaTransfers,
 } from '../../shared/settlement.service';
-import { writeAuditLog } from '../../shared/audit-log.service';
+import { writeAuditLog, logAction } from '../../shared/audit-log.service';
 import { getWalletBalance } from '../../shared/wallet-ledger.service';
 import {
   classifyOrkutMutationDescription,
@@ -2392,6 +2392,7 @@ export async function createAliasApi(req: Request, res: Response): Promise<void>
   try {
     const b = req.body || {};
     await createAlias({ username: b.username, name: b.name, password: b.password, perms: b.perms || {}, siteScope: b.siteScope });
+    void logAction(req, { category: 'rbac', action: 'alias_create', severity: 'critical', summary: 'Membuat akun operator "' + String(b.username || '') + '"', targetType: 'AliasAccount', targetId: String(b.username || ''), targetName: String(b.name || b.username || ''), detail: { username: b.username, name: b.name, siteScope: b.siteScope, perms: b.perms || {} } });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'Gagal membuat akun' });
@@ -2407,6 +2408,7 @@ export async function updateAliasApi(req: Request, res: Response): Promise<void>
     }
     const b = req.body || {};
     await updateAlias(username, { name: b.name, password: b.password, perms: b.perms, siteScope: b.siteScope });
+    void logAction(req, { category: 'rbac', action: 'alias_update', severity: 'critical', summary: 'Mengubah akun operator "' + username + '"', targetType: 'AliasAccount', targetId: username, targetName: String(b.name || username), detail: { name: b.name, siteScope: b.siteScope, perms: b.perms, passwordChanged: !!b.password } });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'Gagal update akun' });
@@ -2421,6 +2423,7 @@ export async function deleteAliasApi(req: Request, res: Response): Promise<void>
       return;
     }
     deleteAlias(username);
+    void logAction(req, { category: 'rbac', action: 'alias_delete', severity: 'critical', summary: 'Menghapus akun operator "' + username + '"', targetType: 'AliasAccount', targetId: username });
     res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ ok: false, error: err instanceof Error ? err.message : 'Gagal hapus akun' });
@@ -2609,6 +2612,7 @@ export async function handleSettlementBankInquiryApi(req: Request, res: Response
       return;
     }
     const result = await inquireSettlementBankAccount(parsed.data);
+    void logAction(req, { category: 'settlement', action: 'bank_inquiry', summary: 'Inquiry rekening tujuan transfer' });
     res.json({
       ok: true,
       data: result,
@@ -2637,6 +2641,7 @@ export async function handleAccountTransferApi(req: Request, res: Response): Pro
     // Process immediately (don't wait for the sweep loop)
     const processResult = await processSettlement(settlementId);
     const settlement = await db.settlementRequest.findUnique({ where: { id: settlementId } });
+    void logAction(req, { category: 'settlement', action: 'account_transfer', severity: 'critical', status: (settlement && settlement.status !== 'failed') ? 'success' : 'failed', summary: 'Transfer ' + fromWallet + '\u2192' + toWallet + ' Rp ' + Number(amount).toLocaleString('id-ID') + (toWallet === 'bank' ? (' ke ' + (bankName || bankCode || '') + ' ' + (bankAccount || '')) : ''), targetType: 'SettlementRequest', targetId: settlementId, detail: { fromWallet, toWallet, amount, bankCode, bankName, bankAccount, status: settlement?.status } });
     if (!settlement || settlement.status === 'failed') {
       res.json({
         ok: false,
@@ -2709,6 +2714,7 @@ export async function handleRetryAutoPinApi(req: Request, res: Response): Promis
     }
     const transferPin = decrypt(account.transferPinEncrypted);
     const pinResult = await appGateway.finalizeMaderaTransferPin(redirectUrl, transferPin, account);
+    void logAction(req, { category: 'settlement', action: 'retry_auto_pin', severity: 'critical', status: pinResult.success ? 'success' : 'failed', summary: 'Retry Auto-PIN transfer Madera akun ' + (account.code || '') + (pinResult.success ? ' \u2014 BERHASIL' : ' \u2014 GAGAL'), targetType: 'SettlementRequest', targetId: settlementId, detail: { accountCode: account.code } });
     if (pinResult.success) {
       // Parse existing note markers to preserve fee/total
       const feeMatch = String(settlement.note || '').match(/\[\[FEE:(\d+)\]\]/);
@@ -2816,6 +2822,7 @@ export async function handleCreateSettlement(req: Request, res: Response): Promi
       return;
     }
     await createSettlement({ fromWallet, toWallet, amount, qrisAccountId, bankCode, bankAccount, bankName, note }, req.session.user?.id, req.ip);
+    void logAction(req, { category: 'settlement', action: 'settlement_create', severity: 'important', summary: 'Membuat settlement ' + fromWallet + '\u2192' + toWallet + ' Rp ' + Number(amount).toLocaleString('id-ID'), targetType: 'SettlementRequest', detail: { fromWallet, toWallet, amount, bankCode, bankName, bankAccount } });
     req.session.flash = {
       type: 'success',
       message: `Permintaan settlement Rp ${amount.toLocaleString('id-ID')} dibuat. Worker akan memprosesnya.`,
@@ -2896,6 +2903,7 @@ export async function checkWebGamePanelApi(req: Request, res: Response): Promise
     if (sessFile && parsed.cookies && Object.keys(parsed.cookies).length) {
       try { fs.writeFileSync(sessFile, JSON.stringify({ cookies: parsed.cookies, updatedAt: new Date().toISOString() }), 'utf8'); } catch (e) {}
     }
+    void logAction(req, { category: 'client', action: 'webgame_check', summary: 'Cek panel webgame ' + platform + (siteId ? (' (site ' + siteId + ')') : ''), detail: { platform, siteId, online: !!parsed.online } });
     res.json({ ok: true, online: !!parsed.online, platform: parsed.platform || platform, message: parsed.message || '' });
   } catch (err) {
     logger.error({ err }, 'checkWebGamePanelApi error');
@@ -3018,6 +3026,7 @@ export async function handleRefreshAccountBalanceApi(req: Request, res: Response
       res.status(400).json({ ok: false, error: 'Permintaan refresh saldo tidak valid.' });
       return;
     }
+    void logAction(req, { category: 'sync', action: 'refresh_balance', summary: 'Refresh saldo ' + parsed.data.wallet + ' akun', targetType: 'QrisAccount', targetId: accountId, detail: { wallet: parsed.data.wallet } });
     const account = await db.qrisAccount.findUnique({ where: { id: accountId } });
     if (!account) {
       res.status(404).json({ ok: false, error: 'Merchant tidak ditemukan.' });
@@ -3231,6 +3240,7 @@ export async function handleDashboardGenerateQr(req: Request, res: Response): Pr
       accountId: chosenAccountId,
       createdBy: req.session.user?.username || 'dashboard',
     });
+    void logAction(req, { category: 'generate-qr', action: 'generate_qr', summary: 'Generate QR Rp ' + Number(parsed.data.amount || 0).toLocaleString('id-ID') + (parsed.data.username ? (' \u00b7 ' + parsed.data.username) : ''), targetType: 'QrisAccount', targetId: chosenAccountId, detail: { amount: parsed.data.amount, username: parsed.data.username, siteId: parsed.data.siteId } });
     res.status(201).json({
       ok: true,
       data: result,
@@ -3337,6 +3347,7 @@ export async function postMaderaManualInquiryApi(req: Request, res: Response): P
     if (!bankCode || !accountNumber) { res.status(400).json({ ok: false, message: 'Bank & nomor rekening wajib diisi.' }); return; }
     if (!Number.isFinite(amount) || amount < 10000) { res.status(400).json({ ok: false, message: 'Nominal minimal Rp 10.000.' }); return; }
     const inquiry = await (appGateway as any).inquireBankAccount(account, { sourceWallet: 'madera', bankCode, accountNumber, amount });
+    void logAction(req, { category: 'settlement', action: 'madera_manual_inquiry', summary: 'Inquiry rekening (Kirim Uang Manual Madera) akun ' + (account.code || account.id), targetType: 'QrisAccount', targetId: account.id, detail: { bankCode, accountNumber, amount } });
     if (!inquiry || !inquiry.success || !inquiry.accountName) {
       res.json({ ok: false, message: (inquiry && inquiry.message) || 'Nama pemilik rekening belum bisa dibaca. Periksa bank & nomor rekening.' });
       return;
@@ -3382,6 +3393,7 @@ export async function postMaderaManualInitiateApi(req: Request, res: Response): 
     }
     const referenceNo = transfer.referenceNo || ('MBK-' + Date.now() + '-' + settlementId.slice(0, 6).toUpperCase());
     await db.settlementRequest.update({ where: { id: settlementId }, data: { referenceNo, note: '[MANUAL] menunggu PIN di tab Nobu' } }).catch(() => {});
+    void logAction(req, { category: 'settlement', action: 'madera_manual_initiate', severity: 'critical', summary: 'Kirim Uang Manual Madera Rp ' + Number(amount).toLocaleString('id-ID') + ' ke ' + (bankName || bankCode) + ' ' + accountNumber + ' (' + (accountName || '-') + ')', targetType: 'SettlementRequest', targetId: settlementId, detail: { amount, bankCode, bankName, accountNumber, accountName, accountCode: account.code } });
     res.json({ ok: true, redirectUrl: transfer.redirectUrl, settlementId });
   } catch (err) {
     logger.error({ err, settlementId }, 'postMaderaManualInitiateApi error');

@@ -13,6 +13,7 @@ import {
 import { config } from '../../config';
 import { logger } from '../../config/logger';
 import { withBasePath } from '../../core/base-path';
+import { logAction } from '../../shared/audit-log.service';
 
 const CreateClientSchema = z.object({
   name: z.string().min(1).max(100),
@@ -70,6 +71,7 @@ export async function handleCreateClient(req: Request, res: Response): Promise<v
 
   try {
     const { client, rawSecret } = await createClient(parsed.data);
+    void logAction(req, { category: 'client', action: 'client_create', severity: 'important', summary: 'Membuat klien "' + client.name + '"', targetType: 'Client', targetId: client.id, targetName: client.name, detail: { panelCode: parsed.data.panelCode } });
     req.session.flash = {
       type: 'success',
       message: `Klien "${client.name}" berhasil dibuat. API Secret: ${rawSecret} (simpan segera, tidak akan ditampilkan lagi)`,
@@ -135,6 +137,7 @@ export async function handleUpdateClient(req: Request, res: Response): Promise<v
 
   try {
     await updateClient(req.params.id, parsed.data);
+    void logAction(req, { category: 'client', action: 'client_update', summary: 'Mengedit klien', targetType: 'Client', targetId: req.params.id, detail: { name: parsed.data.name, status: parsed.data.status, callbackUrl: parsed.data.callbackUrl, depositApiUrl: parsed.data.depositApiUrl, widgetAllowedOrigins: parsed.data.widgetAllowedOrigins } });
     req.session.flash = { type: 'success', message: 'Klien berhasil diperbarui.' };
     res.redirect(withBasePath(`/clients/${req.params.id}`, config.APP_BASE_PATH));
   } catch (err: unknown) {
@@ -146,7 +149,9 @@ export async function handleUpdateClient(req: Request, res: Response): Promise<v
 
 export async function handleDeleteClient(req: Request, res: Response): Promise<void> {
   try {
+    const _c = await getClientById(req.params.id);
     await deleteClient(req.params.id);
+    void logAction(req, { category: 'client', action: 'client_delete', severity: 'critical', summary: 'Menghapus klien "' + ((_c && _c.name) || req.params.id) + '"', targetType: 'Client', targetId: req.params.id, targetName: _c?.name });
     req.session.flash = { type: 'success', message: 'Klien berhasil dihapus.' };
     res.redirect(withBasePath('/clients', config.APP_BASE_PATH));
   } catch (err: unknown) {
@@ -160,6 +165,7 @@ export async function handleRotateSecret(req: Request, res: Response): Promise<v
   try {
     const newSecret = await rotateApiSecret(req.params.id);
     const client = await getClientById(req.params.id);
+    void logAction(req, { category: 'client', action: 'client_rotate_secret', severity: 'important', summary: 'Rotate API secret klien "' + ((client && client.name) || req.params.id) + '"', targetType: 'Client', targetId: req.params.id, targetName: client?.name });
     res.render('clients/detail', {
       title: `Klien: ${client?.name}`,
       client,
@@ -175,6 +181,7 @@ export async function handleRotateSecret(req: Request, res: Response): Promise<v
 export async function handleRotateWidgetKey(req: Request, res: Response): Promise<void> {
   try {
     const widgetKey = await rotateWidgetKey(req.params.id);
+    void logAction(req, { category: 'client', action: 'client_rotate_widget', severity: 'important', summary: 'Rotate widget key klien', targetType: 'Client', targetId: req.params.id });
     req.session.flash = {
       type: 'success',
       message: `Widget key baru: ${widgetKey}`,
@@ -190,6 +197,7 @@ export async function handleRotateWidgetKey(req: Request, res: Response): Promis
 export async function handleRevealSecret(req: Request, res: Response): Promise<void> {
   try {
     const secret = await getDecryptedSecret(req.params.id);
+    void logAction(req, { category: 'client', action: 'client_reveal_secret', severity: 'important', summary: 'Melihat API secret klien', targetType: 'Client', targetId: req.params.id });
     res.json({ success: true, secret });
   } catch (err) {
     logger.error({ err }, 'handleRevealSecret error');

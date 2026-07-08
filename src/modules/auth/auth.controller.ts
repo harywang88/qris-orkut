@@ -4,6 +4,7 @@ import { verifyCredentials, changePassword } from './auth.service';
 import { config } from '../../config';
 import { logger } from '../../config/logger';
 import { withBasePath } from '../../core/base-path';
+import { logAction } from '../../shared/audit-log.service';
 
 const LoginSchema = z.object({
   username: z.string().min(1, 'Username wajib diisi'),
@@ -52,6 +53,7 @@ export async function handleLogin(req: Request, res: Response): Promise<void> {
     const user = await verifyCredentials(username, password, ipAddress, userAgent);
 
     if (!user) {
+      void logAction(req, { category: 'auth', action: 'login_failed', status: 'failed', severity: 'important', summary: 'Login GAGAL untuk username "' + username + '"', targetType: 'User', targetName: username });
       res.render('auth/login', {
         layout: 'layouts/auth',
         title: 'Login',
@@ -73,6 +75,7 @@ export async function handleLogin(req: Request, res: Response): Promise<void> {
       }
 
       req.session.user = user;
+      void logAction(req, { category: 'auth', action: 'login', summary: 'Login berhasil: ' + user.username, targetType: 'User', targetId: user.id, targetName: user.username });
       req.session.save((saveErr) => {
         if (saveErr) {
           logger.error({ saveErr }, 'Session save failed');
@@ -104,6 +107,7 @@ function getClientIp(req: Request): string {
 }
 
 export async function handleLogout(req: Request, res: Response): Promise<void> {
+  void logAction(req, { category: 'auth', action: 'logout', summary: 'Logout' + (req.session.user?.username ? ': ' + req.session.user.username : ''), targetType: 'User', targetId: req.session.user?.id, targetName: req.session.user?.username });
   req.session.destroy((err) => {
     if (err) {
       logger.error({ err }, 'Session destroy failed');
@@ -136,6 +140,7 @@ export async function handleChangePassword(req: Request, res: Response): Promise
 
   try {
     await changePassword(req.session.user!.id, parsed.data.currentPassword, parsed.data.newPassword);
+    void logAction(req, { category: 'auth', action: 'change_password', severity: 'important', summary: 'Mengubah password sendiri', targetType: 'User', targetId: req.session.user?.id, targetName: req.session.user?.username });
 
     // Update session to reflect password change
     if (req.session.user) {

@@ -20,6 +20,7 @@ import {
   setAccountSite,
 } from '../../shared/site.service';
 import { db } from '../../config/database';
+import { logAction } from '../../shared/audit-log.service';
 import { config } from '../../config';
 import { logger } from '../../config/logger';
 import { withBasePath } from '../../core/base-path';
@@ -133,6 +134,7 @@ export async function handleCreateAccount(req: Request, res: Response): Promise<
   }
   try {
     await createQrisAccount(parsed.data);
+    void logAction(req, { category: 'account', action: 'account_create', severity: 'important', summary: 'Menambah akun QRIS ' + parsed.data.code, targetType: 'QrisAccount', targetName: parsed.data.code, detail: { merchantName: parsed.data.merchantName, accountNumber: parsed.data.accountNumber, dailyLimit: parsed.data.dailyLimit } });
     req.session.flash = { type: 'success', message: 'Akun QRIS berhasil ditambahkan.' };
     res.redirect(withBasePath('/qris-accounts', config.APP_BASE_PATH));
   } catch (err) {
@@ -171,7 +173,9 @@ export async function handleUpdateAccount(req: Request, res: Response): Promise<
     return;
   }
   try {
+    const _acc = await getQrisAccountById(req.params.id);
     await updateQrisAccount(req.params.id, parsed.data);
+    void logAction(req, { category: 'account', action: 'account_update', summary: 'Mengedit akun QRIS ' + (_acc?.code || req.params.id), targetType: 'QrisAccount', targetId: req.params.id, targetName: _acc?.code, detail: { code: parsed.data.code, merchantName: parsed.data.merchantName, accountNumber: parsed.data.accountNumber, dailyLimit: parsed.data.dailyLimit, orkutAccountIndex: parsed.data.orkutAccountIndex } });
     req.session.flash = { type: 'success', message: 'Akun QRIS berhasil diperbarui.' };
     res.redirect(withBasePath('/qris-accounts', config.APP_BASE_PATH));
   } catch (err) {
@@ -183,7 +187,9 @@ export async function handleUpdateAccount(req: Request, res: Response): Promise<
 
 export async function handleDeleteAccount(req: Request, res: Response): Promise<void> {
   try {
+    const _acc = await getQrisAccountById(req.params.id);
     await deleteQrisAccount(req.params.id);
+    void logAction(req, { category: 'account', action: 'account_delete', severity: 'critical', summary: 'Menghapus akun QRIS ' + (_acc?.code || req.params.id), targetType: 'QrisAccount', targetId: req.params.id, targetName: _acc?.code });
     req.session.flash = { type: 'success', message: 'Akun QRIS berhasil dihapus.' };
     res.redirect(withBasePath('/qris-accounts', config.APP_BASE_PATH));
   } catch (err) {
@@ -196,6 +202,7 @@ export async function handleDeleteAccount(req: Request, res: Response): Promise<
 export async function handleToggleStatus(req: Request, res: Response): Promise<void> {
   try {
     const newStatus = await toggleAccountStatus(req.params.id);
+    void logAction(req, { category: 'account', action: 'account_toggle', severity: 'important', summary: (newStatus === 'active' ? 'Mengaktifkan' : 'Menonaktifkan') + ' akun QRIS', targetType: 'QrisAccount', targetId: req.params.id, detail: { status: newStatus } });
     res.json({ success: true, status: newStatus });
   } catch (err) {
     logger.error({ err }, 'handleToggleStatus error');
@@ -211,6 +218,7 @@ export async function handleSetHealth(req: Request, res: Response): Promise<void
   }
   try {
     await setHealthStatus(req.params.id, healthStatus);
+    void logAction(req, { category: 'account', action: 'account_set_health', summary: 'Set kesehatan akun QRIS: ' + healthStatus, targetType: 'QrisAccount', targetId: req.params.id, detail: { healthStatus } });
     res.json({ success: true });
   } catch (err) {
     logger.error({ err }, 'handleSetHealth error');
@@ -221,6 +229,7 @@ export async function handleSetHealth(req: Request, res: Response): Promise<void
 export async function handleResetDailyUsage(req: Request, res: Response): Promise<void> {
   try {
     await resetDailyUsage(req.params.id);
+    void logAction(req, { category: 'account', action: 'account_reset_daily', summary: 'Reset penggunaan harian akun QRIS', targetType: 'QrisAccount', targetId: req.params.id });
     req.session.flash = { type: 'success', message: 'Penggunaan harian berhasil direset.' };
     res.redirect(withBasePath('/qris-accounts', config.APP_BASE_PATH));
   } catch (err) {
@@ -233,7 +242,8 @@ export async function handleResetDailyUsage(req: Request, res: Response): Promis
 // ── Kelola Site (JSON sidecar) + assign akun -> site ──────────────────────────
 export function handleCreateSite(req: Request, res: Response): void {
   try {
-    const site = createSite(req.body && req.body.name);
+    const site = createSite(req.body && req.body.name, req.body && req.body.color);
+    void logAction(req, { category: 'site', action: 'site_create', summary: 'Menambah site "' + ((site && site.name) || '') + '"', targetType: 'Site', targetId: site && site.id, targetName: site && site.name, detail: { color: site && site.color } });
     res.json({ success: true, site });
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Gagal menambah site' });
@@ -241,7 +251,8 @@ export function handleCreateSite(req: Request, res: Response): void {
 }
 export function handleUpdateSite(req: Request, res: Response): void {
   try {
-    const site = updateSite(req.params.sid, req.body && req.body.name);
+    const site = updateSite(req.params.sid, req.body || {});
+    void logAction(req, { category: 'site', action: 'site_update', summary: 'Mengubah site "' + ((site && site.name) || '') + '"', targetType: 'Site', targetId: req.params.sid, targetName: site && site.name, detail: { name: req.body && req.body.name, color: req.body && req.body.color } });
     res.json({ success: true, site });
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Gagal mengubah site' });
@@ -249,7 +260,9 @@ export function handleUpdateSite(req: Request, res: Response): void {
 }
 export function handleDeleteSite(req: Request, res: Response): void {
   try {
+    const _s = listSites().find((x) => x.id === req.params.sid);
     deleteSite(req.params.sid);
+    void logAction(req, { category: 'site', action: 'site_delete', severity: 'important', summary: 'Menghapus site "' + ((_s && _s.name) || req.params.sid) + '"', targetType: 'Site', targetId: req.params.sid, targetName: _s && _s.name });
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Gagal menghapus site' });
@@ -257,7 +270,10 @@ export function handleDeleteSite(req: Request, res: Response): void {
 }
 export function handleAssignSite(req: Request, res: Response): void {
   try {
-    setAccountSite(req.params.id, (req.body && req.body.siteId) || '');
+    const _sid = (req.body && req.body.siteId) || '';
+    const _s = _sid ? listSites().find((x) => x.id === _sid) : null;
+    setAccountSite(req.params.id, _sid);
+    void logAction(req, { category: 'site', action: 'site_assign', summary: 'Menetapkan akun ke ' + (_sid ? ('site "' + ((_s && _s.name) || '') + '"') : '(Tanpa site)'), targetType: 'QrisAccount', targetId: req.params.id, detail: { siteId: _sid, siteName: (_s && _s.name) || null } });
     res.json({ success: true });
   } catch (err) {
     res.status(400).json({ success: false, error: err instanceof Error ? err.message : 'Gagal menetapkan site' });

@@ -33,6 +33,7 @@ import {
 import { config } from '../../config';
 import { logger } from '../../config/logger';
 import { withBasePath } from '../../core/base-path';
+import { logAction } from '../../shared/audit-log.service';
 
 function optionalInt(min: number, max: number) {
   return z.preprocess((value) => {
@@ -155,6 +156,7 @@ export async function handleCreateMerchantQr(req: Request, res: Response): Promi
 
   try {
     await createQrisAccount(parsed.data);
+    void logAction(req, { category: 'merchant', action: 'merchant_create', severity: 'important', summary: 'Menambah Merchant QR ' + parsed.data.code, targetType: 'QrisAccount', targetName: parsed.data.code, detail: { merchantName: parsed.data.merchantName, accountNumber: parsed.data.accountNumber, dailyLimit: parsed.data.dailyLimit } });
     req.session.flash = {
       type: 'success',
       message: 'Merchant QR berhasil ditambahkan dan otomatis siap dipakai di Generate QR serta semua menu mutasi.',
@@ -201,7 +203,9 @@ export async function handleUpdateMerchantQr(req: Request, res: Response): Promi
   }
 
   try {
+    const _acc = await getQrisAccountById(req.params.id);
     await updateQrisAccount(req.params.id, parsed.data);
+    void logAction(req, { category: 'merchant', action: 'merchant_update', summary: 'Mengedit Merchant QR ' + (_acc?.code || req.params.id), targetType: 'QrisAccount', targetId: req.params.id, targetName: _acc?.code, detail: { code: parsed.data.code, merchantName: parsed.data.merchantName, accountNumber: parsed.data.accountNumber, dailyLimit: parsed.data.dailyLimit } });
     req.session.flash = {
       type: 'success',
       message: 'Merchant QR berhasil diperbarui.',
@@ -216,7 +220,9 @@ export async function handleUpdateMerchantQr(req: Request, res: Response): Promi
 
 export async function handleDeleteMerchantQr(req: Request, res: Response): Promise<void> {
   try {
+    const _acc = await getQrisAccountById(req.params.id);
     await deleteQrisAccount(req.params.id);
+    void logAction(req, { category: 'merchant', action: 'merchant_delete', severity: 'critical', summary: 'Menghapus Merchant QR ' + (_acc?.code || req.params.id), targetType: 'QrisAccount', targetId: req.params.id, targetName: _acc?.code });
     req.session.flash = { type: 'success', message: 'Merchant QR berhasil dihapus.' };
     res.redirect(withBasePath('/merchant-qr', config.APP_BASE_PATH));
   } catch (err: unknown) {
@@ -229,6 +235,7 @@ export async function handleDeleteMerchantQr(req: Request, res: Response): Promi
 export async function handleToggleMerchantQrStatus(req: Request, res: Response): Promise<void> {
   try {
     const newStatus = await toggleAccountStatus(req.params.id);
+    void logAction(req, { category: 'merchant', action: 'merchant_toggle', severity: 'important', summary: (newStatus === 'active' ? 'Mengaktifkan' : 'Menonaktifkan') + ' Merchant QR', targetType: 'QrisAccount', targetId: req.params.id, detail: { status: newStatus } });
     res.json({ success: true, status: newStatus });
   } catch (err) {
     logger.error({ err }, 'handleToggleMerchantQrStatus error');
@@ -244,6 +251,7 @@ export async function handleSetMerchantQrHealth(req: Request, res: Response): Pr
   }
   try {
     await setHealthStatus(req.params.id, healthStatus as 'healthy' | 'degraded' | 'down');
+    void logAction(req, { category: 'merchant', action: 'merchant_set_health', summary: 'Set kesehatan Merchant QR: ' + healthStatus, targetType: 'QrisAccount', targetId: req.params.id, detail: { healthStatus } });
     res.json({ success: true });
   } catch (err) {
     logger.error({ err }, 'handleSetMerchantQrHealth error');
@@ -254,6 +262,7 @@ export async function handleSetMerchantQrHealth(req: Request, res: Response): Pr
 export async function handleResetMerchantQrDailyUsage(req: Request, res: Response): Promise<void> {
   try {
     await resetDailyUsage(req.params.id);
+    void logAction(req, { category: 'merchant', action: 'merchant_reset_daily', summary: 'Reset penggunaan harian Merchant QR', targetType: 'QrisAccount', targetId: req.params.id });
     req.session.flash = { type: 'success', message: 'Penggunaan harian Merchant QR berhasil direset.' };
     res.redirect(withBasePath('/merchant-qr', config.APP_BASE_PATH));
   } catch (err) {
@@ -266,6 +275,7 @@ export async function handleResetMerchantQrDailyUsage(req: Request, res: Respons
 export async function handleTestMerchantQrConnection(req: Request, res: Response): Promise<void> {
   try {
     const report = await testMerchantConnection(req.params.id);
+    void logAction(req, { category: 'merchant', action: 'merchant_test_connection', summary: 'Tes koneksi Merchant QR', targetType: 'QrisAccount', targetId: req.params.id });
     res.json({ success: true, report });
   } catch (err) {
     logger.error({ err }, 'handleTestMerchantQrConnection error');
@@ -279,6 +289,7 @@ export async function handleTestMerchantQrConnection(req: Request, res: Response
 export async function handleSyncMerchantQrNow(req: Request, res: Response): Promise<void> {
   try {
     const report = await syncMerchantNow(req.params.id);
+    void logAction(req, { category: 'sync', action: 'sync_merchant_now', summary: 'Sinkron manual Merchant QR', targetType: 'QrisAccount', targetId: req.params.id });
     res.json({ success: true, report });
   } catch (err) {
     logger.error({ err }, 'handleSyncMerchantQrNow error');
@@ -290,6 +301,7 @@ export async function handleSyncMerchantQrNow(req: Request, res: Response): Prom
 }
 
 export async function handleTestMerchantQrReportLogin(req: Request, res: Response): Promise<void> {
+  void logAction(req, { category: 'merchant', action: 'merchant_test_report_login', summary: 'Tes login Web Report' });
   try {
     const report = await testReportLogin({
       rawHeaders: typeof req.body?.rawHeaders === 'string' ? req.body.rawHeaders : null,
@@ -307,6 +319,7 @@ export async function handleTestMerchantQrReportLogin(req: Request, res: Respons
 }
 
 export async function handleCompareMerchantQrSources(req: Request, res: Response): Promise<void> {
+  void logAction(req, { category: 'merchant', action: 'merchant_compare_sources', summary: 'Bandingkan sumber App vs Report' });
   try {
     const report = await compareReportVsLiveSources({
       rawHeaders: typeof req.body?.rawHeaders === 'string' ? req.body.rawHeaders : null,
@@ -354,6 +367,7 @@ export async function handleSyncAllMerchants(req: Request, res: Response): Promi
       });
       return;
     }
+    void logAction(req, { category: 'sync', action: 'sync_all', summary: 'Menjalankan Sinkron ALL merchant' });
     res.json({
       success: true,
       started: true,
@@ -382,6 +396,7 @@ export async function handleSaveWebReportUrl(req: Request, res: Response): Promi
     const id = String(req.params.id || '');
     const url = String((req.body && req.body.url) ?? '');
     const result = await saveWebReportLink(id, url);
+    if (result.ok) void logAction(req, { category: 'merchant', action: 'merchant_save_web_report', severity: 'important', summary: 'Menyimpan Link Web Report (autologin)', targetType: 'QrisAccount', targetId: id });
     res.status(result.ok ? 200 : 400).json(result);
   } catch (err) {
     logger.error({ err }, 'handleSaveWebReportUrl error');
@@ -393,6 +408,7 @@ export async function handleTestWebReportUrl(req: Request, res: Response): Promi
   try {
     const url = String((req.body && req.body.url) ?? '').trim();
     const report = await testWebReportLink(url);
+    void logAction(req, { category: 'merchant', action: 'merchant_test_web_report', summary: 'Menguji Link Web Report', targetType: 'QrisAccount', targetId: String(req.params.id || '') });
     res.json(report);
   } catch (err) {
     logger.error({ err }, 'handleTestWebReportUrl error');
@@ -416,6 +432,7 @@ export async function handleWebReportStatus(req: Request, res: Response): Promis
 export async function handleSyncAppNow(req: Request, res: Response): Promise<void> {
   try {
     const r = await syncAppMutationsNow(req.params.id);
+    void logAction(req, { category: 'sync', action: 'sync_app', summary: 'App Sinkron (single) Merchant QR', targetType: 'QrisAccount', targetId: req.params.id });
     res.json({ success: true, source: 'app', ...r });
   } catch (err) {
     if (err instanceof AppCooldownError) {
@@ -444,6 +461,7 @@ export async function handleSyncAppNow(req: Request, res: Response): Promise<voi
 export async function handleSyncReportNow(req: Request, res: Response): Promise<void> {
   try {
     const r = await syncReportMutationsNow(req.params.id);
+    void logAction(req, { category: 'sync', action: 'sync_report', summary: 'Report Sinkron (single) Merchant QR', targetType: 'QrisAccount', targetId: req.params.id });
     res.json({ success: true, source: 'report', ...r });
   } catch (err) {
     logger.error({ err }, 'handleSyncReportNow error');
@@ -454,6 +472,7 @@ export async function handleSyncReportNow(req: Request, res: Response): Promise<
 export async function handleSyncAppAll(req: Request, res: Response): Promise<void> {
   try {
     const r = await syncAppAllMerchants();
+    void logAction(req, { category: 'sync', action: 'sync_app_all', summary: 'App Sinkron ALL merchant' });
     res.json({ success: true, source: 'app', ...r });
   } catch (err) {
     if (err instanceof AppThrottleError) {
@@ -468,6 +487,7 @@ export async function handleSyncAppAll(req: Request, res: Response): Promise<voi
 export async function handleSyncReportAll(req: Request, res: Response): Promise<void> {
   try {
     const r = await syncReportAllMerchants();
+    void logAction(req, { category: 'sync', action: 'sync_report_all', summary: 'Report Sinkron ALL merchant' });
     res.json({ success: true, source: 'report', ...r });
   } catch (err) {
     logger.error({ err }, 'handleSyncReportAll error');

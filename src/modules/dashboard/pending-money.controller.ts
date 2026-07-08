@@ -7,6 +7,7 @@ import {
 import { buildResolver } from '../../shared/site.service';
 import { db } from '../../config/database';
 import { logger } from '../../config/logger';
+import { logAction } from '../../shared/audit-log.service';
 
 export async function showPendingMoney(req: Request, res: Response): Promise<void> {
   try {
@@ -55,6 +56,7 @@ export async function handleTagPendingMoney(req: Request, res: Response): Promis
       note: (body.note || '').trim() || undefined,
       taggedBy,
     });
+    void logAction(req, { category: 'pending', action: 'pending_tag', summary: 'Tag Uang Pending' + (body.userIdExt ? (' \u2014 user ' + body.userIdExt) : '') + (body.website ? (' @ ' + body.website) : ''), targetType: 'Mutation', targetId: mutationId, detail: { status: body.status, mode: body.mode, website: body.website, userIdExt: body.userIdExt } });
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, 'handleTagPendingMoney error');
@@ -65,6 +67,7 @@ export async function handleTagPendingMoney(req: Request, res: Response): Promis
 export async function handleUntagPendingMoney(req: Request, res: Response): Promise<void> {
   try {
     removePendingTag(req.params.mutationId);
+    void logAction(req, { category: 'pending', action: 'pending_untag', summary: 'Hapus tag Uang Pending', targetType: 'Mutation', targetId: req.params.mutationId });
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, 'handleUntagPendingMoney error');
