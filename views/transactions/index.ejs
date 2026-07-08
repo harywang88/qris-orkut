@@ -443,9 +443,10 @@
     .tx-cell-expires { font-size: 10px; }
     .tx-cell-amount { font-size: 12px; }
   }
-  @keyframes txBookedBlink { 0%,100%{ background:rgba(96,165,250,.05); } 50%{ background:rgba(96,165,250,.22); } }
-  #transactions-table .tabulator-row.tx-row-booked { animation:txBookedBlink 1.6s ease-in-out infinite; cursor:help; }
-  #transactions-table .tabulator-row.tx-row-booked:hover { animation:none; background:rgba(96,165,250,.28) !important; }
+  @keyframes txBookedBlink { 0%,100%{ box-shadow:inset 0 0 0 2000px rgba(59,130,246,.05); } 50%{ box-shadow:inset 0 0 0 2000px rgba(59,130,246,.45); } }
+  #transactions-table .tabulator-row.tx-row-booked .tabulator-cell { animation:txBookedBlink 1.25s ease-in-out infinite; }
+  #transactions-table .tabulator-row.tx-row-booked { cursor:help; }
+  #transactions-table .tabulator-row.tx-row-booked:hover .tabulator-cell { animation:none; box-shadow:inset 0 0 0 2000px rgba(59,130,246,.42); }
 </style>
 
 <section class="space-y-5">
