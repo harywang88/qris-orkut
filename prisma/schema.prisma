@@ -314,6 +314,12 @@ model LoginLog {
 model AuditLog {
   id         String   @id @default(cuid())
   userId     String?
+  actorName  String?   // snapshot nama operator (biar tetap kebaca walau user/alias berubah)
+  category   String?   // auth | account | site | merchant | settlement | generate-qr | client | rbac | sync
+  summary    String?   // kalimat Indonesia siap-tampil, mis. "Menghapus akun QRIS PSAMUDRA"
+  status     String    @default("success") // success | failed
+  severity   String    @default("info")    // info | important | critical
+  targetName String?   // nama ramah target (kode akun / nama site / dsb)
   action     String
   entityType String?
   entityId   String?
@@ -325,6 +331,7 @@ model AuditLog {
 
   @@index([createdAt])
   @@index([entityType, entityId])
+  @@index([category, createdAt])
 }
 
 // ── Wallet Ledger ──────────────────────────────────────────────────────────
