@@ -240,11 +240,13 @@ export async function probeMerchantMutationsFromRawReportInput(input: {
   cookie: string;
   userAgent?: string | null;
   target?: WalletTarget;
+  merchantId?: string;
 }): Promise<PythonScrapeResult> {
   return runPythonReportScraperRaw({
     cookie: input.cookie,
     userAgent: input.userAgent,
     target: input.target ?? 'both',
+    merchantId: input.merchantId,
   });
 }
 

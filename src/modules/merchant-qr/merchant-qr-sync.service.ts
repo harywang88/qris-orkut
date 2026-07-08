@@ -376,6 +376,7 @@ export async function testReportLogin(input: {
   rawHeaders?: string | null;
   webCookies?: string | null;
   webUserAgent?: string | null;
+  merchantId?: string;
 }): Promise<ReportLoginTestReport> {
   const normalizedCookie = normalizeCookieInput(input.rawHeaders) || normalizeCookieInput(input.webCookies);
   const normalizedUserAgent = normalizeUserAgentInput(input.webUserAgent) || normalizeUserAgentInput(input.rawHeaders);
@@ -417,6 +418,7 @@ export async function testReportLogin(input: {
       cookie: normalizedCookie,
       userAgent: normalizedUserAgent,
       target: 'both',
+      merchantId: input.merchantId,
     });
     const accountName = result.qris.meta?.accountName || result.utama.meta?.accountName || null;
 
@@ -1117,7 +1119,8 @@ export async function testWebReportLink(url: string): Promise<ReportLoginTestRep
       detectedPattern: { qris: null, utama: null },
     };
   }
-  return testReportLogin({ webCookies: auto.cookie, webUserAgent: auto.userAgent });
+  const merchantId = (clean.match(/\/autologin\/(\d+)/) || [])[1] || undefined;
+  return testReportLogin({ webCookies: auto.cookie, webUserAgent: auto.userAgent, merchantId });
 }
 
 export async function saveWebReportLink(accountId: string, rawUrl: string): Promise<{ ok: boolean; message: string }> {

@@ -59,7 +59,7 @@ const router = Router();
 
 router.get('/', requireMenu('dashboard'), showDashboard);
 // History Generate QR: mesin Transaction, SEMUA status.
-router.get('/history', requireMenu('generate-qr'), (req: Request, res: Response) =>
+router.get('/history', requireMenu('history-generate-qr'), (req: Request, res: Response) =>
   showTransactions(req, res, { title: 'History Generate QR' }),
 );
 // Transaction: mesin sama, DIKUNCI paid (server).

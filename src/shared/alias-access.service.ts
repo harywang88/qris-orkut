@@ -94,6 +94,7 @@ export interface AliasUpdateInput {
 export const MENU_DEFS: MenuDef[] = [
   { key: 'dashboard', label: 'Dashboard', icon: '🏠', path: '/dashboard', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'generate-qr', label: 'Generate QR', icon: '🧾', path: '/dashboard/generate-qr', subs: [{ key: 'view', label: 'Lihat' }, { key: 'create', label: 'Buat QR' }] },
+  { key: 'history-generate-qr', label: 'History Generate QR', icon: '📋', path: '/dashboard/history', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'transactions', label: 'Transaction', icon: '💳', path: '/dashboard/transactions', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'mutasi-qris', label: 'Mutasi QRIS', icon: '🔁', path: '/dashboard/mutations/qris', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'mutasi-utama', label: 'Mutasi Utama', icon: '💰', path: '/dashboard/mutations/utama', subs: [{ key: 'view', label: 'Lihat' }] },

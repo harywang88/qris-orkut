@@ -219,7 +219,7 @@
   $('aaUncheckAll').addEventListener('click', () => $('aa_perms').querySelectorAll('input:not(:disabled)').forEach(c=>c.checked=false));
 
   // Preset peran: isi centang otomatis (aman — menu sensitif TIDAK termasuk, dicentang manual bila perlu)
-  var P_PEMANTAU = { 'dashboard.view':1, 'generate-qr.view':1, 'transactions.view':1, 'mutasi-qris.view':1, 'mutasi-utama.view':1, 'mutasi-madera.view':1, 'reports.view':1 };
+  var P_PEMANTAU = { 'dashboard.view':1, 'generate-qr.view':1, 'history-generate-qr.view':1, 'transactions.view':1, 'mutasi-qris.view':1, 'mutasi-utama.view':1, 'mutasi-madera.view':1, 'reports.view':1 };
   var P_KASIR = Object.assign({}, P_PEMANTAU, { 'generate-qr.create':1 });
   var P_UANG = Object.assign({}, P_KASIR, { 'settlement.view':1, 'settlement.transfer':1 });
   var PRESETS = { pemantau: P_PEMANTAU, kasir: P_KASIR, uang: P_UANG };
