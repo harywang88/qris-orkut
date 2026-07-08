@@ -376,7 +376,14 @@ export async function fetchReportWalletLive(
     userAgent = account.webUserAgent || undefined;
   }
   if (!cookie) return null;
-  const result = await runPythonReportScraperRaw({ cookie, userAgent, target: wallet, maxPages, merchantId: account.accountNumber });
+  // merchantId QRIS (api/v2/qris/mutasi/{id}) = angka di LINK AUTOLOGIN (sumber sahih).
+  // account.accountNumber bisa nomor HP/rekening -> merchantId salah -> HTTP 403.
+  let merchantId: string | undefined = account.accountNumber || undefined;
+  try {
+    const enc = (account as { webReportUrlEncrypted?: string | null }).webReportUrlEncrypted;
+    if (enc) { const m = String(decrypt(enc)).match(/\/autologin\/(\d+)/); if (m) merchantId = m[1]; }
+  } catch { /* fallback ke accountNumber */ }
+  const result = await runPythonReportScraperRaw({ cookie, userAgent, target: wallet, maxPages, merchantId });
   return wallet === 'qris' ? result.qris : result.utama;
 }
 
