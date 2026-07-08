@@ -127,16 +127,7 @@
     </a>
     <% } %>
 
-    <% if (can('mutasi-madera')) { %>
-    <a href="<%= url('/dashboard/madera-nobu') %>" class="qris-nav-link">
-      <span class="flex items-center gap-3">
-        <i class="fa-solid fa-building-columns qris-nav-icon"></i>
-        <span>History Nobu</span>
-      </span>
-    </a>
-    <% } %>
-
-    <% if (can('mutasi-qris') || can('mutasi-utama')) { %>
+    <% if (can('mutasi-qris') || can('mutasi-utama') || can('mutasi-madera')) { %>
     <div class="qris-nav-group">
       <button type="button" class="qris-nav-link qris-nav-parent w-full" data-toggle-nav>
         <span class="flex items-center gap-3">
@@ -148,6 +139,7 @@
       <div class="qris-subnav">
         <a href="<%= url('/dashboard/history-orkut/qris') %>" class="qris-subnav-link">History QRIS</a>
         <a href="<%= url('/dashboard/history-orkut/utama') %>" class="qris-subnav-link">History Utama</a>
+        <% if (can('mutasi-madera')) { %><a href="<%= url('/dashboard/madera-nobu') %>" class="qris-subnav-link">History Nobu</a><% } %>
       </div>
     </div>
     <% } %>
