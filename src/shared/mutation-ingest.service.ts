@@ -1,6 +1,7 @@
 import type { Mutation, Prisma } from '@prisma/client';
 import { db } from '../config/database';
 import { publishOutboxEvent } from './outbox.service';
+import { createHash } from 'crypto';
 
 type PrismaLike = typeof db | Prisma.TransactionClient;
 
@@ -35,6 +36,30 @@ function buildMutationPayload(mutation: Mutation) {
   };
 }
 
+/**
+ * Hash kanonik "KTP transaksi" utk dedup lintas-sumber (app-api & web report).
+ * Waktu dinormalkan: toISOString().slice(0,16) => UTC + tanpa detik (samakan HH:MM:SS app-api vs HH:MM report + zona waktu).
+ * Ada RRN => RRN jangkar; tanpa RRN => fallback nominal+saldo+menit+type (saldo berjalan unik per transaksi).
+ */
+export function canonicalMutationHash(input: {
+  rrn?: string | null;
+  amount: number;
+  balanceAfter: number;
+  transactionTime: Date | string;
+  type?: string | null;
+}): string {
+  let minute = '';
+  try { minute = new Date(input.transactionTime).toISOString().slice(0, 16); } catch { minute = ''; }
+  const rrn = (input.rrn || '').trim().toLowerCase();
+  const amt = Math.round(Number(input.amount) || 0);
+  const bal = Math.round(Number(input.balanceAfter) || 0);
+  const type = (input.type || '').trim().toLowerCase();
+  const base = rrn
+    ? rrn + '|' + amt + '|' + bal + '|' + minute
+    : 'NORRN|' + type + '|' + amt + '|' + bal + '|' + minute;
+  return createHash('sha256').update('mutv1|' + base).digest('hex');
+}
+
 export async function storeMutationIfNew(
   input: MutationIngestInput,
   client: PrismaLike = db,
@@ -56,6 +81,7 @@ export async function storeMutationIfNew(
       walletCategory: input.walletCategory ?? null,
       transactionTime: input.transactionTime,
       rawHash: input.rawHash,
+      dedupKey: canonicalMutationHash(input),
       rawDataJson: input.rawDataJson,
       matchedTransactionId: input.matchedTransactionId ?? null,
     },

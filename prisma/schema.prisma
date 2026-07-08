@@ -210,6 +210,7 @@ model Mutation {
   walletCategory       String?   // qris | utama | madera (derived from description)
   transactionTime      DateTime
   rawHash              String    @unique // sha256 of rawDataJson — dedup guard
+  dedupKey             String?   // hash kanonik (RRN+nominal+saldo+menit) utk dedup lintas-sumber (Fase hash-combine)
   rawDataJson          String
   matchedTransactionId String?
   createdAt            DateTime  @default(now())
@@ -219,6 +220,7 @@ model Mutation {
 
   @@index([qrisAccountId, matchedTransactionId])
   @@index([qrisAccountId, transactionTime])
+  @@index([dedupKey])
 }
 
 model OutboxEvent {
