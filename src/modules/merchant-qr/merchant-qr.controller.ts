@@ -28,6 +28,7 @@ import {
   syncReportAllMerchants,
   listAppCooldownStatus,
   AppCooldownError,
+  AppThrottleError,
 } from './merchant-qr-sync.service';
 import { config } from '../../config';
 import { logger } from '../../config/logger';
@@ -426,6 +427,15 @@ export async function handleSyncAppNow(req: Request, res: Response): Promise<voi
       });
       return;
     }
+    if (err instanceof AppThrottleError) {
+      res.status(429).json({
+        success: false,
+        throttle: true,
+        remainingMs: err.remainingMs,
+        error: `Tunggu ${Math.ceil(err.remainingMs / 1000)} detik sebelum App Sinkron lagi.`,
+      });
+      return;
+    }
     logger.error({ err }, 'handleSyncAppNow error');
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Gagal App Sinkron.' });
   }
@@ -446,6 +456,10 @@ export async function handleSyncAppAll(req: Request, res: Response): Promise<voi
     const r = await syncAppAllMerchants();
     res.json({ success: true, source: 'app', ...r });
   } catch (err) {
+    if (err instanceof AppThrottleError) {
+      res.status(429).json({ success: false, throttle: true, remainingMs: err.remainingMs, error: `Tunggu ${Math.ceil(err.remainingMs / 1000)} detik sebelum App Sinkron ALL lagi.` });
+      return;
+    }
     logger.error({ err }, 'handleSyncAppAll error');
     res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Gagal App Sinkron ALL.' });
   }
@@ -463,8 +477,8 @@ export async function handleSyncReportAll(req: Request, res: Response): Promise<
 
 export async function getAppCooldownStatusApi(req: Request, res: Response): Promise<void> {
   try {
-    const accounts = await listAppCooldownStatus();
-    res.json({ ok: true, accounts });
+    const data = await listAppCooldownStatus();
+    res.json({ ok: true, ...data });
   } catch (err) {
     logger.error({ err }, 'getAppCooldownStatusApi error');
     res.status(500).json({ ok: false, error: 'Gagal mengambil status cooldown.' });

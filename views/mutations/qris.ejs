@@ -742,7 +742,7 @@
     pollStatus(false);
   })();
 
-  // -- App/Report Sinkron TERPISAH + freeze cooldown 469 (source-split, Fase sync buttons) --
+  // -- App/Report Sinkron TERPISAH + freeze 469 + throttle klik (source-split) --
   (function initMutSyncSplit(){
     if (window.__MutSyncSplitReady) return;
     window.__MutSyncSplitReady = true;
@@ -756,7 +756,8 @@
     const APP_ALL = MQ + '/sync-app-all', REP_ALL = MQ + '/sync-report-all', COOLDOWN = MQ + '/cooldown-status';
     const oneUrl = function(id, src){ return MQ + '/' + id + '/sync-' + src; };
     const busy = { appAll:false, repAll:false, appOne:false, repOne:false };
-    let cooldownMap = {};
+    let appAllUntil = 0;        // throttle klik App ALL (Date.now()+ms)
+    let oneUntil = {};          // id -> { cd:until469, th:untilThrottle }
     function toast(msg, ok){
       let box = document.getElementById('syncToastBox');
       if (!box){ box = document.createElement('div'); box.id='syncToastBox'; box.style.cssText='position:fixed;right:18px;bottom:18px;z-index:99999;display:flex;flex-direction:column;gap:8px'; document.body.appendChild(box); }
@@ -768,11 +769,28 @@
     }
     function setBtn(btn, lbl, disabled, text){ if(!btn) return; btn.disabled=disabled; btn.style.opacity=disabled?'.5':'1'; btn.style.cursor=disabled?'not-allowed':'pointer'; if(lbl && text!=null) lbl.textContent=text; }
     function fmt(ms){ const sec=Math.ceil(ms/1000); const m=Math.floor(sec/60); const ss=sec%60; return m>0 ? (m+':'+String(ss).padStart(2,'0')) : (ss+'s'); }
-    function refreshOne(){
+    function tick(){
+      const now = Date.now();
+      if (!busy.appAll){ const rem = Math.max(0, appAllUntil - now); setBtn(appAll, appAllL, rem>0, rem>0 ? ('Tunggu '+fmt(rem)) : 'App Sinkron ALL'); }
       const id = sel ? sel.value : '';
-      const rem = id ? (cooldownMap[id]||0) : 0;
-      if (!busy.appOne){ if (id && rem>0) setBtn(appOne, appOneL, true, 'Beku '+fmt(rem)); else setBtn(appOne, appOneL, !id, 'App'); }
+      const u = id ? oneUntil[id] : null;
+      const cdRem = u ? Math.max(0, u.cd - now) : 0;
+      const thRem = u ? Math.max(0, u.th - now) : 0;
+      const rem = Math.max(cdRem, thRem);
+      if (!busy.appOne){ if (id && rem>0) setBtn(appOne, appOneL, true, (cdRem>0 ? 'Beku ' : 'Tunggu ')+fmt(rem)); else setBtn(appOne, appOneL, !id, 'App'); }
       if (!busy.repOne) setBtn(repOne, repOneL, !id, 'Report');
+    }
+    async function pollCooldown(){
+      try {
+        const res = await fetch(COOLDOWN, { cache:'no-store', headers:{ 'Accept':'application/json' } });
+        const data = await res.json().catch(function(){ return {}; });
+        const now = Date.now();
+        appAllUntil = now + (Number(data.appAllThrottleRemainingMs) || 0);
+        const map = {};
+        ((data && data.accounts) || []).forEach(function(a){ map[a.id] = { cd: now + (Number(a.cooldownRemainingMs)||0), th: now + (Number(a.throttleRemainingMs)||0) }; });
+        oneUntil = map;
+      } catch(_){}
+      tick();
     }
     async function loadAccounts(){
       if (!sel) return;
@@ -782,25 +800,21 @@
         sel.innerHTML = '<option value="">Pilih Akun...</option>' + (list||[]).filter(function(a){ return a && a.id; }).map(function(a){ const label=a.merchantName||a.code||a.label||a.id; return '<option value="'+a.id+'">'+label+'</option>'; }).join('');
         if (cur) sel.value = cur;
       } catch(_){}
-      refreshOne();
-    }
-    async function pollCooldown(){
-      try {
-        const res = await fetch(COOLDOWN, { cache:'no-store', headers:{ 'Accept':'application/json' } });
-        const data = await res.json().catch(function(){ return {}; });
-        cooldownMap = {};
-        ((data && data.accounts) || []).forEach(function(a){ cooldownMap[a.id] = a.cooldownRemainingMs || 0; });
-      } catch(_){}
-      refreshOne();
+      tick();
     }
     async function doAll(kind){
       const isApp = kind==='app';
       const bk = isApp?'appAll':'repAll', btn=isApp?appAll:repAll, lbl=isApp?appAllL:repAllL, url=isApp?APP_ALL:REP_ALL, name=isApp?'App Sinkron ALL':'Report Sinkron ALL';
-      if (busy[bk]) return;
+      if (busy[bk] || btn.disabled) return;
       busy[bk]=true; setBtn(btn, lbl, true, 'Menyinkron...');
       try {
         const res = await fetch(url, { method:'POST', headers:{ 'Accept':'application/json' } });
         const data = await res.json().catch(function(){ return {}; });
+        if (res.status===429 && (data.throttle||data.cooldown)){
+          if (isApp) appAllUntil = Date.now() + (Number(data.remainingMs)||60000);
+          toast(data.error || 'Tunggu sebentar.', false);
+          busy[bk]=false; tick(); return;
+        }
         if (!res.ok || data.success===false) throw new Error(data.error || ('HTTP '+res.status));
         const results=data.results||[], skipped=data.skipped||[], errors=data.errors||[];
         const totNew = results.reduce(function(a,r){ return a + (r.newQris||0); }, 0);
@@ -809,38 +823,39 @@
         if (errors.length) msg += ' · '+errors.length+' error';
         toast(msg, errors.length===0);
         setTimeout(function(){ window.location.reload(); }, 1500);
-      } catch(err){ toast(name+' gagal: '+((err&&err.message)||'jaringan'), false); }
-      finally { busy[bk]=false; setBtn(btn, lbl, false, name); }
+      } catch(err){ toast(name+' gagal: '+((err&&err.message)||'jaringan'), false); busy[bk]=false; tick(); }
     }
     async function doOne(kind){
       const id = sel ? sel.value : '';
       if (!id){ toast('Pilih akun QRIS dulu.', false); return; }
       const isApp = kind==='app';
       const bk = isApp?'appOne':'repOne', btn=isApp?appOne:repOne, lbl=isApp?appOneL:repOneL, name=isApp?'App':'Report';
-      if (busy[bk]) return;
+      if (busy[bk] || btn.disabled) return;
       busy[bk]=true; setBtn(btn, lbl, true, 'Sinkron...');
       try {
         const res = await fetch(oneUrl(id, kind), { method:'POST', headers:{ 'Content-Type':'application/json', 'Accept':'application/json' } });
         const data = await res.json().catch(function(){ return {}; });
-        if (res.status===429 && data.cooldown){
-          const w = Math.ceil((data.remainingMs||300000)/1000);
-          cooldownMap[id] = data.remainingMs || 300000;
-          toast(data.error || ('App-api cooldown, tunggu '+w+'s. Pakai Report dulu.'), false);
-          busy[bk]=false; refreshOne(); return;
+        if (res.status===429 && (data.cooldown||data.throttle)){
+          const until = Date.now() + (Number(data.remainingMs)||30000);
+          oneUntil[id] = oneUntil[id] || { cd:0, th:0 };
+          if (data.cooldown) oneUntil[id].cd = until; else oneUntil[id].th = until;
+          toast(data.error || 'Tunggu sebentar.', false);
+          busy[bk]=false; tick(); return;
         }
         if (!res.ok || data.success===false) throw new Error(data.error || ('HTTP '+res.status));
         toast(name+' Sinkron OK: '+(data.newQris||0)+' mutasi QRIS baru. Memuat ulang...', true);
         setTimeout(function(){ window.location.reload(); }, 1100);
-      } catch(err){ toast(name+' Sinkron gagal: '+((err&&err.message)||'jaringan'), false); busy[bk]=false; refreshOne(); }
+      } catch(err){ toast(name+' Sinkron gagal: '+((err&&err.message)||'jaringan'), false); busy[bk]=false; tick(); }
     }
     if (appAll) appAll.addEventListener('click', function(){ doAll('app'); });
     if (repAll) repAll.addEventListener('click', function(){ doAll('report'); });
     if (appOne) appOne.addEventListener('click', function(){ doOne('app'); });
     if (repOne) repOne.addEventListener('click', function(){ doOne('report'); });
-    if (sel) sel.addEventListener('change', refreshOne);
+    if (sel) sel.addEventListener('change', tick);
     loadAccounts();
     pollCooldown();
     setInterval(pollCooldown, 3000);
+    setInterval(tick, 1000);
   })();
 
   async function refreshSelectedWalletBalance(wallet, silent) {

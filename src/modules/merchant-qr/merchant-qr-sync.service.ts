@@ -1166,6 +1166,21 @@ export class AppCooldownError extends Error {
   }
 }
 
+/** Dilempar saat App Sinkron diklik terlalu cepat (anti-spam). */
+export class AppThrottleError extends Error {
+  remainingMs: number;
+  constructor(remainingMs: number) {
+    super('Tunggu sebentar sebelum sinkron lagi');
+    this.name = 'AppThrottleError';
+    this.remainingMs = remainingMs;
+  }
+}
+
+const APP_ONE_THROTTLE_MS = 30_000; // jeda klik App Sinkron per akun
+const APP_ALL_THROTTLE_MS = 60_000; // jeda klik App Sinkron ALL
+const lastAppSyncAt = new Map<string, number>();
+let lastAppAllAt = 0;
+
 /** Sisa cooldown app-api (ms). 0 = tidak cooldown. */
 export function appCooldownRemainingMs(account: Pick<QrisAccount, 'qrisCooldownUntil'>): number {
   const until = account.qrisCooldownUntil ? new Date(account.qrisCooldownUntil).getTime() : 0;
@@ -1187,7 +1202,7 @@ async function writeAppCooldown(accountId: string, message: string): Promise<voi
 const appSyncInFlight = new Map<string, Promise<{ newQris: number; newUtama: number }>>();
 
 /** App Sinkron per akun: tarik QRIS + utama dari app-api. Tolak kalau cooldown 469. */
-export async function syncAppMutationsNow(id: string): Promise<{ newQris: number; newUtama: number }> {
+export async function syncAppMutationsNow(id: string, opts?: { skipThrottle?: boolean }): Promise<{ newQris: number; newUtama: number }> {
   const inflight = appSyncInFlight.get(id);
   if (inflight) return inflight;
 
@@ -1197,6 +1212,11 @@ export async function syncAppMutationsNow(id: string): Promise<{ newQris: number
     if (!account.sessionTokenEncrypted) throw new Error('Akun ini tidak memakai app-api (tidak ada sesi app).');
     const remaining = appCooldownRemainingMs(account);
     if (remaining > 0) throw new AppCooldownError(remaining);
+    if (!opts?.skipThrottle) {
+      const thRem = APP_ONE_THROTTLE_MS - (Date.now() - (lastAppSyncAt.get(id) ?? 0));
+      if (thRem > 0) throw new AppThrottleError(thRem);
+    }
+    lastAppSyncAt.set(id, Date.now());
 
     try {
       const recentKnownQris = await db.mutation.findMany({
@@ -1263,6 +1283,9 @@ export async function syncAppAllMerchants(): Promise<{
   skipped: Array<{ code: string; remainingMs: number }>;
   errors: Array<{ code: string; error: string }>;
 }> {
+  const allThrottle = APP_ALL_THROTTLE_MS - (Date.now() - lastAppAllAt);
+  if (allThrottle > 0) throw new AppThrottleError(allThrottle);
+  lastAppAllAt = Date.now();
   const accounts = await db.qrisAccount.findMany({
     where: { status: 'active', sessionTokenEncrypted: { not: null } },
     orderBy: { code: 'asc' },
@@ -1277,10 +1300,10 @@ export async function syncAppAllMerchants(): Promise<{
       continue;
     }
     try {
-      const r = await syncAppMutationsNow(acc.id);
+      const r = await syncAppMutationsNow(acc.id, { skipThrottle: true });
       results.push({ code: acc.code, ...r });
     } catch (err) {
-      if (err instanceof AppCooldownError) skipped.push({ code: acc.code, remainingMs: err.remainingMs });
+      if (err instanceof AppCooldownError || err instanceof AppThrottleError) skipped.push({ code: acc.code, remainingMs: err.remainingMs });
       else errors.push({ code: acc.code, error: err instanceof Error ? err.message : 'error' });
     }
   }
@@ -1310,17 +1333,22 @@ export async function syncReportAllMerchants(): Promise<{
 }
 
 /** Status cooldown app-api semua akun aktif (buat tombol App Sinkron beku + hitung mundur). */
-export async function listAppCooldownStatus(): Promise<
-  Array<{ id: string; code: string; cooldownUntil: string | null; cooldownRemainingMs: number }>
-> {
-  const accounts = await db.qrisAccount.findMany({
+export async function listAppCooldownStatus(): Promise<{
+  accounts: Array<{ id: string; code: string; cooldownRemainingMs: number; throttleRemainingMs: number }>;
+  appAllThrottleRemainingMs: number;
+}> {
+  const rows = await db.qrisAccount.findMany({
     where: { status: 'active' },
     select: { id: true, code: true, qrisCooldownUntil: true },
   });
-  return accounts.map((a) => ({
-    id: a.id,
-    code: a.code,
-    cooldownUntil: a.qrisCooldownUntil ? new Date(a.qrisCooldownUntil).toISOString() : null,
-    cooldownRemainingMs: appCooldownRemainingMs(a),
-  }));
+  const now = Date.now();
+  return {
+    accounts: rows.map((a) => ({
+      id: a.id,
+      code: a.code,
+      cooldownRemainingMs: appCooldownRemainingMs(a),
+      throttleRemainingMs: Math.max(0, APP_ONE_THROTTLE_MS - (now - (lastAppSyncAt.get(a.id) ?? 0))),
+    })),
+    appAllThrottleRemainingMs: Math.max(0, APP_ALL_THROTTLE_MS - (now - lastAppAllAt)),
+  };
 }
