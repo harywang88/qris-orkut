@@ -127,6 +127,7 @@ model QrisAccount {
   lastWatchProbeAt       DateTime?
   lastWatchProbeStatus   String?
   lastWatchProbeError    String?
+  qrisCooldownUntil     DateTime? // app-api 469 cooldown sampai kapan (tombol App Sinkron beku hingga waktu ini)
   qrisActivePollSeconds Int       @default(300)
   qrisIdlePollSeconds   Int       @default(300)
   balancePollSeconds    Int       @default(300)

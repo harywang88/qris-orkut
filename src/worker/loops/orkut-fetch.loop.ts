@@ -159,6 +159,7 @@ async function setProviderCooldown(account: QrisAccount, err: AppOrkutRateLimitE
       lastBalanceSyncAt: new Date(),
       lastBalanceSyncStatus: 'rate_limited',
       lastBalanceSyncError: err.message,
+      qrisCooldownUntil: new Date(retryAt), // Fase sinkron: tombol App Sinkron beku sampai waktu ini
     },
   });
   logger.warn(
