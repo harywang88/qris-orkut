@@ -12,6 +12,7 @@ import { dashboardRouter } from './modules/dashboard/dashboard.router';
 import { qrisAccountsRouter } from './modules/qris-accounts/qris-accounts.router';
 import { merchantQrRouter } from './modules/merchant-qr/merchant-qr.router';
 import { clientsRouter } from './modules/clients/clients.router';
+import { adminLogRouter } from './modules/admin-log/admin-log.router';
 import {
   qrisClientRouter,
   qrisAdminRouter,
@@ -150,6 +151,7 @@ export function createApp(): express.Application {
   mountRouter(app, '/qris-accounts', Router().use(requireAuth, qrisAccountsRouter));
   mountRouter(app, '/merchant-qr', Router().use(requireAuth, merchantQrRouter));
   mountRouter(app, '/clients', Router().use(requireAuth, clientsRouter));
+  mountRouter(app, '/admin-log', Router().use(requireAuth, adminLogRouter));
   mountRedirect(app, '/settings/login-logs', '/dashboard/login-logs', [requireAuth]);
   mountRedirect(app, '/settings/aliases', '/dashboard/aliases', [requireAuth]);
 

@@ -175,12 +175,21 @@
     </a>
     <% } %>
 
-    <% if (can('login-logs') || can('postgres') || can('settings') || isMaster || !isAlias) { %>
+    <% if (can('admin-log') || can('login-logs') || can('postgres') || can('settings') || isMaster || !isAlias) { %>
     <p class="px-3 pb-2.5 pt-4 text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60">Sistem</p>
     <% } %>
 
+    <% if (can('admin-log')) { %>
+    <a href="<%= url('/admin-log') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-shield-halved qris-nav-icon"></i>
+        <span>Admin Log</span>
+      </span>
+    </a>
+    <% } %>
+
     <% if (can('login-logs')) { %>
-    <a href="<%= url('/dashboard/login-logs') %>" class="qris-nav-link">
+    <a href="<%= url('/admin-log') %>?category=auth" class="qris-nav-link">
       <span class="flex items-center gap-3">
         <i class="fa-solid fa-list-check qris-nav-icon"></i>
         <span>Login Logs</span>

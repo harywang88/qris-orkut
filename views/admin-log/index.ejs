@@ -1,0 +1,410 @@
+<style>
+  .al-wrap { max-width: 1180px; margin: 0 auto; }
+  .al-head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; }
+  .al-title { font-size:26px; font-weight:800; letter-spacing:-.02em; color:var(--ink); line-height:1.1; }
+  .al-title span { background:var(--accent-grd); -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; }
+  .al-sub { color:var(--muted); font-size:13px; margin-top:4px; }
+  .al-head-actions { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+
+  .al-livebtn { display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; padding:7px 12px; border-radius:10px;
+    border:1px solid var(--line); background:var(--card); color:var(--muted); cursor:pointer; transition:.18s; }
+  .al-livebtn.on { border-color:rgba(22,163,74,.4); background:rgba(22,163,74,.08); color:#16a34a; }
+  .al-livedot { width:8px; height:8px; border-radius:50%; background:#94a3b8; }
+  .al-livebtn.on .al-livedot { background:#16a34a; box-shadow:0 0 0 0 rgba(22,163,74,.6); animation:alLive 1.6s infinite; }
+  @keyframes alLive { 0%{box-shadow:0 0 0 0 rgba(22,163,74,.5)} 70%{box-shadow:0 0 0 7px rgba(22,163,74,0)} 100%{box-shadow:0 0 0 0 rgba(22,163,74,0)} }
+  .al-exportbtn { display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; padding:7px 12px; border-radius:10px;
+    border:1px solid var(--line); background:var(--card); color:var(--muted); cursor:pointer; transition:.18s; text-decoration:none; }
+  .al-exportbtn:hover { color:var(--ink); border-color:var(--line-hi); }
+
+  /* Stat cards */
+  .al-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:18px; }
+  @media(max-width:820px){ .al-stats{ grid-template-columns:repeat(2,1fr); } }
+  .al-stat { position:relative; overflow:hidden; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:16px 16px 14px; }
+  .al-stat::after { content:''; position:absolute; inset:0 0 auto auto; width:90px; height:90px; border-radius:50%;
+    background:radial-gradient(circle, var(--al-glow, rgba(22,163,74,.14)), transparent 70%); transform:translate(30%,-30%); pointer-events:none; }
+  .al-stat-ico { width:36px; height:36px; border-radius:11px; display:grid; place-items:center; font-size:15px; margin-bottom:10px; }
+  .al-stat-num { font-size:26px; font-weight:800; color:var(--ink); letter-spacing:-.02em; line-height:1; }
+  .al-stat-lbl { font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); margin-top:6px; }
+
+  /* Filter bar */
+  .al-filters { margin-top:18px; background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px; }
+  .al-chips { display:flex; flex-wrap:wrap; gap:7px; }
+  .al-chip { display:inline-flex; align-items:center; gap:7px; font-size:12px; font-weight:600; padding:6px 11px; border-radius:999px;
+    border:1px solid var(--line); background:transparent; color:var(--muted); cursor:pointer; transition:.15s; white-space:nowrap; }
+  .al-chip:hover { border-color:var(--line-hi); color:var(--ink); }
+  .al-chip.active { color:#fff; border-color:transparent; }
+  .al-chip .al-chip-ct { font-size:10px; font-weight:700; padding:1px 6px; border-radius:999px; background:rgba(148,163,184,.18); color:inherit; }
+  .al-chip.active .al-chip-ct { background:rgba(255,255,255,.25); }
+  .al-controls { display:flex; flex-wrap:wrap; gap:9px; margin-top:12px; align-items:center; }
+  .al-field { display:flex; flex-direction:column; gap:3px; }
+  .al-field label { font-size:9px; font-weight:700; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); padding-left:2px; }
+  .al-input { background:var(--panel-2, var(--card-hi)); border:1px solid var(--line); border-radius:9px; padding:7px 10px; font-size:12.5px;
+    color:var(--ink); outline:none; transition:.15s; }
+  .al-input:focus { border-color:var(--accent); box-shadow:0 0 0 3px rgba(22,163,74,.12); }
+  .al-search { min-width:200px; }
+  .al-reset { align-self:flex-end; font-size:12px; font-weight:600; color:var(--muted); background:none; border:none; cursor:pointer; padding:8px 4px; }
+  .al-reset:hover { color:#ef4444; }
+
+  /* Feed */
+  .al-feed { margin-top:16px; display:flex; flex-direction:column; gap:9px; }
+  .al-card { position:relative; display:grid; grid-template-columns:auto 1fr auto; gap:13px; align-items:center;
+    background:var(--card); border:1px solid var(--line); border-radius:14px; padding:13px 15px 13px 18px; cursor:default;
+    animation:alIn .4s cubic-bezier(.2,.7,.3,1) both; }
+  @keyframes alIn { from{ opacity:0; transform:translateY(9px); } to{ opacity:1; transform:none; } }
+  .al-card.has-detail { cursor:pointer; }
+  .al-card:hover { border-color:var(--line-hi); transform:translateY(-1px); box-shadow:0 6px 22px rgba(0,0,0,.10); }
+  .al-card::before { content:''; position:absolute; left:0; top:10px; bottom:10px; width:3px; border-radius:3px; background:var(--al-rail,#94a3b8); }
+  .al-card.sev-critical::before { background:#ef4444; animation:alRail 1.8s ease-in-out infinite; }
+  @keyframes alRail { 0%,100%{ box-shadow:0 0 0 0 rgba(239,68,68,0); } 50%{ box-shadow:0 0 10px 1px rgba(239,68,68,.55); } }
+  .al-card.sev-critical { background:linear-gradient(90deg, rgba(239,68,68,.055), transparent 55%), var(--card); }
+  .al-ico { width:38px; height:38px; border-radius:11px; display:grid; place-items:center; font-size:15px; flex-shrink:0; }
+  .al-main { min-width:0; }
+  .al-summary { font-size:13.5px; font-weight:600; color:var(--ink); line-height:1.35; word-break:break-word; }
+  .al-fail { display:inline-block; margin-left:7px; font-size:10px; font-weight:800; letter-spacing:.04em; color:#ef4444;
+    background:rgba(239,68,68,.12); padding:1px 7px; border-radius:6px; vertical-align:middle; }
+  .al-meta { display:flex; flex-wrap:wrap; gap:11px; margin-top:5px; font-size:11px; color:var(--muted); }
+  .al-meta span { display:inline-flex; align-items:center; gap:5px; }
+  .al-meta i { font-size:10px; opacity:.75; }
+  .al-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0; }
+  .al-pill { font-size:10px; font-weight:700; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+  .al-chev { color:var(--muted-2, var(--muted)); font-size:11px; transition:transform .25s; }
+  .al-card.open .al-chev { transform:rotate(180deg); }
+  .al-detail { grid-column:1/-1; margin-top:4px; border-top:1px dashed var(--line); padding-top:11px; display:none; }
+  .al-card.open .al-detail { display:block; animation:alIn .3s ease both; }
+  .al-drow { display:flex; gap:10px; font-size:12px; padding:3px 0; }
+  .al-dkey { color:var(--muted); min-width:104px; font-weight:600; flex-shrink:0; }
+  .al-dval { color:var(--ink-2, var(--ink)); word-break:break-word; font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; }
+  .al-pre { margin-top:8px; background:var(--panel-2, var(--card-hi)); border:1px solid var(--line); border-radius:9px; padding:10px 12px;
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11.5px; color:var(--ink-2, var(--ink)); white-space:pre-wrap; word-break:break-word; max-height:280px; overflow:auto; }
+  .al-card.al-fresh { animation:alFresh 1.5s ease; }
+  @keyframes alFresh { 0%{ background:rgba(22,163,74,.16); border-color:rgba(22,163,74,.5); } 100%{ } }
+
+  .al-empty, .al-loading { text-align:center; padding:48px 20px; color:var(--muted); }
+  .al-empty i { font-size:34px; opacity:.4; display:block; margin-bottom:12px; }
+  .al-more { margin:16px auto 4px; display:block; font-size:13px; font-weight:600; padding:10px 22px; border-radius:11px;
+    border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; transition:.15s; }
+  .al-more:hover { border-color:var(--accent); color:#16a34a; }
+  .al-spin { display:inline-block; width:16px; height:16px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:alSpin .7s linear infinite; }
+  @keyframes alSpin { to{ transform:rotate(360deg); } }
+</style>
+
+<div class="al-wrap">
+  <div class="al-head">
+    <div>
+      <h1 class="al-title">Admin <span>Log</span></h1>
+      <p class="al-sub">Jejak audit semua aksi operator &amp; login &mdash; siapa, apa, kapan, dari mana.</p>
+    </div>
+    <div class="al-head-actions">
+      <button type="button" id="alLive" class="al-livebtn on" title="Nyalakan/matikan pantau langsung">
+        <span class="al-livedot"></span> <span id="alLiveTxt">Live</span>
+      </button>
+      <a href="#" id="alExport" class="al-exportbtn"><i class="fa-solid fa-file-csv"></i> Export CSV</a>
+    </div>
+  </div>
+
+  <!-- Stat cards -->
+  <div class="al-stats">
+    <div class="al-stat" style="--al-glow:rgba(22,163,74,.16)">
+      <div class="al-stat-ico" style="background:rgba(22,163,74,.14); color:#16a34a"><i class="fa-solid fa-layer-group"></i></div>
+      <div class="al-stat-num" id="stTotal">0</div>
+      <div class="al-stat-lbl">Total Aksi</div>
+    </div>
+    <div class="al-stat" style="--al-glow:rgba(59,130,246,.16)">
+      <div class="al-stat-ico" style="background:rgba(59,130,246,.14); color:#3b82f6"><i class="fa-solid fa-calendar-day"></i></div>
+      <div class="al-stat-num" id="stToday">0</div>
+      <div class="al-stat-lbl">Hari Ini</div>
+    </div>
+    <div class="al-stat" style="--al-glow:rgba(239,68,68,.16)">
+      <div class="al-stat-ico" style="background:rgba(239,68,68,.14); color:#ef4444"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <div class="al-stat-num" id="stCrit">0</div>
+      <div class="al-stat-lbl">Kritis (7 hari)</div>
+    </div>
+    <div class="al-stat" style="--al-glow:rgba(168,85,247,.16)">
+      <div class="al-stat-ico" style="background:rgba(168,85,247,.14); color:#a855f7"><i class="fa-solid fa-user-group"></i></div>
+      <div class="al-stat-num" id="stOps">0</div>
+      <div class="al-stat-lbl">Operator</div>
+    </div>
+  </div>
+
+  <!-- Filters -->
+  <div class="al-filters">
+    <div class="al-chips" id="alChips"></div>
+    <div class="al-controls">
+      <div class="al-field">
+        <label>Operator</label>
+        <select class="al-input" id="fOperator">
+          <option value="">Semua operator</option>
+          <% (operators || []).forEach(function(op){ %><option value="<%= op %>"><%= op %></option><% }); %>
+        </select>
+      </div>
+      <div class="al-field">
+        <label>Status</label>
+        <select class="al-input" id="fStatus">
+          <option value="">Semua</option>
+          <option value="success">Sukses</option>
+          <option value="failed">Gagal</option>
+        </select>
+      </div>
+      <div class="al-field">
+        <label>Tingkat</label>
+        <select class="al-input" id="fSeverity">
+          <option value="">Semua</option>
+          <option value="info">Info</option>
+          <option value="important">Penting</option>
+          <option value="critical">Kritis</option>
+        </select>
+      </div>
+      <div class="al-field">
+        <label>Dari</label>
+        <input type="date" class="al-input" id="fFrom">
+      </div>
+      <div class="al-field">
+        <label>Sampai</label>
+        <input type="date" class="al-input" id="fTo">
+      </div>
+      <div class="al-field" style="flex:1; min-width:200px;">
+        <label>Cari</label>
+        <input type="text" class="al-input al-search" id="fSearch" placeholder="Cari ringkasan, operator, target, IP...">
+      </div>
+      <button type="button" class="al-reset" id="fReset"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+    </div>
+  </div>
+
+  <!-- Feed -->
+  <div class="al-feed" id="alFeed"></div>
+  <div id="alFoot"></div>
+</div>
+
+<script>
+(function(){
+  var API = '<%= url('/admin-log') %>';
+  var CATS = {
+    auth:         { label:'Autentikasi',  icon:'fa-right-to-bracket',    color:'#3b82f6' },
+    account:      { label:'Akun QRIS',    icon:'fa-user-gear',           color:'#06b6d4' },
+    site:         { label:'Site',         icon:'fa-sitemap',             color:'#8b5cf6' },
+    merchant:     { label:'Merchant QR',  icon:'fa-store',               color:'#10b981' },
+    settlement:   { label:'Kirim Uang',   icon:'fa-money-bill-transfer', color:'#f59e0b' },
+    'generate-qr':{ label:'Generate QR',  icon:'fa-qrcode',              color:'#14b8a6' },
+    pending:      { label:'Uang Pending', icon:'fa-hourglass-half',      color:'#eab308' },
+    sync:         { label:'Sinkron',      icon:'fa-rotate',              color:'#0ea5e9' },
+    client:       { label:'API Client',   icon:'fa-key',                 color:'#a855f7' },
+    rbac:         { label:'Operator/RBAC',icon:'fa-user-shield',         color:'#ef4444' },
+    lain:         { label:'Lainnya',      icon:'fa-circle-info',         color:'#6b7280' },
+  };
+  var CAT_ORDER = ['auth','account','site','merchant','settlement','generate-qr','pending','sync','client','rbac','lain'];
+
+  var state = { category:'', actor:'', status:'', severity:'', q:'', from:'', to:'', page:1 };
+  var newestTs = null, liveOn = true, liveTimer = null, loading = false, reqSeq = 0, lastCounts = {};
+
+  var feed = document.getElementById('alFeed');
+  var foot = document.getElementById('alFoot');
+  var chips = document.getElementById('alChips');
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function catOf(k){ return CATS[k] || CATS.lain; }
+
+  function relTime(iso){
+    var d = new Date(iso), now = Date.now(), s = Math.floor((now - d.getTime())/1000);
+    if (s < 45) return 'baru saja';
+    if (s < 3600) return Math.floor(s/60) + ' mnt lalu';
+    if (s < 86400) return Math.floor(s/3600) + ' jam lalu';
+    if (s < 604800) return Math.floor(s/86400) + ' hari lalu';
+    return d.toLocaleDateString('id-ID', { day:'2-digit', month:'short', year:'numeric' });
+  }
+  function fullTime(iso){
+    try { return new Date(iso).toLocaleString('id-ID', { day:'2-digit', month:'long', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit', hour12:false, timeZone:'Asia/Jakarta' }) + ' WIB'; }
+    catch(e){ return iso; }
+  }
+
+  function detailHtml(e){
+    var d = e.detail;
+    var rows = '';
+    if (e.targetType || e.targetId) rows += drow('Target', (e.targetType||'') + (e.targetId?(' · '+e.targetId):''));
+    rows += drow('Aksi (kode)', e.action);
+    rows += drow('Waktu', fullTime(e.createdAt));
+    var pre = '';
+    if (d && typeof d === 'object') {
+      var keys = Object.keys(d);
+      if (keys.length) {
+        pre = '<div class="al-pre">' + esc(JSON.stringify(d, null, 2)) + '</div>';
+      }
+    } else if (d != null && String(d).length) {
+      pre = '<div class="al-pre">' + esc(String(d)) + '</div>';
+    }
+    return '<div class="al-detail">' + rows + pre + '</div>';
+  }
+  function drow(k,v){ return '<div class="al-drow"><span class="al-dkey">'+esc(k)+'</span><span class="al-dval">'+esc(v)+'</span></div>'; }
+
+  function cardHtml(e, idx){
+    var c = catOf(e.category);
+    var hasDetail = !!(e.detail || e.targetId || e.targetType);
+    var sevPill = { info:['#64748b','rgba(100,116,139,.14)','Info'], important:['#f59e0b','rgba(245,158,11,.14)','Penting'], critical:['#ef4444','rgba(239,68,68,.14)','Kritis'] }[e.severity] || ['#64748b','rgba(100,116,139,.14)','Info'];
+    var h = '';
+    h += '<div class="al-card sev-'+esc(e.severity)+(hasDetail?' has-detail':'')+'" data-id="'+esc(e.id)+'" style="--al-rail:'+c.color+'; animation-delay:'+Math.min(idx*32,520)+'ms">';
+    h +=   '<div class="al-ico" style="background:'+c.color+'22; color:'+c.color+'"><i class="fa-solid '+c.icon+'"></i></div>';
+    h +=   '<div class="al-main">';
+    h +=     '<div class="al-summary">'+esc(e.summary)+(e.status==='failed'?'<span class="al-fail">GAGAL</span>':'')+'</div>';
+    h +=     '<div class="al-meta">';
+    h +=       '<span><i class="fa-solid fa-user"></i> '+esc(e.actor || '—')+'</span>';
+    h +=       '<span title="'+esc(fullTime(e.createdAt))+'"><i class="fa-solid fa-clock"></i> '+esc(relTime(e.createdAt))+'</span>';
+    if (e.targetName) h += '<span><i class="fa-solid fa-tag"></i> '+esc(e.targetName)+'</span>';
+    if (e.ip) h += '<span><i class="fa-solid fa-globe"></i> '+esc(e.ip)+'</span>';
+    h +=     '</div>';
+    h +=   '</div>';
+    h +=   '<div class="al-right">';
+    h +=     '<span class="al-pill" style="background:'+c.color+'1f; color:'+c.color+'">'+esc(c.label)+'</span>';
+    h +=     '<span class="al-pill" style="background:'+sevPill[1]+'; color:'+sevPill[0]+'">'+sevPill[2]+'</span>';
+    if (hasDetail) h += '<i class="fa-solid fa-chevron-down al-chev"></i>';
+    h +=   '</div>';
+    if (hasDetail) h += detailHtml(e);
+    h += '</div>';
+    return h;
+  }
+
+  function renderChips(counts){
+    counts = counts || {};
+    var total = 0; for (var k in counts) total += counts[k];
+    var h = '<button class="al-chip'+(state.category===''?' active':'')+'" data-cat="" style="'+(state.category===''?'background:#16a34a':'')+'">Semua <span class="al-chip-ct">'+total+'</span></button>';
+    CAT_ORDER.forEach(function(k){
+      var ct = counts[k] || 0;
+      if (!ct && k==='lain') return;
+      var c = catOf(k), on = state.category===k;
+      h += '<button class="al-chip'+(on?' active':'')+'" data-cat="'+k+'" style="'+(on?('background:'+c.color):'')+'">'+
+           '<i class="fa-solid '+c.icon+'" style="color:'+(on?'#fff':c.color)+'"></i> '+esc(c.label)+' <span class="al-chip-ct">'+ct+'</span></button>';
+    });
+    chips.innerHTML = h;
+    Array.prototype.forEach.call(chips.querySelectorAll('.al-chip'), function(b){
+      b.addEventListener('click', function(){ state.category = b.getAttribute('data-cat'); renderChips(counts); reload(); });
+    });
+  }
+
+  function qs(extra){
+    var p = [];
+    ['category','actor','status','severity','q','from','to'].forEach(function(k){ if (state[k]) p.push(k+'='+encodeURIComponent(state[k])); });
+    if (extra) for (var k in extra) p.push(k+'='+encodeURIComponent(extra[k]));
+    return p.join('&');
+  }
+
+  function setFoot(html){ foot.innerHTML = html; }
+
+  function reload(){
+    reqSeq++; loading = false;   // batalkan request lama yg masih terbang, paksa fetch filter baru
+    state.page = 1; newestTs = null; feed.innerHTML = '';
+    setFoot('<div class="al-loading"><span class="al-spin"></span></div>');
+    load();
+  }
+
+  function load(){
+    if (loading) return; loading = true;
+    var mySeq = reqSeq;
+    fetch(API + '/api/entries?' + qs({ page:state.page, pageSize:30 }), { credentials:'same-origin' })
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        loading = false;
+        if (mySeq !== reqSeq) return;   // respons basi (filter sudah berganti) -> abaikan
+        if (!res.ok) { setFoot('<div class="al-empty">Gagal memuat.</div>'); return; }
+        if (state.page === 1 && (!res.entries || !res.entries.length)) {
+          feed.innerHTML = '<div class="al-empty"><i class="fa-solid fa-inbox"></i>Tidak ada catatan untuk filter ini.</div>';
+          setFoot(''); return;
+        }
+        var startIdx = feed.querySelectorAll('.al-card').length;
+        // dedup: lewati entri yg sudah tampil (live-prepend bisa menggeser offset halaman)
+        var toAdd = res.entries.filter(function(e){ return !feed.querySelector('[data-id="'+cssEsc(e.id)+'"]'); });
+        var frag = document.createElement('div');
+        frag.innerHTML = toAdd.map(function(e,i){ return cardHtml(e, startIdx+i); }).join('');
+        while (frag.firstChild) feed.appendChild(frag.firstChild);
+        if (!newestTs && res.entries.length) newestTs = res.entries[0].createdAt;
+        bindCards();
+        setFoot(res.hasMore ? '<button class="al-more" id="alMore">Muat lebih banyak</button>' : '');
+        var mb = document.getElementById('alMore');
+        if (mb) mb.addEventListener('click', function(){ state.page++; setFoot('<div class="al-loading"><span class="al-spin"></span></div>'); load(); });
+      })
+      .catch(function(){ loading = false; if (mySeq !== reqSeq) return; setFoot('<div class="al-empty">Gagal memuat.</div>'); });
+  }
+
+  function bindCards(){
+    Array.prototype.forEach.call(feed.querySelectorAll('.al-card.has-detail'), function(card){
+      if (card.dataset.bound) return; card.dataset.bound = '1';
+      card.addEventListener('click', function(ev){
+        if (ev.target.closest('a')) return;
+        card.classList.toggle('open');
+      });
+    });
+  }
+
+  function pollLive(){
+    if (!liveOn || !newestTs || loading) return;
+    fetch(API + '/api/entries?' + qs({ since:newestTs }), { credentials:'same-origin' })
+      .then(function(r){ return r.json(); })
+      .then(function(res){
+        if (!res.ok || !res.entries || !res.entries.length) return;
+        // buang yang sudah ada, urut lama->baru utk prepend
+        var fresh = res.entries.filter(function(e){ return !feed.querySelector('[data-id="'+cssEsc(e.id)+'"]'); });
+        if (!fresh.length) return;
+        newestTs = res.entries[0].createdAt;
+        fresh.slice().reverse().forEach(function(e){
+          var tmp = document.createElement('div');
+          tmp.innerHTML = cardHtml(e, 0);
+          var node = tmp.firstChild;
+          node.classList.add('al-fresh');
+          node.style.animationDelay = '0ms';
+          feed.insertBefore(node, feed.firstChild);
+        });
+        bindCards();
+        loadStats();
+      }).catch(function(){});
+  }
+  function cssEsc(s){ return String(s).replace(/["\\]/g, '\\$&'); }
+
+  function loadStats(){
+    fetch(API + '/api/stats', { credentials:'same-origin' })
+      .then(function(r){ return r.json(); })
+      .then(function(s){
+        if (!s.ok) return;
+        setNum('stTotal', s.total); setNum('stToday', s.today); setNum('stCrit', s.critical7d); setNum('stOps', s.operators);
+        lastCounts = s.byCategory || {};
+        renderChips(lastCounts);
+      }).catch(function(){});
+  }
+  function setNum(id, val){
+    var el = document.getElementById(id); if (!el) return;
+    el.dataset.count = val;
+    if (typeof animateCounter === 'function') animateCounter(el); else el.textContent = Number(val).toLocaleString('id-ID');
+  }
+
+  // Debounce util
+  function debounce(fn, ms){ var t; return function(){ clearTimeout(t); t = setTimeout(fn, ms); }; }
+
+  // ── Wiring ──
+  document.getElementById('fOperator').addEventListener('change', function(){ state.actor = this.value; reload(); });
+  document.getElementById('fStatus').addEventListener('change', function(){ state.status = this.value; reload(); });
+  document.getElementById('fSeverity').addEventListener('change', function(){ state.severity = this.value; reload(); });
+  document.getElementById('fFrom').addEventListener('change', function(){ state.from = this.value; reload(); });
+  document.getElementById('fTo').addEventListener('change', function(){ state.to = this.value; reload(); });
+  document.getElementById('fSearch').addEventListener('input', debounce(function(){ state.q = document.getElementById('fSearch').value.trim(); reload(); }, 350));
+  document.getElementById('fReset').addEventListener('click', function(){
+    state = { category:'', actor:'', status:'', severity:'', q:'', from:'', to:'', page:1 };
+    ['fOperator','fStatus','fSeverity','fFrom','fTo','fSearch'].forEach(function(id){ document.getElementById(id).value=''; });
+    renderChips(lastCounts);   // segarkan highlight chip -> "Semua" aktif lagi
+    reload();
+  });
+  document.getElementById('alExport').addEventListener('click', function(ev){ ev.preventDefault(); window.location = API + '/export.csv?' + qs(); });
+  document.getElementById('alLive').addEventListener('click', function(){
+    liveOn = !liveOn;
+    this.classList.toggle('on', liveOn);
+    document.getElementById('alLiveTxt').textContent = liveOn ? 'Live' : 'Jeda';
+  });
+
+  // Pre-pilih filter dari query string (mis. Login Logs -> ?category=auth)
+  (function initFromUrl(){
+    var p = new URLSearchParams(window.location.search);
+    if (p.get('category')) state.category = p.get('category');
+    if (p.get('actor')) { state.actor = p.get('actor'); var s=document.getElementById('fOperator'); if(s) s.value=state.actor; }
+    if (p.get('severity')) { state.severity = p.get('severity'); document.getElementById('fSeverity').value = state.severity; }
+  })();
+
+  loadStats();
+  reload();
+  liveTimer = setInterval(pollLive, 5000);
+})();
+</script>

@@ -102,6 +102,7 @@ export const MENU_DEFS: MenuDef[] = [
   { key: 'clients', label: 'API Client', icon: '🔑', path: '/clients', subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Kelola' }] },
   { key: 'reports', label: 'Laporan', icon: '📈', path: '/reports', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'login-logs', label: 'Login Logs', icon: '📜', path: '/dashboard/login-logs', subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'admin-log', label: 'Admin Log', icon: '🛡️', path: '/admin-log', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'postgres', label: 'PostgreSQL', icon: '🗄️', path: '/dashboard/postgres-monitor', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'settings', label: 'Pengaturan', icon: '⚙️', path: '/dashboard/account-settings', subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Ubah' }] },
   { key: 'akun-alias', label: 'Akun Alias', icon: '👤', path: '/dashboard/akun-alias', masterOnly: true, subs: [{ key: 'view', label: 'Lihat' }] },
