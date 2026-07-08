@@ -2159,6 +2159,38 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
 //  (2) Lonjakan NAIK: saldo tiba-tiba naik antar-baris tanpa baris pencatat (uang masuk hilang).
 //      Penurunan diabaikan karena itu Pencairan/settlement (OrderKuota catat pencairan sbg baris net-0
 //      sehingga saldo turun tanpa mengubah balanceBefore/After baris itu -> WAJAR, bukan data hilang).
+// Urutkan ulang baris yang WAKTU-nya sama (provider report presisi MENIT) mengikuti rantai
+// saldo balanceBefore->balanceAfter. Tanpa ini, 2+ mutasi dalam 1 menit bisa keurut kebalik
+// -> rantai seolah putus -> FALSE-ALARM "mutasi masuk hilang" padahal datanya lengkap.
+function reorderReconcileChain<T extends { balanceBefore: number | null; balanceAfter: number | null; transactionTime: Date }>(rows: T[]): T[] {
+  const out: T[] = [];
+  let i = 0;
+  while (i < rows.length) {
+    let j = i;
+    const t = rows[i].transactionTime.getTime();
+    while (j < rows.length && rows[j].transactionTime.getTime() === t) j++;
+    const group = rows.slice(i, j);
+    if (group.length <= 1) {
+      out.push(group[0]);
+    } else {
+      const remaining = group.slice();
+      const groupAfters = new Set(group.map((r) => r.balanceAfter ?? 0));
+      let cur: number | null = out.length ? (out[out.length - 1].balanceAfter ?? 0) : null;
+      while (remaining.length) {
+        let idx = cur != null
+          ? remaining.findIndex((r) => (r.balanceBefore ?? 0) === cur)
+          : remaining.findIndex((r) => !groupAfters.has(r.balanceBefore ?? 0)); // baris AWAL rantai (grup pertama, tak ada entry)
+        if (idx < 0) idx = 0; // rantai tak nyambung -> pertahankan urutan asli utk langkah ini
+        out.push(remaining[idx]);
+        cur = remaining[idx].balanceAfter ?? 0;
+        remaining.splice(idx, 1);
+      }
+    }
+    i = j;
+  }
+  return out;
+}
+
 async function computeWalletReconcileForAccount(
   account: { id: string; code: string; merchantName: string | null },
   walletCategory: string,
@@ -2183,18 +2215,23 @@ async function computeWalletReconcileForAccount(
     const okEmpty = physical === 0;
     return { ...base, computedBalance: physical, diff: 0, match: okEmpty, status: okEmpty ? 'match' : 'no_data', gap: null };
   }
-  const newestAfter = rows[rows.length - 1].balanceAfter ?? 0;
+  // Rapikan urutan baris ber-waktu-sama mengikuti rantai saldo (hindari false-alarm same-minute).
+  const chain = reorderReconcileChain(rows);
+  // Semua nilai balanceAfter yg pernah ada. Kalau curBefore suatu baris = balanceAfter baris LAIN,
+  // berarti baris "penaik saldo" itu ADA (cuma keurut kebalik, mis. beda-detik) -> BUKAN gap nyata.
+  const afterSet = new Set(chain.map((r) => r.balanceAfter ?? 0));
+  const newestAfter = chain[chain.length - 1].balanceAfter ?? 0;
   const tailDiff = physical - newestAfter;
   // Cari lonjakan NAIK pertama (saldo masuk tanpa baris = mutasi masuk hilang).
   let upwardGap: { jump: number; atTime: Date; keterangan: string } | null = null;
-  for (let i = 1; i < rows.length; i++) {
-    const prevAfter = rows[i - 1].balanceAfter ?? 0;
-    const curBefore = rows[i].balanceBefore ?? 0;
-    if (curBefore > prevAfter) {
-      const raw = parseRawMutationPayload(rows[i].rawDataJson);
+  for (let i = 1; i < chain.length; i++) {
+    const prevAfter = chain[i - 1].balanceAfter ?? 0;
+    const curBefore = chain[i].balanceBefore ?? 0;
+    if (curBefore > prevAfter && !afterSet.has(curBefore)) {
+      const raw = parseRawMutationPayload(chain[i].rawDataJson);
       upwardGap = {
         jump: curBefore - prevAfter,
-        atTime: rows[i].transactionTime,
+        atTime: chain[i].transactionTime,
         keterangan: readString(raw.keterangan) || readString(raw.description) || '',
       };
       break;
