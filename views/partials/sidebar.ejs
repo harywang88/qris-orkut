@@ -136,6 +136,22 @@
     </a>
     <% } %>
 
+    <% if (can('mutasi-qris') || can('mutasi-utama')) { %>
+    <div class="qris-nav-group">
+      <button type="button" class="qris-nav-link qris-nav-parent w-full" data-toggle-nav>
+        <span class="flex items-center gap-3">
+          <i class="fa-solid fa-file-invoice-dollar qris-nav-icon"></i>
+          <span>History Order Kuota</span>
+        </span>
+        <i class="fa-solid fa-chevron-right text-[10px] text-muted transition-transform duration-200 group-chevron"></i>
+      </button>
+      <div class="qris-subnav">
+        <a href="<%= url('/dashboard/history-orkut/qris') %>" class="qris-subnav-link">History QRIS</a>
+        <a href="<%= url('/dashboard/history-orkut/utama') %>" class="qris-subnav-link">History Utama</a>
+      </div>
+    </div>
+    <% } %>
+
     <% if (can('merchant-qr') || can('clients') || can('reports')) { %>
     <p class="px-3 pb-2.5 pt-4 text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60">Konfigurasi</p>
     <% } %>

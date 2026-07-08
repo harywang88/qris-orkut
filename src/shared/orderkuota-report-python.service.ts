@@ -143,6 +143,7 @@ function runPythonReportScraper(
 }
 
 function runPythonReportScraperRaw(input: {
+    maxPages?: number;
   cookie: string;
   userAgent?: string | null;
   target: WalletTarget;
@@ -151,7 +152,7 @@ function runPythonReportScraperRaw(input: {
     cookie: input.cookie,
     userAgent: input.userAgent || undefined,
     target: input.target,
-    maxPages: 3,
+    maxPages: input.maxPages ?? 3,
   });
 
   const candidates = getPythonBinCandidates();
@@ -352,4 +353,25 @@ export async function checkWebReportLogin(webReportUrlEncrypted?: string | null)
   } catch {
     return 'expired';
   }
+}
+
+
+export async function fetchReportWalletLive(
+  account: Pick<QrisAccount, 'code' | 'webCookiesEncrypted' | 'cookiesEncrypted' | 'webUserAgent'> & { webReportUrlEncrypted?: string | null },
+  wallet: 'qris' | 'utama',
+  maxPages = 5,
+): Promise<PythonWalletPayload | null> {
+  const auto = await autologinCookieForAccount((account as any).webReportUrlEncrypted);
+  let cookie: string;
+  let userAgent: string | undefined;
+  if (auto) {
+    cookie = auto.cookie;
+    userAgent = auto.userAgent;
+  } else {
+    try { cookie = decryptReportCookie(account); } catch { return null; }
+    userAgent = account.webUserAgent || undefined;
+  }
+  if (!cookie) return null;
+  const result = await runPythonReportScraperRaw({ cookie, userAgent, target: wallet, maxPages });
+  return wallet === 'qris' ? result.qris : result.utama;
 }

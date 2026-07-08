@@ -36,6 +36,7 @@ import {
 import {
   syncMerchantMutationsFromReport,
   syncMerchantMutationsFromReportIfStale,
+  fetchReportWalletLive,
 } from '../../shared/orderkuota-report-python.service';
 import { appGateway, type AppQrisMutationDetail } from '../../shared/gateways/app-orkut.gateway';
 import {
@@ -3405,5 +3406,62 @@ export async function showManualSendPage(req: Request, res: Response): Promise<v
   } catch (err) {
     logger.error({ err }, 'showManualSendPage error');
     res.status(500).send('Gagal memuat halaman Send Money Manual.');
+  }
+}
+
+
+// ── History Order Kuota (mutasi report resmi: QRIS / Utama) ──
+export async function showHistoryOrkut(req: Request, res: Response): Promise<void> {
+  try {
+    const wallet = req.params.wallet === 'utama' ? 'utama' : 'qris';
+    const accountsRaw = await db.qrisAccount.findMany({
+      where: { status: 'active' },
+      orderBy: { code: 'asc' },
+      select: { id: true, code: true, merchantName: true, lastQrisBalance: true, lastMainBalance: true, webReportUrlEncrypted: true, healthStatus: true },
+    });
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const _scoped = _scopeIds ? accountsRaw.filter((a) => _scopeIds.includes(a.id)) : accountsRaw;
+    const _resolveSite = buildResolver();
+    const accounts = _scoped.map((a) => Object.assign({}, a, { siteName: _resolveSite(a.id).siteName || '', hasLink: !!(a as any).webReportUrlEncrypted }));
+    const _scopeSite = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const sites = _scopeSite ? listSites().filter((s) => s.id === _scopeSite) : listSites();
+    res.render('history-orkut/index', { title: 'History Order Kuota', wallet, accounts, sites });
+  } catch (err) {
+    logger.error({ err }, 'showHistoryOrkut error');
+    res.status(500).render('error/500', { title: 'Error' });
+  }
+}
+
+export async function getHistoryOrkutMutationsApi(req: Request, res: Response): Promise<void> {
+  try {
+    const wallet = req.query.wallet === 'utama' ? 'utama' : 'qris';
+    const account = await db.qrisAccount.findUnique({ where: { id: req.params.accountId } });
+    if (!account) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; }
+    if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(403).json({ ok: false, message: 'Akun di luar akses Anda.' }); return; }
+    if (!(account as any).webReportUrlEncrypted) { res.json({ ok: false, message: 'Akun ini belum punya Link Web Report. Pasang dulu di menu Merchant QR.' }); return; }
+    const payload = await fetchReportWalletLive(account, wallet, 5);
+    if (!payload) { res.json({ ok: false, message: 'Gagal ambil mutasi (login report gagal / kadaluarsa). Cek Link Web Report.' }); return; }
+    const items = (payload.mutations || []).slice(0, 50).map((m) => {
+      let desc: string = m.issuerName || '';
+      try { const r = JSON.parse(m.rawDataJson); desc = r.description || r.keterangan || desc; } catch { /* ignore */ }
+      return { time: m.transactionTime, desc, amount: m.amount, type: m.type, balanceAfter: m.balanceAfter, rrn: m.rrn };
+    });
+    res.json({ ok: true, wallet, count: payload.count, balance: payload.balance, accountName: payload.meta?.accountName || null, items });
+  } catch (err) {
+    logger.error({ err }, 'getHistoryOrkutMutationsApi error');
+    res.status(500).json({ ok: false, message: 'Gagal mengambil mutasi report.' });
+  }
+}
+
+export async function getHistoryOrkutOpenApi(req: Request, res: Response): Promise<void> {
+  try {
+    const account = await db.qrisAccount.findUnique({ where: { id: req.params.accountId }, select: { id: true, webReportUrlEncrypted: true } });
+    if (!account || !accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(403).send('Akses ditolak.'); return; }
+    if (!(account as any).webReportUrlEncrypted) { res.status(400).send('Akun ini belum punya Link Web Report.'); return; }
+    const target = decrypt((account as any).webReportUrlEncrypted);
+    res.redirect(target);
+  } catch (err) {
+    logger.error({ err }, 'getHistoryOrkutOpenApi error');
+    res.status(500).send('Gagal membuka Web Report.');
   }
 }

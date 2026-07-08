@@ -10,6 +10,9 @@ import {
   showMaderaNobuHistory,
   getMaderaNobuHistoryApi,
   getMaderaNobuWebviewApi,
+  showHistoryOrkut,
+  getHistoryOrkutMutationsApi,
+  getHistoryOrkutOpenApi,
   getMaderaManualBanksApi,
   showManualSendPage,
   postMaderaManualInquiryApi,
@@ -73,6 +76,9 @@ router.get('/madera-nobu', showMaderaNobuHistory);
 router.get('/manual-send/:accountId', showManualSendPage);
 router.get('/api/madera-nobu/:accountId', getMaderaNobuHistoryApi);
 router.get('/api/madera-nobu/:accountId/webview', getMaderaNobuWebviewApi);
+router.get('/history-orkut/:wallet', showHistoryOrkut);
+router.get('/api/history-orkut/:accountId/mutations', getHistoryOrkutMutationsApi);
+router.get('/api/history-orkut/:accountId/open', getHistoryOrkutOpenApi);
 router.get('/api/madera-nobu/:accountId/manual-banks', getMaderaManualBanksApi);
 router.post('/api/madera-nobu/:accountId/manual-inquiry', postMaderaManualInquiryApi);
 router.post('/api/madera-nobu/:accountId/manual-initiate', postMaderaManualInitiateApi);

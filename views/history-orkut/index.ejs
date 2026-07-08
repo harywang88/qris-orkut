@@ -1,0 +1,125 @@
+<%
+  function fmtRpHo(n){ const v=(n==null)?null:Number(n); if(v==null||Number.isNaN(v)) return 'Rp -'; return 'Rp '+v.toLocaleString('id-ID'); }
+  const _w = (typeof wallet==='undefined'?'qris':wallet);
+  const isQris = _w === 'qris';
+  const W = isQris ? 'qris' : 'utama';
+  const walletLabel = isQris ? 'QRIS' : 'Utama';
+%>
+<style>
+  .ho-wrap { max-width:1100px; margin:0 auto; }
+  .ho-head { margin-bottom:16px; }
+  .ho-title { font-size:22px; font-weight:900; color:var(--ink,#f1f5f9); display:flex; align-items:center; gap:10px; }
+  .ho-title i { color:#fbbf24; }
+  .ho-sub { font-size:12.5px; color:var(--muted,#94a3b8); margin-top:4px; }
+  .ho-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(230px,1fr)); gap:14px; margin-bottom:22px; }
+  .ho-card { position:relative; overflow:hidden; padding:16px; border-radius:18px; border:1px solid var(--line,rgba(148,163,184,.16));
+    background:radial-gradient(140% 90% at 50% -20%, rgba(251,191,36,.10), transparent 55%), var(--card,#111827); transition:transform .25s cubic-bezier(.22,1,.36,1), box-shadow .25s, border-color .25s; }
+  .ho-card::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,transparent 4%,#fbbf24,#fb923c,transparent 96%); opacity:.85; }
+  .ho-card:hover { transform:translateY(-4px); box-shadow:0 16px 40px rgba(0,0,0,.4), 0 0 22px -8px rgba(251,191,36,.3); }
+  .ho-card.active { border-color:rgba(251,191,36,.5); box-shadow:0 0 0 1px rgba(251,191,36,.35); }
+  .ho-card.ho-nolink { opacity:.72; }
+  .ho-card-num { display:inline-flex; width:26px; height:26px; border-radius:9px; align-items:center; justify-content:center; background:rgba(251,191,36,.14); color:#fbbf24; font-weight:900; font-size:12px; margin-bottom:10px; }
+  .ho-card-name { font-size:14px; font-weight:800; color:var(--ink,#f1f5f9); line-height:1.2; }
+  .ho-card-code { font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--muted,#94a3b8); margin-top:2px; }
+  .ho-card-bal { margin-top:12px; font-size:12px; color:var(--muted,#94a3b8); }
+  .ho-card-bal b { color:#fbbf24; font-size:15px; font-family:ui-monospace,monospace; }
+  .ho-card-open { margin-top:12px; width:100%; padding:9px; border:none; border-radius:10px; font:inherit; font-size:11.5px; font-weight:800; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px;
+    background:linear-gradient(100deg,#fde68a,#fbbf24 55%,#fb923c); color:#1a1205; box-shadow:0 6px 16px -6px rgba(251,146,60,.5); transition:transform .15s, box-shadow .15s; }
+  .ho-card-open:hover { transform:translateY(-1px); box-shadow:0 10px 22px -6px rgba(251,146,60,.65); }
+  .ho-card-quick { margin-top:8px; width:100%; padding:8px; border:1px solid var(--line,rgba(148,163,184,.18)); background:rgba(255,255,255,.03); color:#cbd5e1; border-radius:10px; font:inherit; font-size:11px; font-weight:700; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; gap:6px; transition:background .15s,color .15s; }
+  .ho-card-quick:hover { background:rgba(96,165,250,.12); color:#fff; }
+  .ho-card-nolink { margin-top:12px; font-size:11px; color:#fca5a5; line-height:1.5; }
+  .ho-card-nolink span { color:var(--muted,#94a3b8); }
+  .ho-panel { border:1px solid var(--line,rgba(148,163,184,.16)); border-radius:18px; overflow:hidden; background:var(--card,#111827); }
+  .ho-panel-head { display:flex; align-items:center; gap:12px; padding:16px 18px; border-bottom:1px solid rgba(148,163,184,.12); }
+  .ho-panel-ic { width:40px; height:40px; border-radius:12px; display:grid; place-items:center; background:rgba(251,191,36,.12); color:#fbbf24; font-size:17px; flex:0 0 auto; }
+  .ho-panel-tt { flex:1; min-width:0; }
+  .ho-panel-tt b { font-size:14px; font-weight:800; color:var(--ink,#f1f5f9); display:block; }
+  .ho-panel-tt span { font-size:11.5px; color:var(--muted,#94a3b8); }
+  .ho-refresh { border:1px solid var(--line,rgba(148,163,184,.2)); background:rgba(255,255,255,.04); color:#e2e8f0; cursor:pointer; width:34px; height:34px; border-radius:10px; display:grid; place-items:center; font-size:12px; transition:background .16s; }
+  .ho-refresh:hover { background:rgba(59,130,246,.14); } .ho-refresh:disabled { opacity:.5; cursor:not-allowed; }
+  .ho-list { padding:8px; max-height:560px; overflow-y:auto; }
+  .ho-row { display:flex; align-items:center; gap:12px; padding:12px; border-radius:12px; transition:background .14s; }
+  .ho-row:hover { background:rgba(255,255,255,.03); } .ho-row + .ho-row { border-top:1px solid rgba(148,163,184,.06); }
+  .ho-row-ic { width:34px; height:34px; border-radius:10px; display:grid; place-items:center; flex:0 0 auto; font-size:13px; }
+  .ho-row-ic.out { background:rgba(239,68,68,.12); color:#f87171; } .ho-row-ic.in { background:rgba(34,197,94,.12); color:#4ade80; }
+  .ho-row-mid { flex:1; min-width:0; }
+  .ho-row-desc { font-size:13px; font-weight:700; color:var(--ink,#e2e8f0); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ho-row-date { font-size:11px; color:var(--muted,#94a3b8); margin-top:2px; }
+  .ho-row-amt { font-family:ui-monospace,monospace; font-weight:800; font-size:14px; white-space:nowrap; text-align:right; }
+  .ho-row-amt.out { color:#f87171; } .ho-row-amt.in { color:#4ade80; }
+  .ho-row-bal { font-size:10.5px; color:var(--muted,#94a3b8); font-weight:600; margin-top:2px; }
+  .ho-state { padding:40px 20px; text-align:center; color:var(--muted,#94a3b8); font-size:13px; }
+  .ho-state i { font-size:30px; opacity:.5; display:block; margin-bottom:12px; } .ho-state.err i { color:#f87171; opacity:.7; }
+  .ho-spin { display:inline-block; width:26px; height:26px; border:3px solid rgba(148,163,184,.25); border-top-color:#fbbf24; border-radius:50%; animation:hoSpin .8s linear infinite; }
+  @keyframes hoSpin { to { transform:rotate(360deg); } }
+</style>
+
+<div class="ho-wrap">
+  <div class="ho-head">
+    <div class="ho-title"><i class="fa-solid fa-file-invoice-dollar"></i> History Order Kuota &mdash; Mutasi <%= walletLabel %></div>
+    <div class="ho-sub">Mutasi resmi dari <b>report.orderkuota.com</b> per akun. <b>Buka Report</b> = tab baru (auto-login). <b>Lihat cepat</b> = 50 mutasi terakhir.</div>
+  </div>
+  <div class="ho-grid">
+    <% accounts.forEach(function(acct, idx){ %>
+      <div class="ho-card <%= acct.hasLink ? '' : 'ho-nolink' %>" data-id="<%= acct.id %>" data-name="<%= acct.merchantName %>" data-site="<%= acct.siteName || '' %>">
+        <span class="ho-card-num"><%= idx+1 %></span>
+        <div class="ho-card-name"><%= acct.merchantName %></div>
+        <div class="ho-card-code"><%= acct.code %></div>
+        <div class="ho-card-bal">Saldo <%= walletLabel %><br><b><%= fmtRpHo(isQris ? acct.lastQrisBalance : acct.lastMainBalance) %></b></div>
+        <% if (acct.hasLink) { %>
+          <button type="button" class="ho-card-open" onclick="hoOpenTab('<%= acct.id %>')"><i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Report (tab baru)</button>
+          <button type="button" class="ho-card-quick" onclick="hoOpenHist('<%= acct.id %>', this.closest('.ho-card'))"><i class="fa-solid fa-table-list"></i> Lihat cepat di sini</button>
+        <% } else { %>
+          <div class="ho-card-nolink"><i class="fa-solid fa-link-slash"></i> Belum ada Link Web Report<br><span>Pasang di menu Merchant QR &rarr; tombol &#128279;</span></div>
+        <% } %>
+      </div>
+    <% }) %>
+  </div>
+  <div class="ho-panel">
+    <div class="ho-panel-head">
+      <div class="ho-panel-ic"><i class="fa-solid fa-receipt"></i></div>
+      <div class="ho-panel-tt"><b id="hoName">Pilih akun</b><span id="hoMeta">Mutasi <%= walletLabel %> report akan tampil di sini</span></div>
+      <button type="button" class="ho-refresh" id="hoRefresh" onclick="hoRefresh()" disabled><i class="fa-solid fa-rotate-right"></i></button>
+    </div>
+    <div class="ho-list" id="hoList"><div class="ho-state"><i class="fa-solid fa-file-invoice-dollar"></i>Pilih akun untuk melihat 50 mutasi terakhir dari report resmi.</div></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var WALLET='<%= W %>';
+  var API='<%- url('/dashboard/api/history-orkut') %>';
+  var curId=null, curName='';
+  function $(i){ return document.getElementById(i); }
+  var esc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; }); };
+  function money(n){ return 'Rp '+Number(n||0).toLocaleString('id-ID'); }
+  function tfmt(t){ if(!t) return ''; var d=new Date(t); return isNaN(d.getTime())? String(t) : d.toLocaleString('id-ID'); }
+  window.hoOpenTab=function(id){ window.open(API+'/'+id+'/open?wallet='+WALLET, '_blank'); };
+  window.hoRefresh=function(){ if(curId) hoLoad(); };
+  window.hoOpenHist=function(id, card){ curId=id; curName=(card&&card.getAttribute('data-name'))||'Akun'; document.querySelectorAll('.ho-card').forEach(function(c){ c.classList.remove('active'); }); if(card) card.classList.add('active'); $('hoRefresh').disabled=false; hoLoad(); };
+  function setPanel(n,m){ $('hoName').textContent=n; $('hoMeta').textContent=m; }
+  function state(h){ $('hoList').innerHTML=h; }
+  async function hoLoad(){
+    if(!curId) return;
+    setPanel(curName,'Menarik mutasi dari report resmi…'); state('<div class="ho-state"><span class="ho-spin"></span><div style="margin-top:12px">Auto-login + tarik 50 baris…</div></div>'); $('hoRefresh').disabled=true;
+    try{
+      var r=await fetch(API+'/'+curId+'/mutations?wallet='+WALLET,{headers:{Accept:'application/json'}});
+      var d=await r.json(); $('hoRefresh').disabled=false;
+      if(!d||!d.ok){ setPanel(curName,'Gagal'); state('<div class="ho-state err"><i class="fa-solid fa-triangle-exclamation"></i>'+esc((d&&d.message)||'Gagal ambil mutasi.')+'</div>'); return; }
+      var items=Array.isArray(d.items)?d.items:[];
+      setPanel(curName, items.length+' mutasi · Saldo akhir '+(d.balance!=null?money(d.balance):'-')+(d.accountName?(' · '+d.accountName):''));
+      if(!items.length){ state('<div class="ho-state"><i class="fa-solid fa-inbox"></i>Belum ada mutasi pada report.</div>'); return; }
+      var rows=items.map(function(it){
+        var isIn=it.type==='credit';
+        return '<div class="ho-row">'
+          +'<div class="ho-row-ic '+(isIn?'in':'out')+'"><i class="fa-solid fa-arrow-'+(isIn?'down':'up')+'"></i></div>'
+          +'<div class="ho-row-mid"><div class="ho-row-desc">'+esc(it.desc||'-')+'</div><div class="ho-row-date">'+esc(tfmt(it.time))+(it.rrn?(' · RRN '+esc(it.rrn)):'')+'</div></div>'
+          +'<div class="ho-row-amt '+(isIn?'in':'out')+'">'+(isIn?'+':'−')+money(it.amount)+'<div class="ho-row-bal">Saldo '+(it.balanceAfter!=null?money(it.balanceAfter):'-')+'</div></div>'
+          +'</div>';
+      }).join('');
+      state(rows);
+    }catch(e){ $('hoRefresh').disabled=false; setPanel(curName,'Gagal'); state('<div class="ho-state err"><i class="fa-solid fa-triangle-exclamation"></i>Koneksi ke server gagal.</div>'); }
+  }
+})();
+</script>
