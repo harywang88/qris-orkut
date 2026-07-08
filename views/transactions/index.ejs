@@ -1557,6 +1557,7 @@ async function checkStatusAll() {
       const isApp = kind==='app';
       const bk = isApp?'appAll':'repAll', btn=isApp?appAll:repAll, lbl=isApp?appAllL:repAllL, url=isApp?APP_ALL:REP_ALL, name=isApp?'App Sinkron ALL':'Report Sinkron ALL';
       if (busy[bk] || btn.disabled) return;
+      if (!confirm('Yakin jalankan ' + name + '?\n(menarik mutasi SEMUA akun)')) return;
       busy[bk]=true; setBtn(btn, lbl, true, 'Menyinkron...');
       try {
         const res = await fetch(url, { method:'POST', headers:{ 'Accept':'application/json' } });
@@ -1582,6 +1583,7 @@ async function checkStatusAll() {
       const isApp = kind==='app';
       const bk = isApp?'appOne':'repOne', btn=isApp?appOne:repOne, lbl=isApp?appOneL:repOneL, name=isApp?'App':'Report';
       if (busy[bk] || btn.disabled) return;
+      if (!confirm('Yakin jalankan ' + name + ' Sinkron untuk akun terpilih?')) return;
       busy[bk]=true; setBtn(btn, lbl, true, 'Sinkron...');
       try {
         const res = await fetch(oneUrl(id, kind), { method:'POST', headers:{ 'Content-Type':'application/json', 'Accept':'application/json' } });

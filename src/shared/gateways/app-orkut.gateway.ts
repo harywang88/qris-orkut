@@ -1478,7 +1478,7 @@ export class AppOrkutGateway implements IOrkutGateway {
       const results = Array.isArray(mh.results) ? mh.results : [];
       const items = results.map((r: any) => ({
         type: r.type || null,
-        direction: r.type === 'debet' ? 'out' : (r.type === 'kredit' ? 'in' : null),
+        direction: (r.type === 'debet' || r.type === 'debit') ? 'out' : ((r.type === 'kredit' || r.type === 'credit') ? 'in' : null),
         amount: r.amount || null,
         status: r.status || '',
         description: r.description || '',
