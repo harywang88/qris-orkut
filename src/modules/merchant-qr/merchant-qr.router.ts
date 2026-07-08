@@ -20,6 +20,11 @@ import {
   handleSaveWebReportUrl,
   handleTestWebReportUrl,
   handleWebReportStatus,
+  handleSyncAppNow,
+  handleSyncReportNow,
+  handleSyncAppAll,
+  handleSyncReportAll,
+  getAppCooldownStatusApi,
 } from './merchant-qr.controller';
 
 const router = Router();
@@ -35,6 +40,9 @@ router.post('/compare-sources', canManage, handleCompareMerchantQrSources);
 router.post('/', canManage, handleCreateMerchantQr);
 router.get('/sync-all/status', canManage, getSyncAllStatusApi);
 router.post('/sync-all', canManage, handleSyncAllMerchants);
+router.get('/cooldown-status', canManage, getAppCooldownStatusApi);
+router.post('/sync-app-all', canManage, handleSyncAppAll);
+router.post('/sync-report-all', canManage, handleSyncReportAll);
 router.get('/:id/edit', canManage, showEditMerchantQrForm);
 router.post('/:id', canManage, handleUpdateMerchantQr);
 router.post('/:id/delete', canManage, handleDeleteMerchantQr);
@@ -43,6 +51,8 @@ router.post('/:id/set-health', canManage, handleSetMerchantQrHealth);
 router.post('/:id/reset-daily', canManage, handleResetMerchantQrDailyUsage);
 router.post('/:id/test-connection', canManage, handleTestMerchantQrConnection);
 router.post('/:id/sync-now', canManage, handleSyncMerchantQrNow);
+router.post('/:id/sync-app', canManage, handleSyncAppNow);
+router.post('/:id/sync-report', canManage, handleSyncReportNow);
 router.post('/:id/web-report-url', canManage, handleSaveWebReportUrl);
 router.post('/:id/test-web-report', canManage, handleTestWebReportUrl);
 router.get('/:id/web-report-status', canManage, handleWebReportStatus);

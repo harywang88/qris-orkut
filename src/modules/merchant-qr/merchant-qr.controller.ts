@@ -22,6 +22,12 @@ import {
   getWebReportStatus,
   startSyncAllMerchants,
   getSyncAllStatus,
+  syncAppMutationsNow,
+  syncReportMutationsNow,
+  syncAppAllMerchants,
+  syncReportAllMerchants,
+  listAppCooldownStatus,
+  AppCooldownError,
 } from './merchant-qr-sync.service';
 import { config } from '../../config';
 import { logger } from '../../config/logger';
@@ -401,5 +407,66 @@ export async function handleWebReportStatus(req: Request, res: Response): Promis
   } catch (err) {
     logger.error({ err }, 'handleWebReportStatus error');
     res.status(500).json({ status: 'expired' });
+  }
+}
+
+
+// ── Tombol Sinkron App/Report terpisah ──────────────────────────────────────
+export async function handleSyncAppNow(req: Request, res: Response): Promise<void> {
+  try {
+    const r = await syncAppMutationsNow(req.params.id);
+    res.json({ success: true, source: 'app', ...r });
+  } catch (err) {
+    if (err instanceof AppCooldownError) {
+      res.status(429).json({
+        success: false,
+        cooldown: true,
+        remainingMs: err.remainingMs,
+        error: `App-api cooldown 469, sisa ${Math.ceil(err.remainingMs / 1000)} detik.`,
+      });
+      return;
+    }
+    logger.error({ err }, 'handleSyncAppNow error');
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Gagal App Sinkron.' });
+  }
+}
+
+export async function handleSyncReportNow(req: Request, res: Response): Promise<void> {
+  try {
+    const r = await syncReportMutationsNow(req.params.id);
+    res.json({ success: true, source: 'report', ...r });
+  } catch (err) {
+    logger.error({ err }, 'handleSyncReportNow error');
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Gagal Report Sinkron.' });
+  }
+}
+
+export async function handleSyncAppAll(req: Request, res: Response): Promise<void> {
+  try {
+    const r = await syncAppAllMerchants();
+    res.json({ success: true, source: 'app', ...r });
+  } catch (err) {
+    logger.error({ err }, 'handleSyncAppAll error');
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Gagal App Sinkron ALL.' });
+  }
+}
+
+export async function handleSyncReportAll(req: Request, res: Response): Promise<void> {
+  try {
+    const r = await syncReportAllMerchants();
+    res.json({ success: true, source: 'report', ...r });
+  } catch (err) {
+    logger.error({ err }, 'handleSyncReportAll error');
+    res.status(500).json({ success: false, error: err instanceof Error ? err.message : 'Gagal Report Sinkron ALL.' });
+  }
+}
+
+export async function getAppCooldownStatusApi(req: Request, res: Response): Promise<void> {
+  try {
+    const accounts = await listAppCooldownStatus();
+    res.json({ ok: true, accounts });
+  } catch (err) {
+    logger.error({ err }, 'getAppCooldownStatusApi error');
+    res.status(500).json({ ok: false, error: 'Gagal mengambil status cooldown.' });
   }
 }

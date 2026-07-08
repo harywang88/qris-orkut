@@ -3,6 +3,7 @@ import { db } from '../../config/database';
 import { logger } from '../../config/logger';
 import { encrypt } from '../../core/encryption';
 import {
+  APP_QRIS_RATE_LIMIT_COOLDOWN_MS,
   AppOrkutRateLimitError,
   appGateway,
 } from '../../shared/gateways/app-orkut.gateway';
@@ -24,6 +25,7 @@ import {
   probeMerchantMutationsFromRawReportInput,
   autologinReportCookie,
   checkWebReportLogin,
+  fetchAndIngestReportQrisCredit,
   syncMerchantMutationsFromReport,
   type PythonScrapeResult,
 } from '../../shared/orderkuota-report-python.service';
@@ -1146,4 +1148,179 @@ export async function getWebReportStatus(accountId: string): Promise<{ status: '
   const acc = await db.qrisAccount.findUnique({ where: { id: accountId }, select: { webReportUrlEncrypted: true } });
   const status = await checkWebReportLogin((acc as any)?.webReportUrlEncrypted ?? null);
   return { status };
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// Tombol Sinkron TERPISAH App vs Report (source-split). Cooldown app-api dibaca
+// dari kolom qrisCooldownUntil (ditulis worker + writeAppCooldown saat 469).
+// ════════════════════════════════════════════════════════════════════════════
+
+/** Dilempar saat App Sinkron ditolak karena app-api masih cooldown 469. */
+export class AppCooldownError extends Error {
+  remainingMs: number;
+  constructor(remainingMs: number) {
+    super('App-api sedang cooldown 469');
+    this.name = 'AppCooldownError';
+    this.remainingMs = remainingMs;
+  }
+}
+
+/** Sisa cooldown app-api (ms). 0 = tidak cooldown. */
+export function appCooldownRemainingMs(account: Pick<QrisAccount, 'qrisCooldownUntil'>): number {
+  const until = account.qrisCooldownUntil ? new Date(account.qrisCooldownUntil).getTime() : 0;
+  return Math.max(0, until - Date.now());
+}
+
+async function writeAppCooldown(accountId: string, message: string): Promise<void> {
+  await db.qrisAccount.update({
+    where: { id: accountId },
+    data: {
+      lastBalanceSyncAt: new Date(),
+      lastBalanceSyncStatus: 'rate_limited',
+      lastBalanceSyncError: message,
+      qrisCooldownUntil: new Date(Date.now() + APP_QRIS_RATE_LIMIT_COOLDOWN_MS),
+    },
+  });
+}
+
+const appSyncInFlight = new Map<string, Promise<{ newQris: number; newUtama: number }>>();
+
+/** App Sinkron per akun: tarik QRIS + utama dari app-api. Tolak kalau cooldown 469. */
+export async function syncAppMutationsNow(id: string): Promise<{ newQris: number; newUtama: number }> {
+  const inflight = appSyncInFlight.get(id);
+  if (inflight) return inflight;
+
+  const promise = (async () => {
+    const account = await getAccountOrThrow(id);
+    if (account.status !== 'active') throw new Error('Merchant sedang nonaktif.');
+    if (!account.sessionTokenEncrypted) throw new Error('Akun ini tidak memakai app-api (tidak ada sesi app).');
+    const remaining = appCooldownRemainingMs(account);
+    if (remaining > 0) throw new AppCooldownError(remaining);
+
+    try {
+      const recentKnownQris = await db.mutation.findMany({
+        where: { qrisAccountId: account.id, walletCategory: 'qris' },
+        orderBy: { transactionTime: 'desc' },
+        take: 40,
+        select: { rawHash: true, transactionTime: true },
+      });
+      const latestKnownTime = recentKnownQris[0]?.transactionTime ?? null;
+      const qrisResult = await appGateway.fetchIncrementalMutationsAndBalance(account, {
+        knownRawHashes: recentKnownQris.map((r) => r.rawHash),
+        fromTime: latestKnownTime ? new Date(latestKnownTime.getTime() - 120_000) : null,
+        maxPages: 3,
+      });
+      const createdQris = await ingestMutationBatch(account.id, qrisResult.mutations, 'qris');
+
+      const balanceResult = await appGateway.fetchBalanceHistory(account);
+      const createdUtama = await ingestMutationBatch(account.id, balanceResult.mutations);
+
+      await db.qrisAccount.update({
+        where: { id: account.id },
+        data: {
+          lastMainBalance: balanceResult.mainBalance ?? qrisResult.balance.mainBalance ?? account.lastMainBalance,
+          lastQrisBalance: qrisResult.balance.qrisBalance ?? account.lastQrisBalance,
+          lastBalanceSyncAt: new Date(),
+          lastBalanceSyncStatus: 'synced',
+          lastBalanceSyncError: null,
+          qrisCooldownUntil: null,
+        },
+      });
+      return { newQris: createdQris.length, newUtama: createdUtama.length };
+    } catch (err) {
+      if (err instanceof AppOrkutRateLimitError) {
+        await writeAppCooldown(account.id, err.message);
+        throw new AppCooldownError(APP_QRIS_RATE_LIMIT_COOLDOWN_MS);
+      }
+      throw err;
+    }
+  })();
+
+  appSyncInFlight.set(id, promise);
+  try {
+    return await promise;
+  } finally {
+    appSyncInFlight.delete(id);
+  }
+}
+
+/** Report Sinkron per akun: tarik QRIS credit dari web report (API v2 autologin), dedup mutv2. */
+export async function syncReportMutationsNow(id: string): Promise<{ newQris: number }> {
+  const account = await getAccountOrThrow(id);
+  if (account.status !== 'active') throw new Error('Merchant sedang nonaktif.');
+  if (!account.webReportUrlEncrypted) throw new Error('Akun ini belum punya Link Web Report.');
+  const newQris = await fetchAndIngestReportQrisCredit(account, 5);
+  await db.qrisAccount
+    .update({ where: { id: account.id }, data: { lastBalanceSyncAt: new Date() } })
+    .catch(() => undefined);
+  return { newQris };
+}
+
+/** App Sinkron ALL: sinkron akun app-api yang SIAP, lewati yang cooldown. */
+export async function syncAppAllMerchants(): Promise<{
+  results: Array<{ code: string; newQris: number; newUtama: number }>;
+  skipped: Array<{ code: string; remainingMs: number }>;
+  errors: Array<{ code: string; error: string }>;
+}> {
+  const accounts = await db.qrisAccount.findMany({
+    where: { status: 'active', sessionTokenEncrypted: { not: null } },
+    orderBy: { code: 'asc' },
+  });
+  const results: Array<{ code: string; newQris: number; newUtama: number }> = [];
+  const skipped: Array<{ code: string; remainingMs: number }> = [];
+  const errors: Array<{ code: string; error: string }> = [];
+  for (const acc of accounts) {
+    const remaining = appCooldownRemainingMs(acc);
+    if (remaining > 0) {
+      skipped.push({ code: acc.code, remainingMs: remaining });
+      continue;
+    }
+    try {
+      const r = await syncAppMutationsNow(acc.id);
+      results.push({ code: acc.code, ...r });
+    } catch (err) {
+      if (err instanceof AppCooldownError) skipped.push({ code: acc.code, remainingMs: err.remainingMs });
+      else errors.push({ code: acc.code, error: err instanceof Error ? err.message : 'error' });
+    }
+  }
+  return { results, skipped, errors };
+}
+
+/** Report Sinkron ALL: sinkron semua akun yang punya Link Web Report. */
+export async function syncReportAllMerchants(): Promise<{
+  results: Array<{ code: string; newQris: number }>;
+  errors: Array<{ code: string; error: string }>;
+}> {
+  const accounts = await db.qrisAccount.findMany({
+    where: { status: 'active', webReportUrlEncrypted: { not: null } },
+    orderBy: { code: 'asc' },
+  });
+  const results: Array<{ code: string; newQris: number }> = [];
+  const errors: Array<{ code: string; error: string }> = [];
+  for (const acc of accounts) {
+    try {
+      const r = await syncReportMutationsNow(acc.id);
+      results.push({ code: acc.code, ...r });
+    } catch (err) {
+      errors.push({ code: acc.code, error: err instanceof Error ? err.message : 'error' });
+    }
+  }
+  return { results, errors };
+}
+
+/** Status cooldown app-api semua akun aktif (buat tombol App Sinkron beku + hitung mundur). */
+export async function listAppCooldownStatus(): Promise<
+  Array<{ id: string; code: string; cooldownUntil: string | null; cooldownRemainingMs: number }>
+> {
+  const accounts = await db.qrisAccount.findMany({
+    where: { status: 'active' },
+    select: { id: true, code: true, qrisCooldownUntil: true },
+  });
+  return accounts.map((a) => ({
+    id: a.id,
+    code: a.code,
+    cooldownUntil: a.qrisCooldownUntil ? new Date(a.qrisCooldownUntil).toISOString() : null,
+    cooldownRemainingMs: appCooldownRemainingMs(a),
+  }));
 }
