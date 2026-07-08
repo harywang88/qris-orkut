@@ -48,3 +48,4 @@ npm-debug.log*
 # Claude temp/staging
 _stage/
 /backups/
+Backup-hashcombine/

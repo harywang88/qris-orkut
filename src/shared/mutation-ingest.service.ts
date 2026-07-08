@@ -64,12 +64,15 @@ export async function storeMutationIfNew(
   input: MutationIngestInput,
   client: PrismaLike = db,
 ): Promise<{ created: boolean; mutation: Mutation }> {
-  const existing = await client.mutation.findUnique({ where: { rawHash: input.rawHash } });
+  const dedupKey = canonicalMutationHash(input);
+  const existing = await client.mutation.findFirst({ where: { dedupKey } });
   if (existing) {
     return { created: false, mutation: existing };
   }
 
-  const mutation = await client.mutation.create({
+  let mutation: Mutation;
+  try {
+    mutation = await client.mutation.create({
     data: {
       qrisAccountId: input.qrisAccountId,
       amount: input.amount,
@@ -81,11 +84,18 @@ export async function storeMutationIfNew(
       walletCategory: input.walletCategory ?? null,
       transactionTime: input.transactionTime,
       rawHash: input.rawHash,
-      dedupKey: canonicalMutationHash(input),
+      dedupKey,
       rawDataJson: input.rawDataJson,
       matchedTransactionId: input.matchedTransactionId ?? null,
     },
-  });
+    });
+  } catch (err) {
+    if ((err as { code?: string }).code === 'P2002') {
+      const byHash = await client.mutation.findUnique({ where: { rawHash: input.rawHash } });
+      if (byHash) return { created: false, mutation: byHash };
+    }
+    throw err;
+  }
 
   await publishOutboxEvent(
     {
