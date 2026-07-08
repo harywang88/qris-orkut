@@ -207,6 +207,9 @@ def build_headers(cookie: str, user_agent: str, referer: str) -> dict[str, str]:
     host = urllib.parse.urlparse(referer).hostname or ""
     return {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "sec-ch-ua": '"Google Chrome";v="149", "Chromium";v="149", "Not)A;Brand";v="24"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
         "Accept-Language": "en-US,en;q=0.9,id-ID;q=0.8,id;q=0.7",
         "Cache-Control": "no-cache",
         "Cookie": cookie,
@@ -562,15 +565,24 @@ def parse_rows(table: list[list[TableCell]], wallet: str) -> list[dict[str, Any]
     return results
 
 
-def fetch_paginated_rows(base_url: str, wallet: str, cookie: str, user_agent: str, max_pages: int) -> tuple[list[dict[str, Any]], int | None, dict[str, Any]]:
+def fetch_paginated_rows(base_url: str, wallet: str, cookie: str, user_agent: str, max_pages: int, page_style: str = "index") -> tuple[list[dict[str, Any]], int | None, dict[str, Any]]:
     html = fetch_html(base_url, cookie, user_agent)
-    total_pages = min(max(extract_total_pages(html, urllib.parse.urlparse(base_url).path.strip("/")), 1), max_pages)
     best_table = extract_best_table(html)
     rows = parse_rows(best_table, wallet)
+    if page_style == "slash":
+        total_pages = max_pages
+    else:
+        total_pages = min(max(extract_total_pages(html, urllib.parse.urlparse(base_url).path.strip("/")), 1), max_pages)
     for page in range(2, total_pages + 1):
-        next_url = f"{base_url.rstrip('/')}/index/{page}"
-        next_html = fetch_html(next_url, cookie, user_agent, referer=base_url)
-        rows.extend(parse_rows(extract_best_table(next_html), wallet))
+        next_url = f"{base_url.rstrip('/')}/{page}" if page_style == "slash" else f"{base_url.rstrip('/')}/index/{page}"
+        try:
+            next_html = fetch_html(next_url, cookie, user_agent, referer=base_url)
+        except RuntimeError:
+            break
+        page_rows = parse_rows(extract_best_table(next_html), wallet)
+        if not page_rows:
+            break
+        rows.extend(page_rows)
 
     deduped: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -602,6 +614,7 @@ def main() -> int:
 
     user_agent = str(payload.get("userAgent") or DEFAULT_USER_AGENT).strip() or DEFAULT_USER_AGENT
     target = str(payload.get("target") or "both").strip().lower()
+    merchant_id = str(payload.get("merchantId") or "").strip()
     max_pages = int(payload.get("maxPages") or 3)
     if max_pages < 1:
         max_pages = 1
@@ -616,12 +629,19 @@ def main() -> int:
     utama_meta: dict[str, Any] = {}
 
     if target in ("qris", "both"):
+        if merchant_id:
+            qris_url = f"https://report.orderkuota.com/api/v2/qris/mutasi/{merchant_id}"
+            qris_style = "slash"
+        else:
+            qris_url = "https://report.orderkuota.com/mutasi_qris"
+            qris_style = "index"
         qris_rows, qris_balance, qris_meta = fetch_paginated_rows(
-            "https://report.orderkuota.com/mutasi_qris",
+            qris_url,
             "qris",
             cookie,
             user_agent,
             max_pages,
+            qris_style,
         )
 
     if target in ("utama", "both"):
