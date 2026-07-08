@@ -50,14 +50,15 @@ export function canonicalMutationHash(input: {
 }): string {
   let minute = '';
   try { minute = new Date(input.transactionTime).toISOString().slice(0, 16); } catch { minute = ''; }
-  const rrn = (input.rrn || '').trim().toLowerCase();
   const amt = Math.round(Number(input.amount) || 0);
   const bal = Math.round(Number(input.balanceAfter) || 0);
   const type = (input.type || '').trim().toLowerCase();
-  const base = rrn
-    ? rrn + '|' + amt + '|' + bal + '|' + minute
-    : 'NORRN|' + type + '|' + amt + '|' + bal + '|' + minute;
-  return createHash('sha256').update('mutv1|' + base).digest('hex');
+  // NORRN-only (mutv2): rrn DIBUANG dari hash. Bukti empiris PSAMUDRA: app-api sering pakai RRN
+  // (kadang rawId internal) sedangkan report ambil RRN berbeda => split rrn bikin 2 baris utk 1 uang.
+  // saldoAkhir (saldo berjalan) unik per transaksi => type|amount|saldoAkhir|menitUTC cukup jadi
+  // KTP lintas-sumber sekaligus anti-dobel. input.rrn tetap diterima tapi diabaikan di hash.
+  const base = 'NORRN|' + type + '|' + amt + '|' + bal + '|' + minute;
+  return createHash('sha256').update('mutv2|' + base).digest('hex');
 }
 
 export async function storeMutationIfNew(
