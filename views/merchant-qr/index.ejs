@@ -443,6 +443,22 @@ function openMerchantActionModal(title, subtitle, bodyHtml) {
 function closeMerchantActionModal() {
   document.getElementById('merchant-action-modal').classList.remove('open');
 }
+// Rapikan posisi modal breakdown: pindah ke <body> supaya position:fixed nempel ke viewport
+// (hindari containing-block dari transform animasi .qris-page-enter di <main>). + ESC & klik-gelap = tutup.
+(function(){
+  function init(){
+    ['merchant-action-modal','wr-modal'].forEach(function(id){
+      var m = document.getElementById(id);
+      if (m && m.parentNode !== document.body) document.body.appendChild(m);
+    });
+    var mam = document.getElementById('merchant-action-modal');
+    if (mam) mam.addEventListener('click', function(e){ if (e.target === mam) closeMerchantActionModal(); });
+    document.addEventListener('keydown', function(e){
+      if (e.key === 'Escape' && mam && mam.classList.contains('open')) closeMerchantActionModal();
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init); else init();
+})();
 
 function renderMerchantReport(report, modeLabel) {
   const readiness = report.readiness || {};
