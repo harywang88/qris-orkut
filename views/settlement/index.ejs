@@ -3696,6 +3696,8 @@ function filterSettlementBySite(){
     }
     poll();
     setInterval(poll, 2500);
+    // Preview manual dari console: __previewPaid('ayam', 50001)
+    window.__previewPaid = function(u, amt){ var c = document.querySelector('.setl-card'); if (c) popPaid(c.id.replace('card-',''), u || 'ayam', amt || 50001); };
   })();
 })();
 </script>
