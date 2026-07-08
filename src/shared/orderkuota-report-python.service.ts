@@ -131,6 +131,17 @@ function decryptReportCookie(account: Pick<QrisAccount, 'code' | 'webCookiesEncr
   }
 }
 
+// merchantId QRIS (api/v2/qris/mutasi/{id}) = angka di LINK AUTOLOGIN (sumber sahih).
+// account.accountNumber bisa nomor HP/rekening -> merchantId salah -> HTTP 403 / fallback /mutasi_qris 404.
+function deriveMerchantId(account: any): string | undefined {
+  let merchantId: string | undefined = (account && account.accountNumber) || undefined;
+  try {
+    const enc = account && account.webReportUrlEncrypted;
+    if (enc) { const m = String(decrypt(enc)).match(/\/autologin\/(\d+)/); if (m) merchantId = m[1]; }
+  } catch { /* fallback accountNumber */ }
+  return merchantId;
+}
+
 function runPythonReportScraper(
   account: Pick<QrisAccount, 'code' | 'webCookiesEncrypted' | 'cookiesEncrypted' | 'webUserAgent'>,
   target: WalletTarget,
@@ -139,6 +150,7 @@ function runPythonReportScraper(
     cookie: decryptReportCookie(account),
     userAgent: account.webUserAgent || undefined,
     target,
+    merchantId: deriveMerchantId(account),
   });
 }
 
@@ -232,7 +244,8 @@ export async function probeMerchantMutationsFromReport(
   target: WalletTarget = 'both',
 ): Promise<PythonScrapeResult> {
   const auto = await autologinCookieForAccount((account as any).webReportUrlEncrypted);
-  if (auto) return runPythonReportScraperRaw({ cookie: auto.cookie, userAgent: auto.userAgent, target });
+  const merchantId = deriveMerchantId(account);
+  if (auto) return runPythonReportScraperRaw({ cookie: auto.cookie, userAgent: auto.userAgent, target, merchantId });
   return runPythonReportScraper(account, target);
 }
 
@@ -265,8 +278,9 @@ export async function syncMerchantMutationsFromReport(
 
   const promise = (async () => {
     const auto = await autologinCookieForAccount((account as any).webReportUrlEncrypted);
+    const merchantId = deriveMerchantId(account);
     const scrapeResult = auto
-      ? await runPythonReportScraperRaw({ cookie: auto.cookie, userAgent: auto.userAgent, target })
+      ? await runPythonReportScraperRaw({ cookie: auto.cookie, userAgent: auto.userAgent, target, merchantId })
       : await runPythonReportScraper(account, target);
     const newQrisMutations = target === 'utama'
       ? 0
