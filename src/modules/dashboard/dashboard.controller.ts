@@ -3465,3 +3465,64 @@ export async function getHistoryOrkutOpenApi(req: Request, res: Response): Promi
     res.status(500).send('Gagal membuka Web Report.');
   }
 }
+
+
+// ── Live saldo (baca DB, tanpa app-api) + feed paid utk animasi card Kirim Uang ──
+export async function handleAccountBalancesApi(req: Request, res: Response): Promise<void> {
+  try {
+    const scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const rows = await db.qrisAccount.findMany({
+      where: {
+        status: 'active',
+        ...(scopeIds !== null ? { id: { in: scopeIds } } : {}),
+      },
+      select: { id: true, lastQrisBalance: true, lastMainBalance: true, lastMaderaBalance: true, lastBalanceSyncAt: true },
+    });
+    res.json({
+      ok: true,
+      accounts: rows.map((a) => ({
+        id: a.id,
+        lastQrisBalance: a.lastQrisBalance,
+        lastMainBalance: a.lastMainBalance,
+        lastMaderaBalance: a.lastMaderaBalance,
+        lastBalanceSyncAt: a.lastBalanceSyncAt ? a.lastBalanceSyncAt.toISOString() : null,
+      })),
+    });
+  } catch (err) {
+    logger.error({ err }, 'handleAccountBalancesApi error');
+    res.status(500).json({ ok: false, error: 'Gagal ambil saldo.' });
+  }
+}
+
+export async function handleRecentPaidApi(req: Request, res: Response): Promise<void> {
+  try {
+    const scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const sinceRaw = typeof req.query.since === 'string' ? req.query.since : '';
+    const parsed = sinceRaw ? new Date(sinceRaw) : null;
+    const since = parsed && !Number.isNaN(parsed.getTime()) ? parsed : new Date(Date.now() - 15000);
+    const rows = await db.transaction.findMany({
+      where: {
+        statusPay: 'paid',
+        paidAt: { gt: since },
+        ...(scopeIds !== null ? { qrisAccountId: { in: scopeIds } } : {}),
+      },
+      select: { qrId: true, qrisAccountId: true, userIdExt: true, finalAmount: true, paidAt: true },
+      orderBy: { paidAt: 'asc' },
+      take: 30,
+    });
+    res.json({
+      ok: true,
+      serverNow: new Date().toISOString(),
+      paid: rows.map((t) => ({
+        qrId: t.qrId,
+        accountId: t.qrisAccountId,
+        user: t.userIdExt,
+        amount: t.finalAmount,
+        paidAt: t.paidAt ? t.paidAt.toISOString() : null,
+      })),
+    });
+  } catch (err) {
+    logger.error({ err }, 'handleRecentPaidApi error');
+    res.status(500).json({ ok: false, error: 'Gagal ambil paid terbaru.' });
+  }
+}

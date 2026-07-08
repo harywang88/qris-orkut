@@ -31,6 +31,8 @@ import {
   getQrisReconcileApi,
   getQrisAccountsJson,
   handleRefreshAccountBalanceApi,
+  handleAccountBalancesApi,
+  handleRecentPaidApi,
   getQrisTemplate,
   showSettlement,
   handleCreateSettlement,
@@ -96,6 +98,8 @@ router.get('/api/mutations/stream', streamMutationsSse);
 router.get('/api/mutations/reconcile', getQrisReconcileApi);
 router.get('/api/qris-accounts', getQrisAccountsJson);
 router.post('/api/qris-accounts/:id/refresh-balance', handleRefreshAccountBalanceApi);
+router.get('/api/account-balances', handleAccountBalancesApi);
+router.get('/api/recent-paid', handleRecentPaidApi);
 router.get('/api/qris-template', getQrisTemplate);
 router.get('/wallet/saldo-utama', requirePermission('report:view'), showSaldoUtama);
 router.get('/wallet/madera', requirePermission('report:view'), showMadera);

@@ -3606,18 +3606,96 @@ function filterSettlementBySite(){
       .filter(Boolean)
       .forEach(function (id) { refreshSettlementAccount(id); });
   }
-  // 1) Saat menu dibuka/reload.
-  refreshAllSettlementAccounts();
+  // ── FEATURE A: Live saldo dari DB (worker update DB QRIS/Utama ~2s, Madera ~30s).
+  //    Card BACA DB (ringan, TANPA beban app-api). Klik card tetap force app-api. ──
   recomputeWalletTotals(true);
-  // 2) Otomatis tiap 30 detik TANPA reload -> saldo naik/turun sendiri. Guard in-flight per akun
-  //    mencegah tumpukan. Pause saat tab tak terlihat (document.hidden) supaya hemat panggilan.
-  setInterval(function () {
-    if (document.hidden) return;
-    refreshAllSettlementAccounts();
-  }, 30000);
-  // 3) Begitu tab kembali terlihat, segarkan langsung (biar tak nunggu 30 detik).
-  document.addEventListener('visibilitychange', function () {
-    if (!document.hidden) refreshAllSettlementAccounts();
-  });
+  (function initLiveDbBalance(){
+    var BAL_URL = '<%= url('/dashboard/api/account-balances') %>';
+    var tickN = 0;
+    function applyLite(a){
+      animateBal('[data-field="qris"][data-id="'+a.id+'"]', a.lastQrisBalance != null ? a.lastQrisBalance : 0);
+      animateBal('[data-field="utama"][data-id="'+a.id+'"]', a.lastMainBalance != null ? a.lastMainBalance : 0);
+      var se = document.querySelector('[data-sync-time="'+a.id+'"]');
+      if (se && a.lastBalanceSyncAt) se.textContent = new Date(a.lastBalanceSyncAt).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit', second:'2-digit', timeZone:'Asia/Jakarta' });
+    }
+    async function poll(){
+      if (document.hidden) return;
+      try {
+        var res = await fetch(BAL_URL, { cache:'no-store', headers:{ 'Accept':'application/json' } });
+        var data = await res.json().catch(function(){ return {}; });
+        if (!data || !data.accounts) return;
+        var full = (tickN % 15 === 0); // Madera + UI transfer tiap ~30 detik
+        data.accounts.forEach(function(a){ if (full) updateCardBalanceFields(a.id, a); else applyLite(a); });
+        recomputeWalletTotals(true);
+        tickN++;
+      } catch(_){}
+    }
+    poll();
+    setInterval(poll, 2000);
+    document.addEventListener('visibilitychange', function(){ if (!document.hidden){ tickN = 0; poll(); } });
+  })();
+
+  // ── FEATURE B: Animasi "uang masuk" premium per card saat QR di-generate PAID + cha-ching ──
+  (function initPaidAnim(){
+    var PAID_URL = '<%= url('/dashboard/api/recent-paid') %>';
+    var cursor = new Date().toISOString();
+    var first = true;
+    var MUTE_KEY = 'setlPaidMuted';
+    var muted = localStorage.getItem(MUTE_KEY) === '1';
+    var ac = null;
+    function unlockAudio(){ try { if (!ac) ac = new (window.AudioContext||window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch(_){} }
+    document.addEventListener('click', unlockAudio);
+    function chaChing(){
+      if (muted) return;
+      try {
+        unlockAudio(); if (!ac) return;
+        [[880,0],[1320,0.09]].forEach(function(n){
+          var o = ac.createOscillator(), g = ac.createGain();
+          o.type = 'triangle'; o.frequency.value = n[0];
+          var t0 = ac.currentTime + n[1];
+          g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.22, t0+0.02); g.gain.exponentialRampToValueAtTime(0.0001, t0+0.28);
+          o.connect(g); g.connect(ac.destination); o.start(t0); o.stop(t0+0.3);
+        });
+      } catch(_){}
+    }
+    var st = document.createElement('style');
+    st.textContent = '.paid-pop{position:absolute;top:6px;left:50%;transform:translateX(-50%) translateY(-14px);z-index:45;display:inline-flex;align-items:center;gap:7px;padding:7px 13px;border-radius:999px;white-space:nowrap;background:linear-gradient(135deg,rgba(16,185,129,.97),rgba(5,150,105,.97));color:#fff;font-weight:800;font-size:13px;box-shadow:0 12px 30px -6px rgba(16,185,129,.6),0 0 0 1px rgba(255,255,255,.18) inset;opacity:0;pointer-events:none;animation:pp-in .5s cubic-bezier(.2,.9,.25,1) forwards,pp-out .6s ease-in 3.2s forwards}.paid-pop .pp-ic{font-size:15px;display:inline-block;animation:pp-coin .6s ease .05s both}.paid-pop .pp-amt{font-variant-numeric:tabular-nums}.paid-pop .pp-user{max-width:130px;overflow:hidden;text-overflow:ellipsis}@keyframes pp-in{0%{opacity:0;transform:translateX(-50%) translateY(-14px) scale(.85)}60%{opacity:1}100%{opacity:1;transform:translateX(-50%) translateY(6px) scale(1)}}@keyframes pp-out{to{opacity:0;transform:translateX(-50%) translateY(-10px) scale(.96)}}@keyframes pp-coin{0%{transform:scale(.4) rotate(-18deg)}60%{transform:scale(1.3) rotate(8deg)}100%{transform:scale(1) rotate(0)}}.card-paid-glow{animation:pp-glow 2.2s ease-out}@keyframes pp-glow{0%{box-shadow:0 0 0 0 rgba(16,185,129,0)}15%{box-shadow:0 0 34px -4px rgba(16,185,129,.75),0 0 0 2px rgba(16,185,129,.55) inset}100%{box-shadow:0 0 0 0 rgba(16,185,129,0)}}#paidMuteBtn{position:fixed;left:16px;bottom:16px;z-index:99998;width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.18);background:rgba(15,23,42,.85);color:#e5e7eb;font-size:16px;cursor:pointer;box-shadow:0 8px 22px rgba(0,0,0,.4)}';
+    document.head.appendChild(st);
+    var mb = document.createElement('button');
+    mb.id = 'paidMuteBtn'; mb.title = 'Suara uang masuk (klik untuk on/off)';
+    function paintMute(){ mb.textContent = muted ? '\uD83D\uDD07' : '\uD83D\uDD14'; mb.style.opacity = muted ? '.6' : '1'; }
+    paintMute();
+    mb.addEventListener('click', function(){ muted = !muted; localStorage.setItem(MUTE_KEY, muted ? '1' : '0'); paintMute(); if (!muted){ unlockAudio(); chaChing(); } });
+    document.body.appendChild(mb);
+    function popPaid(accountId, user, amount){
+      var card = document.getElementById('card-' + accountId);
+      if (!card) return;
+      if (getComputedStyle(card).position === 'static') card.style.position = 'relative';
+      var chip = document.createElement('div');
+      chip.className = 'paid-pop';
+      chip.innerHTML = '<span class="pp-ic">\uD83D\uDCB0</span><b class="pp-user"></b><span class="pp-amt"></span>';
+      chip.querySelector('.pp-user').textContent = (user != null && String(user).trim()) ? String(user) : 'Pembayaran';
+      var amtEl = chip.querySelector('.pp-amt');
+      card.appendChild(chip);
+      var to = Math.round(Number(amount) || 0), t0 = Date.now();
+      (function cu(){ var p = Math.min(1, (Date.now()-t0)/650); amtEl.textContent = rp(Math.round(to*(1-Math.pow(1-p,3)))); if (p<1) requestAnimationFrame(cu); else amtEl.textContent = rp(to); })();
+      card.classList.remove('card-paid-glow'); void card.offsetWidth; card.classList.add('card-paid-glow');
+      setTimeout(function(){ card.classList.remove('card-paid-glow'); }, 2300);
+      setTimeout(function(){ chip.remove(); }, 4200);
+      chaChing();
+    }
+    async function poll(){
+      if (document.hidden) return;
+      try {
+        var res = await fetch(PAID_URL + '?since=' + encodeURIComponent(cursor), { cache:'no-store', headers:{ 'Accept':'application/json' } });
+        var data = await res.json().catch(function(){ return {}; });
+        if (data && data.serverNow) cursor = data.serverNow;
+        if (first) { first = false; return; } // poll pertama: set cursor server-time, jangan animasi paid pra-buka
+        ((data && data.paid) || []).forEach(function(p, i){ setTimeout(function(){ popPaid(p.accountId, p.user, p.amount); }, i*500); });
+      } catch(_){}
+    }
+    poll();
+    setInterval(poll, 2500);
+  })();
 })();
 </script>
