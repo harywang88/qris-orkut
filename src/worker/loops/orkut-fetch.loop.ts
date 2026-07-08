@@ -20,6 +20,7 @@ import {
 import type { RawMutation } from '../../shared/gateways/gateway.interface';
 import { realGateway } from '../../shared/gateways/real-orkut.gateway';
 import { publishMutationUpdated, storeMutationIfNew } from '../../shared/mutation-ingest.service';
+import { fetchAndIngestReportQrisCredit } from '../../shared/orderkuota-report-python.service';
 import {
   mergeRawMutationWithAppDetail,
   readPresentedMutationRawId,
@@ -49,6 +50,11 @@ const mainBalanceSeen = new Map<string, number>();
 // System B madera: poll saldo Madera 30s → saat berubah → tarik feed madera → DB (walletCategory='madera').
 const MADERA_SALDO_MS = 30_000;
 const maderaBalanceSeen = new Map<string, number>();
+// Fase 4: lane web report (report.orderkuota.com, host bebas-limit) tiap 15s utk akun app-api
+// yang punya link autologin. Sumber KEDUA di ATAS app-api; dedup by dedupKey (NORRN mutv2).
+// Kill-switch: WORKER_REPORT_LANE=on (default OFF).
+const WEB_REPORT_MS = 15_000;
+const REPORT_LANE_ENABLED = process.env.WORKER_REPORT_LANE === 'on';
 
 type LaneState = {
   running: boolean;
@@ -60,6 +66,7 @@ type SchedulerState = {
   balance: LaneState;
   detail: LaneState;
   madera: LaneState;
+  report: LaneState;
 };
 
 const providerCooldownUntil = new Map<string, number>();
@@ -92,6 +99,7 @@ function getState(accountId: string): SchedulerState {
     balance: { running: false, nextAt: 0 },
     detail: { running: false, nextAt: 0 },
     madera: { running: false, nextAt: 0 },
+    report: { running: false, nextAt: 0 },
   };
   schedulerState.set(accountId, created);
   return created;
@@ -580,6 +588,27 @@ async function runWebBalanceLane(
   }
 }
 
+// Fase 4: lane web report (sumber KEDUA QRIS credit via autologin API v2). PASIF: hanya ingest
+// via storeMutationIfNew (dedup NORRN mutv2). TIDAK sentuh saldo DB / cooldown app-api. Semua error
+// report DITELAN di sini (fungsi report MELEMPAR saat 403/Cloudflare) agar tak ganggu lane app-api.
+async function runReportLane(account: QrisAccount, state: SchedulerState): Promise<void> {
+  state.report.running = true;
+  try {
+    const newCount = await fetchAndIngestReportQrisCredit(account, 1);
+    if (newCount > 0) {
+      logger.info(
+        { accountCode: account.code, lane: 'report', newMutations: newCount },
+        'Fase 4: mutasi QRIS baru dari web report tersimpan',
+      );
+    }
+  } catch (err) {
+    logger.warn({ err, accountCode: account.code, lane: 'report' }, 'Fase 4: report lane error (diisolasi)');
+  } finally {
+    state.report.running = false;
+    state.report.nextAt = Date.now() + WEB_REPORT_MS;
+  }
+}
+
 async function schedulerTick(): Promise<void> {
   const now = Date.now();
   await refreshActiveAccounts(now);
@@ -617,6 +646,17 @@ async function schedulerTick(): Promise<void> {
 
       if (!state.madera.running && state.madera.nextAt <= now && !isAccountCoolingDown(account.id)) {
         void runAppMaderaLane(account, state); // System B madera: poll saldo madera → berubah → tarik feed
+      }
+
+      // Fase 4: lane web report (sumber kedua) - SENGAJA tanpa isAccountCoolingDown (host report
+      // bebas 469, tetap jalan saat app-api cooldown). Guard: kill-switch env + punya link report.
+      if (
+        REPORT_LANE_ENABLED &&
+        account.webReportUrlEncrypted &&
+        !state.report.running &&
+        state.report.nextAt <= now
+      ) {
+        void runReportLane(account, state);
       }
 
       continue;

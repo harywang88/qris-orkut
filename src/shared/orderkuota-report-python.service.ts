@@ -377,3 +377,19 @@ export async function fetchReportWalletLive(
   const result = await runPythonReportScraperRaw({ cookie, userAgent, target: wallet, maxPages, merchantId: account.accountNumber });
   return wallet === 'qris' ? result.qris : result.utama;
 }
+
+/**
+ * Fase 4: tarik mutasi QRIS terbaru dari web report (autologin API v2) lalu ingest ke DB.
+ * CREDIT-saja + saldoAkhir>0: report kadang label penarikan sbg debit, dan bal=0 bikin dedup
+ * NORRN (mutv2) tabrakan antar pembayaran. Ingest via storeMutationIfNew (dedup dedupKey).
+ * MELEMPAR error kalau report gagal keras (403/Cloudflare/exit!=0) -> pemanggil WAJIB try/catch.
+ */
+export async function fetchAndIngestReportQrisCredit(
+  account: Pick<QrisAccount, 'id' | 'code' | 'accountNumber' | 'webCookiesEncrypted' | 'cookiesEncrypted' | 'webUserAgent'> & { webReportUrlEncrypted?: string | null },
+  maxPages = 1,
+): Promise<number> {
+  const payload = await fetchReportWalletLive(account, 'qris', maxPages);
+  const rows = (payload?.mutations ?? []).filter((m) => m.type === 'credit' && Number(m.balanceAfter) > 0);
+  if (rows.length === 0) return 0;
+  return ingestWalletMutations(account.id, rows);
+}
