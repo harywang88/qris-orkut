@@ -95,6 +95,11 @@
       <div class="perm-box">
         <div class="perm-box-title">Hak Akses Menu <span class="muted">(centang = diberi akses · sub-aksi opsional)</span></div>
         <div class="perm-tools">
+          <span style="font-size:11px;font-weight:700;color:var(--muted);align-self:center;margin-right:2px">Preset:</span>
+          <button type="button" class="perm-tool" data-preset="pemantau" title="Lihat saja: dashboard, generate, transaction, semua mutasi, laporan">👁 Pemantau</button>
+          <button type="button" class="perm-tool" data-preset="kasir" title="Pemantau + Buat QR">🧾 Kasir</button>
+          <button type="button" class="perm-tool" data-preset="uang" title="Kasir + Kirim Uang (Settlement)">💸 Operator Uang</button>
+          <span style="width:1px;height:20px;background:var(--line);margin:0 4px;align-self:center"></span>
           <button type="button" class="perm-tool" id="aaCheckAll">Centang semua</button>
           <button type="button" class="perm-tool" id="aaUncheckAll">Kosongkan</button>
         </div>
@@ -169,9 +174,9 @@
         const key = m.key + '.' + s.key;
         return `<label class="perm-sub"><input type="checkbox" class="aa-sub" data-menu="${m.key}" value="${key}" ${perms&&perms[key]?'checked':''} ${lock?'disabled':''}> ${esc(s.label)}</label>`;
       }).join('');
-      return `<div class="perm-menu ${lock?'locked':''}" data-menu="${m.key}" ${m.masterOnly?'title="Khusus akun master"':''}>
+      return `<div class="perm-menu ${lock?'locked':''}${m.sensitive?' is-sensitive':''}" data-menu="${m.key}" ${m.masterOnly?'title="Khusus akun master"':''}>
         <div class="perm-menu-head">
-          <label class="perm-chk"><input type="checkbox" class="aa-view" data-menu="${m.key}" value="${viewKey}" ${viewOn?'checked':''} ${lock?'disabled':''}> ${m.icon||''} ${esc(m.label)}${m.masterOnly?' <span style="font-size:10px;color:var(--muted);font-weight:600">(master)</span>':''}</label>
+          <label class="perm-chk"><input type="checkbox" class="aa-view" data-menu="${m.key}" value="${viewKey}" ${viewOn?'checked':''} ${lock?'disabled':''}> ${m.icon||''} ${esc(m.label)}${m.masterOnly?' <span style="font-size:10px;color:var(--muted);font-weight:600">(master)</span>':''}${m.sensitive?' <span style="font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:1px 6px;border-radius:5px;background:rgba(245,158,11,.16);color:#f59e0b;margin-left:5px">sensitif</span>':''}</label>
         </div>
         ${subs ? `<div class="perm-subs">${subs}</div>` : ''}
       </div>`;
@@ -212,6 +217,18 @@
   overlay.addEventListener('click', (e) => { if(e.target===overlay) closeModal(); });
   $('aaCheckAll').addEventListener('click', () => $('aa_perms').querySelectorAll('input:not(:disabled)').forEach(c=>c.checked=true));
   $('aaUncheckAll').addEventListener('click', () => $('aa_perms').querySelectorAll('input:not(:disabled)').forEach(c=>c.checked=false));
+
+  // Preset peran: isi centang otomatis (aman — menu sensitif TIDAK termasuk, dicentang manual bila perlu)
+  var P_PEMANTAU = { 'dashboard.view':1, 'generate-qr.view':1, 'transactions.view':1, 'mutasi-qris.view':1, 'mutasi-utama.view':1, 'mutasi-madera.view':1, 'reports.view':1 };
+  var P_KASIR = Object.assign({}, P_PEMANTAU, { 'generate-qr.create':1 });
+  var P_UANG = Object.assign({}, P_KASIR, { 'settlement.view':1, 'settlement.transfer':1 });
+  var PRESETS = { pemantau: P_PEMANTAU, kasir: P_KASIR, uang: P_UANG };
+  document.querySelectorAll('.perm-tool[data-preset]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var map = PRESETS[btn.getAttribute('data-preset')] || {};
+      $('aa_perms').querySelectorAll('input[type=checkbox]').forEach(function(c){ if(!c.disabled) c.checked = !!map[c.value]; });
+    });
+  });
 
   $('aaTbody').addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-act]'); if(!btn) return;

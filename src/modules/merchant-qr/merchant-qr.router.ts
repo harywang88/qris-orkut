@@ -30,17 +30,18 @@ import {
 const router = Router();
 
 const canManage = requireMenuOrPermission('merchant-qr', 'manage', 'qris:manage');
+const canView = requireMenuOrPermission('merchant-qr', 'view', 'qris:manage');
 
 // Static routes MUST come before /:id dynamic routes
-router.get('/', canManage, showMerchantQrList);
+router.get('/', canView, showMerchantQrList);
 router.get('/new', canManage, showNewMerchantQrForm);
-router.get('/api/status', canManage, getMerchantQrStatusApi);
+router.get('/api/status', canView, getMerchantQrStatusApi);
 router.post('/test-report-login', canManage, handleTestMerchantQrReportLogin);
 router.post('/compare-sources', canManage, handleCompareMerchantQrSources);
 router.post('/', canManage, handleCreateMerchantQr);
-router.get('/sync-all/status', canManage, getSyncAllStatusApi);
+router.get('/sync-all/status', canView, getSyncAllStatusApi);
 router.post('/sync-all', canManage, handleSyncAllMerchants);
-router.get('/cooldown-status', canManage, getAppCooldownStatusApi);
+router.get('/cooldown-status', canView, getAppCooldownStatusApi);
 router.post('/sync-app-all', canManage, handleSyncAppAll);
 router.post('/sync-report-all', canManage, handleSyncReportAll);
 router.get('/:id/edit', canManage, showEditMerchantQrForm);
@@ -55,6 +56,6 @@ router.post('/:id/sync-app', canManage, handleSyncAppNow);
 router.post('/:id/sync-report', canManage, handleSyncReportNow);
 router.post('/:id/web-report-url', canManage, handleSaveWebReportUrl);
 router.post('/:id/test-web-report', canManage, handleTestWebReportUrl);
-router.get('/:id/web-report-status', canManage, handleWebReportStatus);
+router.get('/:id/web-report-status', canView, handleWebReportStatus);
 
 export { router as merchantQrRouter };

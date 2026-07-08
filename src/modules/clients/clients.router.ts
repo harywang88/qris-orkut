@@ -16,8 +16,9 @@ import {
 const router = Router();
 
 const canManage = requireMenuOrPermission('clients', 'manage', 'client:manage');
+const canView = requireMenuOrPermission('clients', 'view', 'client:manage');
 
-router.get('/', canManage, showClientList);
+router.get('/', canView, showClientList);
 router.get('/new', canManage, showNewClientForm);
 router.post('/', canManage, handleCreateClient);
 router.get('/:id', canManage, showClientDetail);

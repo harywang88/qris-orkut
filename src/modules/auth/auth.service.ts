@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { db } from '../../config/database';
 import { logger } from '../../config/logger';
+import { verifyAliasLogin } from '../../shared/alias-access.service';
 
 export interface SessionUser {
   id: string;
@@ -10,6 +11,7 @@ export interface SessionUser {
   fullName: string;
   mustChangePassword: boolean;
   permissions: string[];
+  isAlias?: boolean;
 }
 
 type SharedQrisUserRecord = {
@@ -47,6 +49,19 @@ export async function verifyCredentials(
   if (!user || user.status !== 'active') {
     const sharedUser = await verifySharedQrisUser(username, password);
     if (!sharedUser) {
+      // Fallback terakhir: akun Alias (RBAC ringan, alias-accounts.json) -> sesi terpisah isAlias.
+      const aliasUser = await verifyAliasLogin(username, password);
+      if (aliasUser) {
+        await writeLoginLog({ userId: null, username: aliasUser.username, ipAddress, userAgent, status: 'success' });
+        return {
+          id: 'alias:' + aliasUser.username,
+          username: aliasUser.username,
+          fullName: aliasUser.name,
+          mustChangePassword: false,
+          permissions: [],
+          isAlias: true,
+        };
+      }
       await writeLoginLog({ userId: null, username, ipAddress, userAgent, status: 'failed' });
       return null;
     }

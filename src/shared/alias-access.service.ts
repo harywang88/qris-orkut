@@ -29,6 +29,7 @@ export interface MenuDef {
   path: string;
   subs: MenuSub[];
   masterOnly?: boolean;
+  sensitive?: boolean;
 }
 
 export type PermMap = Record<string, boolean>;
@@ -93,18 +94,18 @@ export interface AliasUpdateInput {
 export const MENU_DEFS: MenuDef[] = [
   { key: 'dashboard', label: 'Dashboard', icon: '🏠', path: '/dashboard', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'generate-qr', label: 'Generate QR', icon: '🧾', path: '/dashboard/generate-qr', subs: [{ key: 'view', label: 'Lihat' }, { key: 'create', label: 'Buat QR' }] },
-  { key: 'transactions', label: 'Transaction', icon: '💳', path: '/dashboard/transactions', subs: [{ key: 'view', label: 'Lihat' }, { key: 'sync', label: 'Sinkron' }, { key: 'export', label: 'Export' }] },
-  { key: 'mutasi-qris', label: 'Mutasi QRIS', icon: '🔁', path: '/dashboard/mutations/qris', subs: [{ key: 'view', label: 'Lihat' }, { key: 'sync', label: 'Sinkron' }, { key: 'reconcile', label: 'Cek Cocok' }] },
-  { key: 'mutasi-utama', label: 'Mutasi Utama', icon: '💰', path: '/dashboard/mutations/utama', subs: [{ key: 'view', label: 'Lihat' }, { key: 'sync', label: 'Sinkron' }, { key: 'reconcile', label: 'Cek Cocok' }] },
-  { key: 'mutasi-madera', label: 'Mutasi Madera', icon: '🏦', path: '/dashboard/mutations/madera', subs: [{ key: 'view', label: 'Lihat' }, { key: 'reconcile', label: 'Cek Sinkron' }] },
-  { key: 'settlement', label: 'Settlement', icon: '💸', path: '/dashboard/settlement', subs: [{ key: 'view', label: 'Lihat' }, { key: 'transfer', label: 'Kirim Uang' }] },
-  { key: 'merchant-qr', label: 'Merchant QR', icon: '🏪', path: '/merchant-qr', subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Kelola' }, { key: 'sync', label: 'Sinkron' }] },
-  { key: 'clients', label: 'API Client', icon: '🔑', path: '/clients', subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Kelola' }] },
+  { key: 'transactions', label: 'Transaction', icon: '💳', path: '/dashboard/transactions', subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'mutasi-qris', label: 'Mutasi QRIS', icon: '🔁', path: '/dashboard/mutations/qris', subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'mutasi-utama', label: 'Mutasi Utama', icon: '💰', path: '/dashboard/mutations/utama', subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'mutasi-madera', label: 'Mutasi Madera', icon: '🏦', path: '/dashboard/mutations/madera', subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'settlement', label: 'Settlement', icon: '💸', path: '/dashboard/settlement', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }, { key: 'transfer', label: 'Kirim Uang' }] },
+  { key: 'merchant-qr', label: 'Merchant QR', icon: '🏪', path: '/merchant-qr', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Kelola' }] },
+  { key: 'clients', label: 'API Client', icon: '🔑', path: '/clients', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Kelola' }] },
   { key: 'reports', label: 'Laporan', icon: '📈', path: '/reports', subs: [{ key: 'view', label: 'Lihat' }] },
-  { key: 'login-logs', label: 'Login Logs', icon: '📜', path: '/dashboard/login-logs', subs: [{ key: 'view', label: 'Lihat' }] },
-  { key: 'admin-log', label: 'Admin Log', icon: '🛡️', path: '/admin-log', subs: [{ key: 'view', label: 'Lihat' }] },
-  { key: 'postgres', label: 'PostgreSQL', icon: '🗄️', path: '/dashboard/postgres-monitor', subs: [{ key: 'view', label: 'Lihat' }] },
-  { key: 'settings', label: 'Pengaturan', icon: '⚙️', path: '/dashboard/account-settings', subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Ubah' }] },
+  { key: 'login-logs', label: 'Login Logs', icon: '📜', path: '/dashboard/login-logs', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'admin-log', label: 'Admin Log', icon: '🛡️', path: '/admin-log', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'postgres', label: 'PostgreSQL', icon: '🗄️', path: '/dashboard/postgres-monitor', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'settings', label: 'Pengaturan', icon: '⚙️', path: '/dashboard/account-settings', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Ubah' }] },
   { key: 'akun-alias', label: 'Akun Alias', icon: '👤', path: '/dashboard/akun-alias', masterOnly: true, subs: [{ key: 'view', label: 'Lihat' }] },
 ];
 

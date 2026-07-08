@@ -8,6 +8,7 @@ declare module 'express-session' {
       fullName: string;
       mustChangePassword: boolean;
       permissions: string[];
+      isAlias?: boolean;
     };
     flash?: {
       type: 'success' | 'error' | 'info' | 'warning';
