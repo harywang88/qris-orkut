@@ -32,6 +32,8 @@
   .pm-btn-push { background:linear-gradient(135deg,#3b82f6,#2563eb); color:#fff; box-shadow:0 4px 14px rgba(37,99,235,.35); }
   .pm-btn-red { background:linear-gradient(135deg,#ef4444,#dc2626); color:#fff; box-shadow:0 4px 14px rgba(220,38,38,.32); }
   .pm-btn-green { background:linear-gradient(135deg,#22c55e,#16a34a); color:#fff; box-shadow:0 4px 14px rgba(22,163,74,.32); }
+  .pm-locked-row { background:rgba(134,239,172,.04); cursor:help; }
+  .pm-locked-row:hover { background:rgba(134,239,172,.09) !important; }
 
   /* ── Modal premium ── */
   .pm-modal-backdrop { position:fixed; inset:0; background:rgba(2,6,23,.62); backdrop-filter:blur(6px); z-index:1000; display:none; align-items:center; justify-content:center; padding:16px; overflow-y:auto; opacity:0; transition:opacity .22s ease; }
@@ -150,7 +152,7 @@
                     <button class="pm-btn pm-btn-red" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>" onclick="pmCatat(this)"><i class="fa-solid fa-bookmark"></i> Catat Pending</button>
                   <% } %>
                   <button class="pm-btn pm-btn-push"
-                    data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>"
+                    data-book-url="<%= url('/dashboard/api/pending-money/' + r.id + '/book') %>"
                     data-issuer="<%= r.pengirim || '-' %>"
                     data-amount="<%= rp(r.amount) %>"
                     data-rrn="<%= r.rrn || '-' %>"
@@ -166,6 +168,56 @@
   </div>
   <% } %>
 </div>
+
+<!-- ── Sudah Diproses (terkunci) ── -->
+<% var _locked = (typeof lockedRows !== 'undefined' && lockedRows) ? lockedRows : []; %>
+<% if (_locked.length) { %>
+<div class="qris-card p-4 mt-5">
+  <div class="flex items-center gap-2 mb-3">
+    <i class="fa-solid fa-lock" style="color:#86efac"></i>
+    <h2 class="text-sm font-bold text-ink">Sudah Diproses <span class="text-muted-2 font-normal">(<%= _locked.length %> — terkunci, tak bisa diubah)</span></h2>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full pm-table">
+      <thead>
+        <tr>
+          <th>Uang Masuk</th>
+          <th>Akun / Site</th>
+          <th>Nominal</th>
+          <th>Pengirim / RRN</th>
+          <th>Diproses</th>
+          <th style="text-align:center">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% _locked.forEach(function (r) {
+             var tip = 'Dari Uang Pending · masuk ' + fmtWib(r.transactionTime) + (r.processedAt ? (' · diproses ' + fmtWib(r.processedAt)) : '') + (r.processedBy ? (' oleh ' + r.processedBy) : '');
+        %>
+          <tr class="pm-locked-row" title="<%= tip %>">
+            <td class="whitespace-nowrap text-muted-2"><%= fmtWib(r.transactionTime) %></td>
+            <td class="whitespace-nowrap">
+              <span class="text-ink font-semibold"><%= r.merchantName || r.accountCode %></span>
+              <span class="block text-[10px] text-muted"><%= r.siteName || 'Tanpa site' %></span>
+            </td>
+            <td><div class="pm-amt" style="color:#86efac"><%= rp(r.amount) %></div></td>
+            <td>
+              <span class="text-ink text-sm"><%= r.pengirim || '-' %></span>
+              <% if (r.rrn) { %><span class="block text-[10px] text-muted font-mono"><%= r.rrn %></span><% } %>
+            </td>
+            <td class="whitespace-nowrap text-muted-2">
+              <%= r.processedAt ? fmtWib(r.processedAt) : '-' %>
+              <span class="block text-[10px] text-muted"><%= (r.website ? ('→ ' + r.website) : '') %><%= r.processedBy ? (' · ' + r.processedBy) : '' %></span>
+            </td>
+            <td style="text-align:center">
+              <span class="pm-badge" style="background:rgba(134,239,172,.15);color:#86efac"><i class="fa-solid fa-lock"></i> Terkunci</span>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<% } %>
 
 <!-- ── Modal Push ke Website (Klaim Transaksi) ── -->
 <div class="pm-modal-backdrop" id="pmModal" onclick="if(event.target===this)pmClose()">
@@ -192,7 +244,7 @@
       <input class="pm-field" id="pmMember" type="text" placeholder="Username member (opsional)">
       <label class="pm-label">Catatan</label>
       <input class="pm-field" id="pmNote" type="text" placeholder="Catatan klaim (opsional)">
-      <div class="pm-note"><i class="fa-solid fa-circle-info" style="margin-top:2px"></i><span>Hanya mencatat klaim tanpa deposit ke panel game.</span></div>
+      <div class="pm-note"><i class="fa-solid fa-circle-info" style="margin-top:2px"></i><span><b>CS isi saldo member di panel sendiri.</b> Sistem mencatat uang ini jadi <b>Transaksi</b> (masuk omzet hari ini) &amp; mutasi jadi <b>match</b>. Tidak mengirim deposit otomatis.</span></div>
     </div>
 
     <div class="pm-panel" id="pmPanelAuto" style="display:none">
@@ -204,16 +256,16 @@
     </div>
 
     <div class="pm-actions">
-      <button class="pm-modal-btn pm-ok" id="pmSubmit" onclick="pmSubmit()"><i class="fa-solid fa-check"></i> Klaim Sekarang</button>
+      <button class="pm-modal-btn pm-ok" id="pmSubmit" onclick="pmSubmit()"><i class="fa-solid fa-check"></i> Proses &amp; Catat</button>
       <button class="pm-modal-btn pm-cancel" onclick="pmClose()">Batal</button>
     </div>
   </div>
 </div>
 
 <script>
-  var pmCur = { url: '', mode: 'manual' };
+  var pmCur = { bookUrl: '', mode: 'manual' };
   function pmOpenPush(btn) {
-    pmCur.url = btn.dataset.url;
+    pmCur.bookUrl = btn.dataset.bookUrl;
     document.getElementById('pmiIssuer').textContent = btn.dataset.issuer;
     document.getElementById('pmiAmount').textContent = btn.dataset.amount;
     document.getElementById('pmiRrn').textContent = btn.dataset.rrn;
@@ -235,21 +287,25 @@
     var submit = document.getElementById('pmSubmit');
     submit.style.opacity = man ? '1' : '.45';
     submit.style.pointerEvents = man ? 'auto' : 'none';
-    submit.innerHTML = man ? '<i class="fa-solid fa-check"></i> Klaim Sekarang' : '<i class="fa-solid fa-clock"></i> Segera';
+    submit.innerHTML = man ? '<i class="fa-solid fa-check"></i> Proses &amp; Catat' : '<i class="fa-solid fa-clock"></i> Segera';
   }
   async function pmSubmit() {
     if (pmCur.mode !== 'manual') return;
     var website = document.getElementById('pmWebsite').value;
     if (!website) { alert('Pilih Website dulu ya.'); return; }
+    var btn = document.getElementById('pmSubmit');
+    btn.style.pointerEvents = 'none'; btn.style.opacity = '.6';
     var payload = {
-      status: 'claimed', mode: 'manual', website: website,
+      mode: 'manual', website: website,
       userIdExt: document.getElementById('pmMember').value.trim(),
       note: document.getElementById('pmNote').value.trim(),
     };
     try {
-      var r = await fetch(pmCur.url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (r.ok) { location.reload(); } else { alert('Gagal menyimpan klaim'); }
-    } catch (e) { alert('Gagal: ' + e.message); }
+      var r = await fetch(pmCur.bookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      var d = {}; try { d = await r.json(); } catch (e2) {}
+      if (r.ok && d.ok) { location.reload(); }
+      else { alert(d.message || 'Gagal memproses booking.'); btn.style.pointerEvents = 'auto'; btn.style.opacity = '1'; }
+    } catch (e) { alert('Gagal: ' + e.message); btn.style.pointerEvents = 'auto'; btn.style.opacity = '1'; }
   }
   async function pmCatat(btn) {
     try {

@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import {
   listPendingMoney,
+  listBookedPendings,
+  bookPendingMutation,
   setPendingTag,
   removePendingTag,
 } from '../../shared/pending-money.service';
@@ -12,6 +14,7 @@ import { logAction } from '../../shared/audit-log.service';
 export async function showPendingMoney(req: Request, res: Response): Promise<void> {
   try {
     const rows = await listPendingMoney(null);
+    const lockedRows = await listBookedPendings(null);
     const resolve = buildResolver();
     for (const r of rows) {
       const s = resolve(r.qrisAccountId);
@@ -24,6 +27,7 @@ export async function showPendingMoney(req: Request, res: Response): Promise<voi
     res.render('pending-money/index', {
       title: 'Uang Pending',
       rows,
+      lockedRows,
       totalPending,
       websites,
     });
@@ -61,6 +65,48 @@ export async function handleTagPendingMoney(req: Request, res: Response): Promis
   } catch (err) {
     logger.error({ err }, 'handleTagPendingMoney error');
     res.status(500).json({ ok: false, message: 'gagal simpan tag' });
+  }
+}
+
+export async function handleBookPendingMoney(req: Request, res: Response): Promise<void> {
+  try {
+    const mutationId = req.params.mutationId;
+    const body = (req.body || {}) as { website?: string; userIdExt?: string; note?: string; mode?: string };
+    const processedBy = (req.session as unknown as { user?: { username?: string } }).user?.username || 'unknown';
+    if (!mutationId) {
+      res.status(400).json({ ok: false, message: 'mutationId kosong' });
+      return;
+    }
+    const website = (body.website || '').trim();
+    if (!website) {
+      res.status(400).json({ ok: false, message: 'Website wajib dipilih.' });
+      return;
+    }
+    const result = await bookPendingMutation(mutationId, {
+      website,
+      userIdExt: (body.userIdExt || '').trim(),
+      note: (body.note || '').trim(),
+      mode: (body.mode || 'manual').trim() || 'manual',
+      processedBy,
+    });
+    if (!result.ok) {
+      res.status(400).json(result);
+      return;
+    }
+    void logAction(req, {
+      category: 'pending',
+      action: 'pending_book',
+      severity: 'important',
+      summary: 'Booking Uang Pending → Transaksi' + (website ? (' @ ' + website) : '') + (body.userIdExt ? (' — user ' + body.userIdExt) : ''),
+      targetType: 'Mutation',
+      targetId: mutationId,
+      targetName: result.transactionId,
+      detail: { website, userIdExt: body.userIdExt, mode: body.mode || 'manual', transactionId: result.transactionId },
+    });
+    res.json(result);
+  } catch (err) {
+    logger.error({ err }, 'handleBookPendingMoney error');
+    res.status(500).json({ ok: false, message: 'Gagal membukukan uang pending.' });
   }
 }
 

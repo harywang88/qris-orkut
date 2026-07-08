@@ -54,7 +54,7 @@ import {
 } from './dashboard.controller';
 import { showPostgresMonitor, getPostgresMonitorJson } from './postgres-monitor.controller';
 import { showSaldoUtama, showMadera } from './wallet.controller';
-import { showPendingMoney, handleTagPendingMoney, handleUntagPendingMoney } from './pending-money.controller';
+import { showPendingMoney, handleTagPendingMoney, handleUntagPendingMoney, handleBookPendingMoney } from './pending-money.controller';
 import { showReconcile } from './reconcile.controller';
 
 const router = Router();
@@ -75,6 +75,7 @@ router.get('/mutations/madera', requireMenu('mutasi-madera'), showMutationsMader
 router.get('/pending-money', requireMenu('mutasi-qris'), showPendingMoney);
 router.post('/api/pending-money/:mutationId/tag', requireMenu('mutasi-qris'), handleTagPendingMoney);
 router.post('/api/pending-money/:mutationId/untag', requireMenu('mutasi-qris'), handleUntagPendingMoney);
+router.post('/api/pending-money/:mutationId/book', requireMenu('mutasi-qris'), handleBookPendingMoney);
 router.get('/reconcile', requireMenu('mutasi-utama'), showReconcile);
 router.get('/madera-nobu', showMaderaNobuHistory);
 router.get('/manual-send/:accountId', requireMenu('settlement', 'transfer'), showManualSendPage);

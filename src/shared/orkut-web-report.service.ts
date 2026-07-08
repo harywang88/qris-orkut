@@ -43,6 +43,9 @@ export interface PresentedQrisMutation {
   type: string;
   siteName?: string | null;
   userIdExt?: string | null;
+  bookedPending?: boolean;
+  processedAt?: Date | null;
+  bookedBy?: string | null;
 }
 
 function parseAmountValue(value: unknown): number | null {

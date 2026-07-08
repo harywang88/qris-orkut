@@ -268,3 +268,146 @@ export async function pendingMoneyTotal(
   const agg = await db.mutation.aggregate({ where, _sum: { amount: true }, _count: true });
   return { total: agg._sum.amount || 0, count: agg._count || 0 };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BOOKING Uang Pending → Transaksi (mode "booking saja", TANPA auto-kredit)
+//
+// Saat member claim uang lebih (bayar 2×), CS "Push ke Website". Sistem HANYA
+// membukukan: buat 1 Transaction paid + link mutasi ini → masuk omzet & menu
+// Transaction, mutasi jadi "match", baris pending dikunci. Kredit/refund ke
+// member dilakukan MANUAL oleh CS (atau bot pada fase Auto).
+//
+// AMAN dari dobel-kredit: statusBot='manual_booked' (BUKAN 'deposit_queued'),
+// sehingga TIDAK ada loop deposit yang memicunya. finalAmount = nominal mutasi
+// PERSIS (omzet akurat), TANPA AmountLock & TANPA usedToday++ (limit tak dobel).
+// Idempotent: tolak bila mutasi sudah ter-match.
+// ─────────────────────────────────────────────────────────────────────────────
+export interface BookResult {
+  ok: boolean;
+  transactionId?: string;
+  message?: string;
+}
+
+export async function bookPendingMutation(
+  mutationId: string,
+  opts: { website?: string; userIdExt?: string; note?: string; processedBy: string; mode?: string },
+): Promise<BookResult> {
+  const m = await db.mutation.findUnique({ where: { id: mutationId }, include: { qrisAccount: { select: { id: true } } } });
+  if (!m) return { ok: false, message: 'Mutasi tidak ditemukan.' };
+  if (m.walletCategory !== 'qris' || m.type !== 'credit') return { ok: false, message: 'Hanya mutasi kredit QRIS yang bisa diproses.' };
+  if (m.matchedTransactionId) return { ok: false, message: 'Uang pending ini sudah diproses / ter-match.' };
+  if (isDisbursement(m.rawDataJson, m.issuerName)) return { ok: false, message: 'Mutasi ini uang KELUAR (pencairan), tidak bisa dibooking.' };
+
+  // clientId wajib (FK). Ambil dari Website yang dipilih CS (dropdown = daftar Client).
+  const website = (opts.website || '').trim();
+  if (!website) return { ok: false, message: 'Website wajib dipilih untuk booking.' };
+  const client = await db.client.findFirst({ where: { OR: [{ name: website }, { panelCode: website }] }, select: { id: true } });
+  if (!client) return { ok: false, message: `Website "${website}" tidak dikenal.` };
+
+  const now = new Date();
+  const meta = JSON.stringify({
+    source: 'pending_booking',
+    mutationId: m.id,
+    mode: opts.mode || 'manual',
+    website: website || null,
+    processedBy: opts.processedBy,
+    moneyInAt: m.transactionTime.toISOString(),
+    processedAt: now.toISOString(),
+    note: (opts.note || '').trim() || null,
+  });
+
+  try {
+    const txId = await db.$transaction(async (t) => {
+      // Idempotency di dalam transaksi: kunci ulang, tolak bila sudah ter-match.
+      const fresh = await t.mutation.findUnique({ where: { id: m.id }, select: { matchedTransactionId: true } });
+      if (fresh?.matchedTransactionId) throw new Error('ALREADY_MATCHED');
+
+      const tx = await t.transaction.create({
+        data: {
+          clientId: client.id,
+          userIdExt: ((opts.userIdExt || '').trim() || '-').slice(0, 180),
+          qrisAccountId: m.qrisAccountId,
+          requestedAmount: m.amount,
+          uniqueCode: 0,
+          finalAmount: m.amount, // PERSIS nominal mutasi → omzet akurat
+          feeAmount: 0,
+          note: 'Booking Uang Pending (bayar 2x)',
+          qrPayload: '',
+          qrImageBase64: '',
+          statusPay: 'paid',
+          statusBot: 'manual_booked', // ← gerbang: tak ada loop deposit yang baca ini
+          paidAt: now, // omzet jatuh di HARI diproses (bukan hari uang masuk)
+          expiresAt: now,
+          issuerName: m.issuerName ?? null,
+          rrn: m.rrn ?? null,
+          metadataJson: meta,
+        },
+        select: { id: true },
+      });
+      await t.mutation.update({ where: { id: m.id }, data: { matchedTransactionId: tx.id } });
+      return tx.id;
+    });
+    logger.info({ mutationId: m.id, transactionId: txId, amount: m.amount, website }, 'pending booked to transaction');
+    return { ok: true, transactionId: txId };
+  } catch (err) {
+    if (err instanceof Error && err.message === 'ALREADY_MATCHED') {
+      return { ok: false, message: 'Uang pending ini baru saja diproses. Muat ulang halaman.' };
+    }
+    logger.error({ err, mutationId }, 'bookPendingMutation error');
+    return { ok: false, message: 'Gagal membukukan uang pending.' };
+  }
+}
+
+export interface BookedPendingRow {
+  id: string;
+  accountCode: string;
+  merchantName: string | null;
+  siteName: string | null;
+  amount: number;
+  pengirim: string;
+  rrn: string | null;
+  transactionTime: Date;
+  processedAt: Date | null;
+  processedBy: string | null;
+  website: string | null;
+  userIdExt: string | null;
+  mode: string | null;
+}
+
+/** Uang pending yang SUDAH dibooking (matched ke tx manual_booked) — tampil terkunci di menu. */
+export async function listBookedPendings(accountIds?: string[] | null): Promise<BookedPendingRow[]> {
+  const where: Record<string, unknown> = {
+    walletCategory: 'qris',
+    type: 'credit',
+    matchedTransaction: { is: { statusBot: 'manual_booked' } },
+  };
+  if (accountIds) where.qrisAccountId = { in: accountIds };
+  const muts = await db.mutation.findMany({
+    where,
+    orderBy: { transactionTime: 'desc' },
+    take: 200,
+    include: {
+      qrisAccount: { select: { code: true, merchantName: true } },
+      matchedTransaction: { select: { paidAt: true, metadataJson: true, userIdExt: true } },
+    },
+  });
+  return muts.map((m) => {
+    let meta: { processedBy?: string; website?: string; mode?: string } = {};
+    try { meta = JSON.parse(m.matchedTransaction?.metadataJson || '{}'); } catch { /* ignore */ }
+    return {
+      id: m.id,
+      accountCode: m.qrisAccount?.code || '-',
+      merchantName: m.qrisAccount?.merchantName || null,
+      siteName: null,
+      amount: m.amount,
+      pengirim: computePengirim(m.rawDataJson, m.issuerName),
+      rrn: m.rrn,
+      transactionTime: m.transactionTime,
+      processedAt: m.matchedTransaction?.paidAt || null,
+      processedBy: meta.processedBy || null,
+      website: meta.website || null,
+      userIdExt: m.matchedTransaction?.userIdExt || null,
+      mode: meta.mode || null,
+    };
+  });
+}

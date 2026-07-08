@@ -1092,6 +1092,9 @@ export async function showTransactions(
     if (effectiveAccountIds) where.qrisAccountId = { in: effectiveAccountIds };
     // Menu Transaction: KUNCI hanya paid (server-side) — QR generate/open/expired mustahil masuk walau via URL.
     if (paidOnly) where.statusPay = 'paid';
+    // History Generate QR (bukan paidOnly) = mesin QR yang di-generate. Booking Uang Pending
+    // TIDAK punya QR generate → sembunyikan di sini (tetap muncul di menu Transaction).
+    if (!paidOnly && !statusBot) where.statusBot = { not: 'manual_booked' };
 
     const [transactionsRaw, total] = await Promise.all([
       db.transaction.findMany({
@@ -1893,7 +1896,7 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
         take: limit,
         include: {
           qrisAccount: { select: { code: true, merchantName: true, orkutAccountIndex: true } },
-          matchedTransaction: { select: { rrn: true, userIdExt: true, client: { select: { name: true } } } },
+          matchedTransaction: { select: { rrn: true, userIdExt: true, statusBot: true, paidAt: true, metadataJson: true, client: { select: { name: true } } } },
         },
       });
       const balanceSummary = await getQrisBalanceSummary();
@@ -1942,6 +1945,9 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
           createdAt: m.createdAt,
           siteName: resolveSite(m.qrisAccountId).siteName,
           userIdExt: m.matchedTransaction?.userIdExt ?? null,
+          bookedPending: m.matchedTransaction?.statusBot === 'manual_booked',
+          processedAt: m.matchedTransaction?.paidAt ?? null,
+          bookedBy: (() => { try { return (JSON.parse(m.matchedTransaction?.metadataJson || '{}') as { processedBy?: string }).processedBy || null; } catch { return null; } })(),
         };
       });
       presentedMutations = presentedMutations.filter((mutation) => {

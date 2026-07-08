@@ -278,6 +278,9 @@
     font-style: italic;
     opacity: 0.7;
   }
+  @keyframes qmutBookedBlink { 0%,100%{ background:rgba(96,165,250,.06); } 50%{ background:rgba(96,165,250,.20); } }
+  #mut-tabulator .tabulator-row.qmut-booked-row { animation:qmutBookedBlink 1.6s ease-in-out infinite; cursor:help; }
+  #mut-tabulator .tabulator-row.qmut-booked-row:hover { animation:none; background:rgba(96,165,250,.26) !important; }
 </style>
 
 <!-- ── Header ────────────────────────────────────────────────────────────────── -->
@@ -1459,6 +1462,19 @@
             resizable: true,
           },
           tableBuilt: resolveTable,
+          rowFormatter: function(row) {
+            try {
+              var d = row.getData();
+              if (!d || !d.bookedPending) return;
+              var el = row.getElement();
+              el.classList.add('qmut-booked-row');
+              function _w(iso){ try{ var t=new Date(new Date(iso).getTime()+7*3600000); var p=function(n){return String(n).padStart(2,'0');}; return p(t.getUTCDate())+'/'+p(t.getUTCMonth()+1)+' '+p(t.getUTCHours())+'.'+p(t.getUTCMinutes()); }catch(e){return '-';} }
+              var masuk = d.time ? _w(d.time) : (d.displayTime || '-');
+              var proses = d.processedAt ? _w(d.processedAt) : '-';
+              var by = d.bookedBy ? (' oleh ' + d.bookedBy) : '';
+              el.setAttribute('title', 'Dari Uang Pending · masuk ' + masuk + ' · diproses ' + proses + by);
+            } catch (e) {}
+          },
           columns: [
         {
           title: 'NO', field: '_rowNum', width: 55, headerSort: false, resizable: false,

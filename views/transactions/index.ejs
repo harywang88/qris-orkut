@@ -443,6 +443,9 @@
     .tx-cell-expires { font-size: 10px; }
     .tx-cell-amount { font-size: 12px; }
   }
+  @keyframes txBookedBlink { 0%,100%{ background:rgba(96,165,250,.05); } 50%{ background:rgba(96,165,250,.22); } }
+  #transactions-table .tabulator-row.tx-row-booked { animation:txBookedBlink 1.6s ease-in-out infinite; cursor:help; }
+  #transactions-table .tabulator-row.tx-row-booked:hover { animation:none; background:rgba(96,165,250,.28) !important; }
 </style>
 
 <section class="space-y-5">
@@ -809,6 +812,20 @@ const txTable = new Tabulator('#transactions-table', {
   height: '660px',
   initialSort: [{ column: 'createdAt', dir: 'desc' }],
   renderComplete: refreshExpiryCountdowns,
+  rowFormatter: function(row) {
+    try {
+      var d = row.getData();
+      var meta = parseMetadata(d.metadataJson);
+      if (d.statusBot === 'manual_booked' || (meta && meta.source === 'pending_booking')) {
+        var el = row.getElement();
+        el.classList.add('tx-row-booked');
+        var masuk = (meta && meta.moneyInAt) ? dateFmt(meta.moneyInAt) : '-';
+        var proses = (meta && meta.processedAt) ? dateFmt(meta.processedAt) : (d.paidAt ? dateFmt(d.paidAt) : '-');
+        var by = (meta && meta.processedBy) ? (' oleh ' + meta.processedBy) : '';
+        el.setAttribute('title', 'Dari Uang Pending · masuk ' + masuk + ' · diproses ' + proses + by);
+      }
+    } catch (e) {}
+  },
   columnDefaults: {
     vertAlign: 'middle',
     hozAlign: 'center',
