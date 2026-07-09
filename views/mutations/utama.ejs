@@ -332,6 +332,7 @@
   async function fetchMutations(){
     if(!currentAccountId||fetchInFlight) return;
     fetchInFlight=true;
+    const __t0=Date.now();
     const isAll=currentAccountId===ALL_ID;
     try{
       const q=isAll
@@ -346,7 +347,7 @@
       populateSiteFilter();
       if(!isAll){const ct=document.getElementById(`tab-count-${currentAccountId}`); if(ct) ct.textContent=`${allRows.length} transaksi`;}
       const dot=document.getElementById('live-dot'); dot.style.background='#facc15'; setTimeout(()=>{dot.style.background='#4ade80';},250);
-      document.getElementById('last-updated').textContent=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+      document.getElementById('last-updated').textContent=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false})+'  \u00b7  \u23f1 '+(Date.now()-__t0)+'ms';
       applyFiltersInternal();
       // Auto-cek hanya UTAMA (endpoint saldo bebas-limit). MADERA on-demand (tombol) krn feed sensitif.
       if(RECONCILE_WALLET==='utama') fetchReconcile();
@@ -480,7 +481,9 @@
     // DB-first (fix lambat Utama): muat TABEL dulu (fetchMutations ~4ms, murni baca DB) supaya tak antre
     // di belakang tulis saldo pada koneksi SQLite tunggal (connection_limit=1 + busy_timeout=15s).
     // refreshBalance (live app-API + tulis saldo) dipindah ke BACKGROUND sesudah tabel tampil.
-    fetchMutations().finally(()=>{ refreshBalance(); pollTimer=setInterval(()=>{if(document.hidden) return; if(isUtamaWallet){fetchMutations();}else{Promise.allSettled([refreshBalance(),fetchMutations()]);}},AUTO_REFRESH_MS);});
+    // Menu Utama = kembaran menu QRIS: MURNI baca DB (saldo dari currentBalance DB, di-update worker tiap 2s).
+    // TANPA panggil provider (refreshBalance) saat buka -> instan. Madera (non-utama) tetap seperti semula.
+    fetchMutations().finally(()=>{ if(!isUtamaWallet) refreshBalance(); pollTimer=setInterval(()=>{if(document.hidden) return; if(isUtamaWallet){fetchMutations();}else{Promise.allSettled([refreshBalance(),fetchMutations()]);}},AUTO_REFRESH_MS);});
     if(RECONCILE_WALLET==='utama') fetchReconcile(true);
     else if(RECONCILE_WALLET==='madera') renderMaderaInitial();
   };
@@ -536,7 +539,7 @@
     document.getElementById('date-from').value=t;
     document.getElementById('date-to').value=t;
     setDateLabel();
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&currentAccountId){fetchMutations().finally(()=>refreshBalance());}});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden&&currentAccountId){ if(isUtamaWallet){fetchMutations();}else{fetchMutations().finally(()=>refreshBalance());} }});
     window.addEventListener('beforeunload',()=>{if(pollTimer) clearInterval(pollTimer);});
     // Live seperti menu QRIS: SSE stream (jika disediakan, mis. menu Madera) memicu fetchMutations
     // instan saat ada mutasi baru dari worker. Poll berkala tetap jadi cadangan.
