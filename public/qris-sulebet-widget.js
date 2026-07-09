@@ -29,7 +29,7 @@
   var CONFIG = {
     // Base URL QRIS Kita (tanpa trailing slash). APP_BASE_PATH server kosong,
     // jadi endpoint langsung di /widget (TANPA /qris).
-    baseUrl: 'https://sayang.harywang.online',
+    baseUrl: 'https://qriskitaoke.com',
 
     // Widget key sulebet (aman ditaruh di browser).
     key: 'wk_sulebet_6a04daf467ccf6b58f1225d63502e5a5c0cf71b04cf09561',
