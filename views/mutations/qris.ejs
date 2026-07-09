@@ -367,11 +367,11 @@
       <div class="mqf-field">
         <span class="mqf-label">Periode</span>
         <div class="mqf-pills">
-          <button class="date-pill" data-preset="today" onclick="setDatePreset('today',this)">Hari Ini</button>
+          <button class="date-pill active" data-preset="today" onclick="setDatePreset('today',this)">Hari Ini</button>
           <button class="date-pill" data-preset="yesterday" onclick="setDatePreset('yesterday',this)">Kemarin</button>
           <button class="date-pill" data-preset="7d" onclick="setDatePreset('7d',this)">7 Hari</button>
           <button class="date-pill" data-preset="30d" onclick="setDatePreset('30d',this)">30 Hari</button>
-          <button class="date-pill active" data-preset="all" onclick="setDatePreset('all',this)">Semua</button>
+          <button class="date-pill" data-preset="all" onclick="setDatePreset('all',this)">Semua</button>
           <button class="date-pill" data-preset="custom" onclick="setDatePreset('custom',this)" style="display:none">Custom</button>
         </div>
       </div>
@@ -1103,15 +1103,19 @@
     var arr = rows.filter(function(r){ return r && r.time; })
                   .sort(function(a,b){ return new Date(a.time).getTime() - new Date(b.time).getTime(); });
     var ordered = _reorderChainMinute(arr);
+    // Semua nilai saldo-akhir yg pernah ada. Kalau balanceBefore suatu baris = salah satu
+    // saldo-akhir baris LAIN, berarti "penaik saldo"-nya ADA (cuma keurut kebalik beda-detik)
+    // = BUKAN mutasi hilang. Sama syarat dgn reconcile → konsisten, tak alarm palsu.
+    var afterSet = {}; ordered.forEach(function(r){ afterSet[_sdAfter(r)] = true; });
     var prevAfter = null;
     for (var k = 0; k < ordered.length; k++) {
       var r = ordered[k];
       if (prevAfter === null) { r._chainState = 'ok'; r._selisih = 0; }
       else {
         var gap = _sdBefore(r) - prevAfter;
-        if (gap > 0) { r._chainState = 'gap'; r._selisih = gap; }        // saldo loncat NAIK = mutasi masuk hilang
+        if (gap > 0 && !afterSet[_sdBefore(r)]) { r._chainState = 'gap'; r._selisih = gap; }  // NAIK & saldo tak pernah tercapai = mutasi masuk hilang
         else if (gap < 0) { r._chainState = 'drop'; r._selisih = 0; }    // saldo turun (fee/pencairan ke Utama) = normal
-        else { r._chainState = 'ok'; r._selisih = 0; }                   // nyambung
+        else { r._chainState = 'ok'; r._selisih = 0; }                   // nyambung / artefak urutan
       }
       prevAfter = _sdAfter(r);
     }
@@ -1236,11 +1240,11 @@
   function setDefaultDateFilter() {
     const today = formatDateInputValue(new Date());
     document.querySelectorAll('.date-pill').forEach(function(p){ p.classList.remove('active'); });
-    const allPill = document.querySelector('.date-pill[data-preset="all"]');
-    if (allPill) allPill.classList.add('active');
+    const todayPill = document.querySelector('.date-pill[data-preset="today"]');
+    if (todayPill) todayPill.classList.add('active');
     document.getElementById('filter-date-from').value = today;
     document.getElementById('filter-date-to').value = today;
-    updateDateRangeLabel('all');
+    updateDateRangeLabel('today');
   }
 
   function getBankSimple(row) {

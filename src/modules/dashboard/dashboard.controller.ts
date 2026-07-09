@@ -113,10 +113,10 @@ function parsePositiveNumber(value: unknown): number | null {
 }
 
 function normalizeTransactionPeriod(value: unknown): 'today' | 'yesterday' | '7d' | '30d' | 'custom' | 'all' {
-  if (value === 'today' || value === 'yesterday' || value === '7d' || value === '30d' || value === 'custom') {
+  if (value === 'today' || value === 'yesterday' || value === '7d' || value === '30d' || value === 'custom' || value === 'all') {
     return value;
   }
-  return 'all';
+  return 'today';
 }
 
 function getTransactionDateRange(query: Request['query']) {
@@ -2192,8 +2192,10 @@ function reorderReconcileChain<T extends { balanceBefore: number | null; balance
   let i = 0;
   while (i < rows.length) {
     let j = i;
-    const t = rows[i].transactionTime.getTime();
-    while (j < rows.length && rows[j].transactionTime.getTime() === t) j++;
+    // Grup per-MENIT (bukan per-detik): report pakai :00, app pakai detik asli. Dalam 1
+    // menit sama, urut ikut rantai saldo → cegah false-alarm selisih (mis. PSAMUDRA 47rb).
+    const t = Math.floor(rows[i].transactionTime.getTime() / 60000);
+    while (j < rows.length && Math.floor(rows[j].transactionTime.getTime() / 60000) === t) j++;
     const group = rows.slice(i, j);
     if (group.length <= 1) {
       out.push(group[0]);
