@@ -944,8 +944,32 @@ const txTable = new Tabulator('#transactions-table', {
     {
       title: 'Bot',
       field: 'statusBot',
-      width: 64,
-      formatter: () => `<span class="qris-pill qris-pill-muted">-</span>`,
+      width: 96,
+      hozAlign: 'center',
+      formatter: (cell) => {
+        const val = cell.getValue();
+        if (!val) return `<span class="qris-pill qris-pill-muted">-</span>`;
+        // Label ringkas: berhasil / gagal / proses / review sesuai statusBot.
+        const label = {
+          pending: 'PROSES',
+          deposit_queued: 'PROSES',
+          deposit_success: 'BERHASIL',
+          deposit_failed: 'GAGAL',
+          manual_review: 'REVIEW',
+          manual_booked: 'BOOKED',
+        }[val] || String(val).replaceAll('_', ' ').toUpperCase();
+        const pill = `<span class="${botBadge[val] || 'qris-pill qris-pill-muted'}">${label}</span>`;
+        // Kalau sudah selesai diproses bot, tampilkan jam prosesnya (pakai paidAt
+        // sebagai perkiraan waktu; sistem memproses deposit segera setelah paid).
+        if (val === 'deposit_success') {
+          const row = cell.getData();
+          const t = row.paidAt ? timeFmt(row.paidAt).replace(/:/g, '.') : '';
+          if (t) {
+            return `<div class="tx-cell-stack" style="align-items:center;gap:2px">${pill}<div style="font-size:10px;font-weight:800;color:#86efac;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${t}</div></div>`;
+          }
+        }
+        return pill;
+      },
     },
     <% } %>
     <% if (_po) { %>
