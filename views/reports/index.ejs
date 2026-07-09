@@ -166,6 +166,7 @@
             <th class="text-right">Nominal</th>
             <th class="text-right" title="QRIS Biaya Layanan (0.3% OrderKuota)">Fee</th>
             <th class="text-right" title="Utama Biaya QRIS 1% (Percepatan Pencairan)">FEE 2</th>
+            <th class="text-right" title="Madera Biaya Transfer BI-Fast">FEE 3</th>
             <th class="text-right">Net</th>
           </tr>
         </thead>
@@ -186,6 +187,7 @@
               <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= row.totalPaid.toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap text-muted">Rp <%= row.totalFee.toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#fbbf24">Rp <%= (row.fee2 || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#fca5a5">Rp <%= (row.fee3 || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap font-semibold" style="color:#86efac">Rp <%= row.netAmount.toLocaleString('id-ID') %></td>
             </tr>
           <% }); %>
@@ -203,6 +205,7 @@
             <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= overall.totalPaid.toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap text-muted">Rp <%= overall.totalFee.toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#fbbf24">Rp <%= (overall.fee2 || 0).toLocaleString('id-ID') %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#fca5a5">Rp <%= (overall.fee3 || 0).toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#86efac">Rp <%= overall.netAmount.toLocaleString('id-ID') %></td>
           </tr>
         </tfoot>

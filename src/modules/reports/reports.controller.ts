@@ -73,6 +73,11 @@ function utamaOnePercentFee(m: FeeMut): number {
     t.includes('biaya percepatan pencairan');
   return feeRow ? Math.abs(Number(m.amount || 0)) : 0;
 }
+// Madera "Biaya Transfer BI-Fast" (biaya settlement Madera->bank), FLAT per transfer.
+function maderaTransferFee(m: FeeMut): number {
+  const t = _descOf(m).toLowerCase();
+  return (t.includes('biaya transfer bi fast') || t.includes('biaya transfer bi-fast') || (t.includes('biaya transfer') && t.includes('bi fast'))) ? Math.abs(Number(m.amount || 0)) : 0;
+}
 function _sumFee(map: Record<string, number>, accIds: string[]): number {
   return accIds.reduce((s, id) => s + (map[id] || 0), 0);
 }
@@ -132,13 +137,17 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     const bucketsToShow = selectedSite ? allBuckets.filter((b) => b.key === selectedSite) : allBuckets;
 
     // FEE (QRIS Biaya Layanan) + FEE2 (Utama 1%) dari MUTASI (transactionTime dalam periode), per akun.
-    const [_qrisMuts, _utamaMuts] = await Promise.all([
+    const [_qrisMuts, _utamaMuts, _maderaMuts] = await Promise.all([
       db.mutation.findMany({
         where: { walletCategory: 'qris', transactionTime: { gte: from, lte: to } },
         select: { amount: true, rawDataJson: true, qrisAccountId: true },
       }),
       db.mutation.findMany({
         where: { walletCategory: 'utama', transactionTime: { gte: from, lte: to } },
+        select: { amount: true, rawDataJson: true, qrisAccountId: true },
+      }),
+      db.mutation.findMany({
+        where: { walletCategory: 'madera', transactionTime: { gte: from, lte: to } },
         select: { amount: true, rawDataJson: true, qrisAccountId: true },
       }),
     ]);
@@ -149,6 +158,10 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     const feeUtamaByAcc: Record<string, number> = {};
     for (const m of _utamaMuts) {
       if (m.qrisAccountId) feeUtamaByAcc[m.qrisAccountId] = (feeUtamaByAcc[m.qrisAccountId] || 0) + utamaOnePercentFee(m);
+    }
+    const feeMaderaByAcc: Record<string, number> = {};
+    for (const m of _maderaMuts) {
+      if (m.qrisAccountId) feeMaderaByAcc[m.qrisAccountId] = (feeMaderaByAcc[m.qrisAccountId] || 0) + maderaTransferFee(m);
     }
     const overallAccIds = restrictAccountIds || accountsAll.map((a) => a.id);
 
@@ -171,6 +184,7 @@ export async function showReports(req: Request, res: Response): Promise<void> {
         const totalPaid = paidAgg._sum.finalAmount ?? 0;
         const totalFee = _sumFee(feeQrisByAcc, b.accountIds);
         const fee2 = _sumFee(feeUtamaByAcc, b.accountIds);
+        const fee3 = _sumFee(feeMaderaByAcc, b.accountIds);
         return {
           siteName: b.name,
           accountCount: b.accountIds.length,
@@ -184,6 +198,7 @@ export async function showReports(req: Request, res: Response): Promise<void> {
           totalPaid,
           totalFee,
           fee2,
+          fee3,
           netAmount: totalPaid - totalFee - fee2,
         };
       }),
@@ -208,6 +223,7 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     const overallTotalPaid = paidAggAll._sum.finalAmount ?? 0;
     const overallTotalFee = _sumFee(feeQrisByAcc, overallAccIds);
     const overallFee2 = _sumFee(feeUtamaByAcc, overallAccIds);
+    const overallFee3 = _sumFee(feeMaderaByAcc, overallAccIds);
 
     // Grafik (nominal terbayar by paidAt, per HARI WIB). Selalu cakup seluruh rentang, <=31 batang.
     const totalDaysWib = Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
@@ -260,6 +276,7 @@ export async function showReports(req: Request, res: Response): Promise<void> {
         totalPaid: overallTotalPaid,
         totalFee: overallTotalFee,
         fee2: overallFee2,
+        fee3: overallFee3,
         netAmount: overallTotalPaid - overallTotalFee - overallFee2,
         pendingTotal: _pendingAgg.total,
         pendingCount: _pendingAgg.count,

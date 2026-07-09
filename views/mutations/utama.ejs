@@ -9,6 +9,7 @@
   const loadingLabelValue = typeof loadingLabel !== 'undefined' && typeof loadingLabel === 'string' ? loadingLabel : 'Memuat mutasi...';
   const emptyHintValue = typeof emptyHint !== 'undefined' && typeof emptyHint === 'string' ? emptyHint : 'Belum ada mutasi untuk akun ini.';
   const isUtamaWallet = walletBucketValue === 'utama';
+  const isMaderaWallet = walletBucketValue === 'madera';
 %>
 
 <style>
@@ -162,6 +163,9 @@
     <% if (isUtamaWallet) { %>
       <div class="mut-card acc-amber" title="Biaya Percepatan Pencairan QRIS (1%)"><p class="k">Biaya QRIS 1%</p><p class="v" id="hdr-fee" style="color:#fbbf24">Rp 0</p><p class="h">Muncul otomatis jika ada mutasi biaya 1%.</p></div>
     <% } %>
+    <% if (isMaderaWallet) { %>
+      <div class="mut-card acc-amber" title="Biaya Transfer BI-Fast (Madera)"><p class="k">Biaya Transfer</p><p class="v" id="hdr-fee3" style="color:#fbbf24">Rp 0</p><p class="h">Total biaya transfer BI-Fast sesuai filter.</p></div>
+    <% } %>
   </div>
   <!-- Strip Rekonsiliasi (khusus Utama): cocokkan catatan OrderKuota vs saldo fisik -->
   <div id="reconcile-strip" style="display:none;margin-top:12px"></div>
@@ -189,6 +193,7 @@
   // Rekonsiliasi: Utama pakai rantai saldo provider; Madera pakai feed-vs-DB (saldo per baris tak ada).
   const RECONCILE_WALLET = walletBucket === 'utama' ? 'utama' : (walletBucket === 'madera' ? 'madera' : null);
   const isUtamaWallet = walletBucket === 'utama';
+  const isMaderaWallet = walletBucket === 'madera';
   const AUTO_REFRESH_MS = walletBucket === 'madera' ? 30000 : 10000;
   const PAGE_SIZES = [15,30,50,100,200,300,500];
   const ALL_ID = '__all__';
@@ -216,6 +221,8 @@
   const desc=(r)=>String(r.description||parseRaw(r).keterangan||parseRaw(r).description||parseRaw(r).note||'-').trim();
   const feeRow=(r)=>{const t=desc(r).toLowerCase(); return t.includes('biaya percepatan pencairan qris') || (t.includes('biaya percepatan') && t.includes('qris')) || t.includes('biaya percepatan pencairan');};
   const feeAmount=(r)=>{if(!isUtamaWallet) return 0; const raw=parseRaw(r); const c=[raw.biaya_percepatan_pencairan_qris,raw.biaya_percepatan,raw.biaya_pencairan,raw.service_fee,raw.fee]; for(const x of c){if(x===null||x===undefined) continue; const p=Number(String(x).replace(/[^\d-]/g,'')); if(Number.isFinite(p)&&p>0) return p;} return feeRow(r)?Math.abs(Number(r.amount||0)):0;};
+  const feeMaderaRow=(r)=>{const t=desc(r).toLowerCase(); return t.includes('biaya transfer bi fast')||t.includes('biaya transfer bi-fast')||(t.includes('biaya transfer')&&t.includes('bi fast'));};
+  const maderaFeeAmount=(r)=>isMaderaWallet&&feeMaderaRow(r)?Math.abs(Number(r.amount||0)):0;
   const balanceBefore=(r)=>r.type==='credit'?Number(r.balanceAfter||0)-Number(r.amount||0):Number(r.balanceAfter||0)+Number(r.amount||0);
   const refreshUrl=(id)=>refreshUrlTemplate.replace('__ACCOUNT_ID__',encodeURIComponent(id));
 
@@ -241,7 +248,7 @@
   }
 
   function normalizeRows(rows){
-    return (rows||[]).map((r)=>({...r,_time:new Date(r.time||r.createdAt),_desc:desc(r),_account:`${String(r.accountCode||accountMap[currentAccountId]?.code||'-')} ${String(r.merchant||accountMap[currentAccountId]?.merchantName||'-')}`.trim(),_fee:feeAmount(r)})).sort((a,b)=>b._time-a._time);
+    return (rows||[]).map((r)=>({...r,_time:new Date(r.time||r.createdAt),_desc:desc(r),_account:`${String(r.accountCode||accountMap[currentAccountId]?.code||'-')} ${String(r.merchant||accountMap[currentAccountId]?.merchantName||'-')}`.trim(),_fee:feeAmount(r),_fee3:maderaFeeAmount(r)})).sort((a,b)=>b._time-a._time);
   }
 
   function populateSiteFilter(){
@@ -257,12 +264,14 @@
     const credit = rows.reduce((s,r)=>s+(r.type==='credit'?Number(r.amount||0):0),0);
     const debit = rows.reduce((s,r)=>s+(r.type==='debit'?Number(r.amount||0):0),0);
     const fee = isUtamaWallet ? rows.reduce((s,r)=>s+Number(r._fee||0),0) : 0;
+    const fee3 = isMaderaWallet ? rows.reduce((s,r)=>s+Number(r._fee3||0),0) : 0;
     let opening=current; if(!isAll&&rows.length){opening=balanceBefore(rows[rows.length-1]);}
     document.getElementById('hdr-opening').textContent=rp(opening);
     document.getElementById('hdr-current').textContent=rp(current);
     document.getElementById('hdr-credit').textContent=rp(credit);
     document.getElementById('hdr-debit').textContent=rp(debit);
     if(isUtamaWallet&&document.getElementById('hdr-fee')) document.getElementById('hdr-fee').textContent=rp(fee);
+    if(isMaderaWallet&&document.getElementById('hdr-fee3')) document.getElementById('hdr-fee3').textContent=rp(fee3);
   }
 
   function buildColumns(){
@@ -276,6 +285,7 @@
       {title:'Kredit',field:'amount',width:140,sorter:'number',formatter:(c)=>{const r=c.getRow().getData();return r.type==='credit'?`<div style="font-size:14px;font-weight:900;color:#22c55e;font-family:ui-monospace,SFMono-Regular,monospace">+${esc(rp(r.amount))}</div>`:'<span style="color:var(--muted)">-</span>';}}
     ];
     if(isUtamaWallet){cols.push({title:'Biaya Percepatan Pencairan QRIS (1%)',field:'_fee',width:230,sorter:'number',formatter:(c)=>Number(c.getValue()||0)>0?`<div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:ui-monospace,SFMono-Regular,monospace">${esc(rp(c.getValue()))}</div>`:'<span style="color:var(--muted)">-</span>'});}
+    if(isMaderaWallet){cols.push({title:'Biaya Transfer',field:'_fee3',width:170,sorter:'number',formatter:function(c){var v=Number(c.getValue()||0);return v>0?'<div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:ui-monospace,SFMono-Regular,monospace">'+esc(rp(v))+'</div>':'<span style="color:var(--muted)">-</span>';}});}
     cols.push({title:'Saldo',field:'balanceAfter',width:150,sorter:'number',formatter:(c)=>`<div style="font-size:14px;font-weight:900;color:var(--ink);font-family:ui-monospace,SFMono-Regular,monospace">${esc(rp(c.getValue()))}</div>`});
     return cols;
   }
