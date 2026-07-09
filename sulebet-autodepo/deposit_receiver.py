@@ -42,11 +42,36 @@ import json
 import hmac
 import hashlib
 import logging
+import subprocess
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import db as dbmod
+
+_HERE = os.path.dirname(os.path.abspath(__file__))
+WORKER_PATH = os.path.join(_HERE, "auto_deposit_worker.py")
+WORKER_LOG = os.path.join(_HERE, "logs", "auto-deposit.log")
+
+
+def trigger_worker():
+    """Jalankan worker SEGERA (detached) begitu ada transaksi baru, supaya
+    saldo tidak menunggu cron per-menit. Worker punya file-lock sendiri, jadi
+    aman kalau bentrok dgn cron (yg satu langsung exit). Output diarahkan ke
+    log worker yang sama dengan cron. Gagal spawn tidak mengganggu respons HTTP.
+    """
+    try:
+        logf = open(WORKER_LOG, "a")
+        subprocess.Popen(
+            [sys.executable, WORKER_PATH],
+            stdout=logf, stderr=logf,
+            stdin=subprocess.DEVNULL,
+            start_new_session=True,  # lepas dari proses receiver
+            cwd=_HERE,
+        )
+        log.info("Worker dipicu langsung (instant deposit).")
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Gagal memicu worker langsung: %s (cron tetap jalan)", exc)
 
 HOST = os.environ.get("SULEBET_RECEIVER_HOST", "127.0.0.1")
 PORT = int(os.environ.get("SULEBET_RECEIVER_PORT", "8787"))
@@ -182,11 +207,14 @@ class Handler(BaseHTTPRequestHandler):
             if result.get("dedup"):
                 log.info("DEDUP ref sudah antri (id=%s) %s Rp%s",
                          result.get("id"), payload.get("userId"), payload.get("finalAmount"))
+                self._json(200, {"success": True, "queued": True, "id": result.get("id")})
             else:
                 log.info("ANTRI id=%s member=%s Rp%s ref=%s",
                          result.get("id"), payload.get("userId"),
                          payload.get("finalAmount"), payload.get("qrId"))
-            self._json(200, {"success": True, "queued": True, "id": result.get("id")})
+                # Balas HTTP dulu, lalu picu worker (spawn tidak menahan respons).
+                self._json(200, {"success": True, "queued": True, "id": result.get("id")})
+                trigger_worker()
         else:
             # 200 supaya app tidak retry hal yang memang tidak bisa diproses
             # (mis. member 'guest' / amount 0). Dicatat untuk audit.
