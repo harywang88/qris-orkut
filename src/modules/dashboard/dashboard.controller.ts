@@ -5,7 +5,7 @@ import fs from 'fs';
 import { spawnSync } from 'child_process';
 import type { OutboxEvent, QrisAccount, Prisma } from '@prisma/client';
 import { config } from '../../config';
-import { db } from '../../config/database';
+import { db, dbRead } from '../../config/database';
 import { qrisReceivedTodayMap } from '../../shared/daily-usage.service';
 import { selectQrisAccountForSite, NoEligibleAccountError } from '../../shared/qris-account-selector';
 import { logger } from '../../config/logger';
@@ -875,6 +875,7 @@ function parseMutationPresentation(
 }
 
 async function getQrisBalanceSummary() {
+  const db = dbRead; // pintu-baca: hindari antre di belakang tulisan
   const accounts = await db.qrisAccount.findMany({
     where: { status: 'active' },
     select: {
@@ -1735,6 +1736,7 @@ async function buildMaderaRealRowsForAccount(
   source: MutationSource,
   limit: number,
 ) {
+  const db = dbRead; // pintu-baca
   const rows = await db.mutation.findMany({
     where: { qrisAccountId: account.id, walletCategory: 'madera' },
     orderBy: { transactionTime: 'desc' },
@@ -1791,6 +1793,7 @@ async function buildMaderaRealRowsForAccount(
 }
 
 export async function getMutationsJson(req: Request, res: Response): Promise<void> {
+  const db = dbRead; // pintu-baca: menu mutasi murni baca -> tak antre di belakang tulisan
   try {
     const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
     const source = normalizeMutationSource(req.query.source);
@@ -2223,6 +2226,7 @@ async function computeWalletReconcileForAccount(
   walletCategory: string,
   physicalBalance: number | null,
 ) {
+  const db = dbRead; // pintu-baca
   const rows = await db.mutation.findMany({
     where: { qrisAccountId: account.id, walletCategory },
     orderBy: { transactionTime: 'asc' },
@@ -2340,6 +2344,7 @@ async function computeMaderaReconcileForAccount(
 }
 
 export async function getQrisReconcileApi(req: Request, res: Response): Promise<void> {
+  const db = dbRead; // pintu-baca
   try {
     // Wallet mana yang dicocokkan: 'qris' (default), 'utama', atau 'madera'.
     // qris/utama pakai rantai balanceAfter provider vs saldo fisik.

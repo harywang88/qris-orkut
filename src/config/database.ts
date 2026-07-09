@@ -21,6 +21,20 @@ if (process.env.NODE_ENV !== 'production') {
   globalForPrisma.prisma = db;
 }
 
+// Pintu BACA terpisah (read-only reader). Koneksi Prisma KEDUA ke file SQLite yang sama.
+// Handler yang MURNI baca (menu mutasi/laporan) pakai `dbRead` supaya TIDAK antre di belakang
+// tulisan pada koneksi tunggal `db` (connection_limit=1). WAL: banyak pembaca + 1 penulis berdampingan.
+const globalForPrismaRead = global as unknown as { prismaRead: PrismaClient };
+export const dbRead =
+  globalForPrismaRead.prismaRead ||
+  new PrismaClient({
+    log: [{ emit: 'event', level: 'error' }],
+  });
+
+if (process.env.NODE_ENV !== 'production') {
+  globalForPrismaRead.prismaRead = dbRead;
+}
+
 /**
  * Initialize SQLite pragmas for optimal performance.
  * Must be called once at startup before accepting requests.
@@ -57,13 +71,16 @@ export async function initDatabase(): Promise<void> {
   try {
     // WAL mode allows concurrent reads while writing (app + worker processes).
     // SQLite PRAGMAs return result sets so we use $queryRawUnsafe, not $executeRaw.
-    await db.$queryRawUnsafe('PRAGMA journal_mode=WAL');
-    await db.$queryRawUnsafe('PRAGMA synchronous=NORMAL');
-    // busy_timeout: tulis MENUNGGU lock sampai 15 dtk (app + worker + sync loop nulis ke 1 file SQLite).
-    // Tanpa ini, tulis bersamaan langsung SQLITE_BUSY → Prisma P1008 "Operations timed out".
-    await db.$queryRawUnsafe('PRAGMA busy_timeout=15000');
+    // PRAGMA bersifat PER-KONEKSI: WAJIB dipasang di KEDUA client (db + dbRead). Terutama busy_timeout —
+    // tanpa itu di dbRead, tulis (bila ada) langsung SQLITE_BUSY. journal_mode=WAL persist di file.
+    for (const client of [db, dbRead]) {
+      await client.$queryRawUnsafe('PRAGMA journal_mode=WAL');
+      await client.$queryRawUnsafe('PRAGMA synchronous=NORMAL');
+      await client.$queryRawUnsafe('PRAGMA busy_timeout=15000');
+    }
     await db.$queryRawUnsafe('PRAGMA cache_size=-65536');
-    logger.info('Database initialized (WAL mode, synchronous=NORMAL)');
+    await dbRead.$queryRawUnsafe('PRAGMA cache_size=-16384');
+    logger.info('Database initialized (WAL; db=writer, dbRead=reader terpisah)');
   } catch (err) {
     logger.error({ err }, 'Failed to initialize database pragmas');
     throw err;
