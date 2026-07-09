@@ -1,15 +1,18 @@
 /**
  * Builds the payment note attached to each QRIS transaction.
  *
- * Format: DDMMYY HHmmss ACCCODE USERID FINALAMOUNT
+ * Format: QRIS-ACCCODE-USERID-YYYYMMDDHHmmss | Rp FINALAMOUNT
  *
- * Example:
- *   date     = 2026-03-21 14:05:09
- *   accCode  = "01WR"
- *   userId   = "USER123"
- *   final    = 50001
+ * Contoh:
+ *   date     = 2026-07-09 12:43:12
+ *   accCode  = "NGGICEL"
+ *   userId   = "nagogilo"
+ *   final    = 10002
  *
- *   Result: "210326 140509 01WR USER123 50001"
+ *   Hasil: "QRIS-NGGICEL-nagogilo-20260709124312 | Rp 10.002"
+ *
+ * Note ini hanya untuk tampilan/keterangan (tidak dipakai untuk mencocokkan
+ * pembayaran — matching pakai qrisAccountId + finalAmount + window waktu).
  */
 export function buildNote(
   date: Date,
@@ -19,11 +22,14 @@ export function buildNote(
 ): string {
   const dd = String(date.getDate()).padStart(2, '0');
   const mm = String(date.getMonth() + 1).padStart(2, '0');
-  const yy = String(date.getFullYear()).slice(-2);
+  const yyyy = String(date.getFullYear());
 
   const HH = String(date.getHours()).padStart(2, '0');
   const min = String(date.getMinutes()).padStart(2, '0');
   const ss = String(date.getSeconds()).padStart(2, '0');
 
-  return `${dd}${mm}${yy} ${HH}${min}${ss} ${accCode} ${userId} ${finalAmount}`;
+  const stamp = `${yyyy}${mm}${dd}${HH}${min}${ss}`;
+  const amountText = finalAmount.toLocaleString('id-ID');
+
+  return `QRIS-${accCode}-${userId}-${stamp} | Rp ${amountText}`;
 }
