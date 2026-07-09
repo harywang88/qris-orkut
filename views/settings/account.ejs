@@ -399,9 +399,13 @@ html.light .acset-site-header:hover {
           <p class="acset-card-sub" id="wg-site-count">0 site terdaftar</p>
         </div>
       </div>
-      <button onclick="apAddSite()" class="acset-btn-primary" style="width:auto;padding:9px 18px;font-size:0.82rem">
+      <% if (typeof canManageWebgame === 'undefined' || canManageWebgame) { %>
+      <button onclick="apAddSite()" id="wg-add-btn" class="acset-btn-primary" style="width:auto;padding:9px 18px;font-size:0.82rem">
         <i class="fa-solid fa-plus"></i> Tambah Site
       </button>
+      <% } else { %>
+      <span style="padding:6px 12px;border-radius:999px;font-size:0.72rem;font-weight:700;background:rgba(148,163,184,0.15);color:#94a3b8"><i class="fa-solid fa-lock" style="margin-right:5px"></i>Lihat saja</span>
+      <% } %>
     </div>
     <div style="padding:16px" id="ap-sites-list">
       <div id="wg-empty-state" style="padding:40px 0;text-align:center;color:var(--muted)">
@@ -458,9 +462,11 @@ html.light .acset-site-header:hover {
         </div>
         <p style="margin-top:8px;font-size:0.73rem;opacity:0.7"><i class="fa-solid fa-circle-info mr-1"></i>Fee diatur oleh admin.</p>
       </div>
+      <% if (typeof canManageWebgame === 'undefined' || canManageWebgame) { %>
       <button type="submit" class="acset-btn-primary">
         <i class="fa-solid fa-circle-check"></i> Simpan Pengaturan
       </button>
+      <% } %>
     </form>
   </div>
 </div>
@@ -616,12 +622,14 @@ async function toggleAllAccounts(enabled) {
 /* ── Web Game: SERVER-backed Site CRUD (dibagi ke semua akun ber-akses Pengaturan) ── */
 const WG_KEY = 'hw_wg_sites';                          // cadangan lokal + sumber migrasi
 const WG_SITES_URL = '<%= url('/dashboard/api/webgame/sites') %>';
+const WG_CAN_MANAGE = <%= (typeof canManageWebgame === 'undefined' || canManageWebgame) ? 'true' : 'false' %>;  // boleh edit web game?
 var wgCache = null;                                     // daftar site di memori (dari server)
 
 function wgLoadSites() { return Array.isArray(wgCache) ? wgCache : []; }
 
 function wgSaveSites(sites) {
   wgCache = Array.isArray(sites) ? sites : [];
+  if (!WG_CAN_MANAGE) { return; }   // view-only: jangan tulis ke server (backend juga menolak 403)
   try { localStorage.setItem(WG_KEY, JSON.stringify(wgCache)); } catch (e) {}   // cadangan lokal
   fetch(WG_SITES_URL, { method: 'POST', credentials: 'include',
     headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sites: wgCache }) })
@@ -642,14 +650,23 @@ async function wgInit() {
     var local = [];
     try { local = JSON.parse(localStorage.getItem(WG_KEY) || '[]'); } catch (e) { local = []; }
     wgCache = Array.isArray(local) ? local : [];
-    if (wgCache.length) {
+    if (WG_CAN_MANAGE && wgCache.length) {   // hanya yg boleh edit yang seed migrasi ke server
       fetch(WG_SITES_URL, { method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sites: wgCache }) })
         .catch(function () {});
     }
   }
   wgRenderAll();
+  wgApplyReadonly();
   setTimeout(apAutoCheckAll, 400);
+}
+
+// View-only: kunci semua input kartu web game (tombol edit sudah disembunyikan;
+// backend juga menolak POST simpan). Field Test Login tetap terbaca (readonly ok).
+function wgApplyReadonly() {
+  if (WG_CAN_MANAGE) return;
+  document.querySelectorAll('#ap-sites-list input, #ap-sites-list textarea').forEach(function (el) { el.setAttribute('readonly', 'readonly'); });
+  document.querySelectorAll('#ap-sites-list select').forEach(function (el) { el.setAttribute('disabled', 'disabled'); });
 }
 function wgGenKey() { return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2,'0')).join(''); }
 function wgGenId()  { return 'wg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
@@ -1176,15 +1193,11 @@ function wgBuildCard(s, num) {
         </div>
 
         <div style="display:flex;flex-wrap:wrap;gap:8px">
-          <button onclick="apSaveSite('${s.id}')" id="ap-save-btn-${s.id}" class="acset-btn-primary" style="width:auto;padding:9px 18px;font-size:0.82rem">
-            <i class="fa-solid fa-check"></i> Simpan
-          </button>
+          ${WG_CAN_MANAGE ? `<button onclick="apSaveSite('${s.id}')" id="ap-save-btn-${s.id}" class="acset-btn-primary" style="width:auto;padding:9px 18px;font-size:0.82rem"><i class="fa-solid fa-check"></i> Simpan</button>` : ''}
           <button onclick="apTestSite('${s.id}')" id="ap-test-btn-${s.id}" class="acset-btn-secondary" style="font-size:0.82rem">
             <i class="fa-solid fa-play"></i> Test Login
           </button>
-          <button onclick="apDeleteSite('${s.id}')" class="acset-btn-secondary" style="color:#f87171;border-color:rgba(248,113,113,0.3);margin-left:auto;font-size:0.82rem">
-            <i class="fa-solid fa-trash"></i> Hapus
-          </button>
+          ${WG_CAN_MANAGE ? `<button onclick="apDeleteSite('${s.id}')" class="acset-btn-secondary" style="color:#f87171;border-color:rgba(248,113,113,0.3);margin-left:auto;font-size:0.82rem"><i class="fa-solid fa-trash"></i> Hapus</button>` : ''}
         </div>
         <div id="ap-site-result-${s.id}" style="display:none"></div>
         <div style="padding-top:14px;border-top:1px solid var(--line)">

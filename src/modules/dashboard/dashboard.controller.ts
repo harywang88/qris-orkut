@@ -55,6 +55,9 @@ import {
   createAlias,
   updateAlias,
   deleteAlias,
+  isMasterUser,
+  canDo,
+  getMenuPermsForUser,
   MENU_DEFS,
   type AccessUser,
 } from '../../shared/alias-access.service';
@@ -3072,15 +3075,17 @@ export async function saveWebgameSitesApi(req: Request, res: Response): Promise<
 }
 
 export async function showAccountSettings(req: Request, res: Response): Promise<void> {
+  const _u = req.session.user as AccessUser | undefined;
+  const canManageWebgame = !!_u && (isMasterUser(_u) || canDo(getMenuPermsForUser(_u), 'settings', 'manage'));
   try {
     const qrisAccounts = await db.qrisAccount.findMany({
       orderBy: { code: 'asc' },
       select: { id: true, code: true, merchantName: true, status: true },
     });
-    res.render('settings/account', { title: 'Pengaturan Akun', qrisAccounts });
+    res.render('settings/account', { title: 'Pengaturan Akun', qrisAccounts, canManageWebgame });
   } catch (err) {
     logger.error({ err }, 'showAccountSettings error');
-    res.render('settings/account', { title: 'Pengaturan Akun', qrisAccounts: [] });
+    res.render('settings/account', { title: 'Pengaturan Akun', qrisAccounts: [], canManageWebgame });
   }
 }
 
