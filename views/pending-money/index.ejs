@@ -234,25 +234,18 @@
       <span class="pm-tab-underline" id="pmUnderline" style="transform:translateX(0)"></span>
     </div>
 
-    <div class="pm-panel" id="pmPanelManual">
+    <div class="pm-panel">
       <label class="pm-label">Website <span style="color:#ef4444">*</span></label>
       <select class="pm-field" id="pmWebsite">
         <option value="">— Pilih Website —</option>
         <% siteList.forEach(function(w){ %><option value="<%= w.name %>"><%= w.name %><%= w.code ? (' (' + w.code + ')') : '' %></option><% }); %>
       </select>
-      <label class="pm-label">User ID / Member</label>
-      <input class="pm-field" id="pmMember" type="text" placeholder="Username member (opsional)">
+      <label class="pm-label">User ID / Member <span id="pmMemberReq" style="color:#ef4444;display:none">*</span></label>
+      <input class="pm-field" id="pmMember" type="text" placeholder="Username member">
       <label class="pm-label">Catatan</label>
-      <input class="pm-field" id="pmNote" type="text" placeholder="Catatan klaim (opsional)">
-      <div class="pm-note"><i class="fa-solid fa-circle-info" style="margin-top:2px"></i><span><b>CS isi saldo member di panel sendiri.</b> Sistem mencatat uang ini jadi <b>Transaksi</b> (masuk omzet hari ini) &amp; mutasi jadi <b>match</b>. Tidak mengirim deposit otomatis.</span></div>
-    </div>
-
-    <div class="pm-panel" id="pmPanelAuto" style="display:none">
-      <div class="pm-soon">
-        <i class="fa-solid fa-robot"></i>
-        <p style="font-weight:800; margin-top:10px">Auto Deposit via API</p>
-        <p style="font-size:12.5px; color:#94a3b8; margin-top:4px">Python akan otomatis deposit ke website member lewat API. Fitur ini <b>segera dibangun</b> — untuk sekarang gunakan tab Manual.</p>
-      </div>
+      <input class="pm-field" id="pmNote" type="text" placeholder="Catatan (opsional)">
+      <div class="pm-note" id="pmHintManual"><i class="fa-solid fa-circle-info" style="margin-top:2px"></i><span><b>Manual:</b> CS isi saldo member di panel sendiri. Sistem mencatat jadi <b>Transaksi</b> (masuk omzet) &amp; mutasi jadi <b>match</b>. Tidak mengirim deposit otomatis.</span></div>
+      <div class="pm-note" id="pmHintAuto" style="display:none"><i class="fa-solid fa-robot" style="margin-top:2px;color:#a78bfa"></i><span><b>Auto Deposit:</b> bot langsung <b>kredit saldo member</b> di website + catat jadi Transaksi. <b>Member wajib diisi.</b> Hanya website ber-API deposit (mis. Sulebet).</span></div>
     </div>
 
     <div class="pm-actions">
@@ -282,29 +275,33 @@
     document.getElementById('pmTabManual').classList.toggle('active', man);
     document.getElementById('pmTabAuto').classList.toggle('active', !man);
     document.getElementById('pmUnderline').style.transform = 'translateX(' + (man ? '0' : '100%') + ')';
-    document.getElementById('pmPanelManual').style.display = man ? 'block' : 'none';
-    document.getElementById('pmPanelAuto').style.display = man ? 'none' : 'block';
+    document.getElementById('pmHintManual').style.display = man ? 'block' : 'none';
+    document.getElementById('pmHintAuto').style.display = man ? 'none' : 'block';
+    document.getElementById('pmMemberReq').style.display = man ? 'none' : 'inline';
     var submit = document.getElementById('pmSubmit');
-    submit.style.opacity = man ? '1' : '.45';
-    submit.style.pointerEvents = man ? 'auto' : 'none';
-    submit.innerHTML = man ? '<i class="fa-solid fa-check"></i> Proses &amp; Catat' : '<i class="fa-solid fa-clock"></i> Segera';
+    submit.style.opacity = '1';
+    submit.style.pointerEvents = 'auto';
+    submit.innerHTML = man
+      ? '<i class="fa-solid fa-check"></i> Proses &amp; Catat'
+      : '<i class="fa-solid fa-robot"></i> Kredit Otomatis';
   }
   async function pmSubmit() {
-    if (pmCur.mode !== 'manual') return;
     var website = document.getElementById('pmWebsite').value;
     if (!website) { alert('Pilih Website dulu ya.'); return; }
+    var member = document.getElementById('pmMember').value.trim();
+    if (pmCur.mode === 'auto') {
+      if (!member) { alert('Auto Deposit wajib isi Member (username yang dikredit).'); return; }
+      var amt = document.getElementById('pmiAmount').textContent || '';
+      if (!confirm('Kredit otomatis ' + amt + ' ke member "' + member + '" di ' + website + '?\nPastikan member benar — saldo akan langsung masuk.')) return;
+    }
     var btn = document.getElementById('pmSubmit');
     btn.style.pointerEvents = 'none'; btn.style.opacity = '.6';
-    var payload = {
-      mode: 'manual', website: website,
-      userIdExt: document.getElementById('pmMember').value.trim(),
-      note: document.getElementById('pmNote').value.trim(),
-    };
+    var payload = { mode: pmCur.mode, website: website, userIdExt: member, note: document.getElementById('pmNote').value.trim() };
     try {
       var r = await fetch(pmCur.bookUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       var d = {}; try { d = await r.json(); } catch (e2) {}
       if (r.ok && d.ok) { location.reload(); }
-      else { alert(d.message || 'Gagal memproses booking.'); btn.style.pointerEvents = 'auto'; btn.style.opacity = '1'; }
+      else { alert(d.message || 'Gagal memproses.'); btn.style.pointerEvents = 'auto'; btn.style.opacity = '1'; }
     } catch (e) { alert('Gagal: ' + e.message); btn.style.pointerEvents = 'auto'; btn.style.opacity = '1'; }
   }
   async function pmCatat(btn) {

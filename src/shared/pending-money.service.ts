@@ -14,6 +14,7 @@ import fs from 'fs';
 import path from 'path';
 import { db } from '../config/database';
 import { logger } from '../config/logger';
+import { attemptDeposit } from './deposit.service';
 
 const PENDING_MIN_AGE_MS = 2 * 60 * 1000; // 2 menit
 const WIB_MS = 7 * 60 * 60 * 1000;
@@ -301,8 +302,15 @@ export async function bookPendingMutation(
   // clientId wajib (FK). Ambil dari Website yang dipilih CS (dropdown = daftar Client).
   const website = (opts.website || '').trim();
   if (!website) return { ok: false, message: 'Website wajib dipilih untuk booking.' };
-  const client = await db.client.findFirst({ where: { OR: [{ name: website }, { panelCode: website }] }, select: { id: true } });
+  const client = await db.client.findFirst({ where: { OR: [{ name: website }, { panelCode: website }] }, select: { id: true, depositApiUrl: true } });
   if (!client) return { ok: false, message: `Website "${website}" tidak dikenal.` };
+
+  // Mode AUTO = kredit member otomatis via pipa deposit. Butuh member + website ber-API deposit.
+  const isAuto = (opts.mode || '').trim() === 'auto';
+  if (isAuto) {
+    if (!(opts.userIdExt || '').trim()) return { ok: false, message: 'Auto Deposit wajib mengisi Member (username yang dikredit).' };
+    if (!client.depositApiUrl) return { ok: false, message: `Website "${website}" belum punya Auto Deposit (API deposit belum diisi). Gunakan tab Manual.` };
+  }
 
   const now = new Date();
   const meta = JSON.stringify({
@@ -335,7 +343,7 @@ export async function bookPendingMutation(
           qrPayload: '',
           qrImageBase64: '',
           statusPay: 'paid',
-          statusBot: 'manual_booked', // ← gerbang: tak ada loop deposit yang baca ini
+          statusBot: isAuto ? 'deposit_queued' : 'manual_booked', // auto → picu deposit; manual → diam
           paidAt: now, // omzet jatuh di HARI diproses (bukan hari uang masuk)
           expiresAt: now,
           issuerName: m.issuerName ?? null,
@@ -347,7 +355,12 @@ export async function bookPendingMutation(
       await t.mutation.update({ where: { id: m.id }, data: { matchedTransactionId: tx.id } });
       return tx.id;
     });
-    logger.info({ mutationId: m.id, transactionId: txId, amount: m.amount, website }, 'pending booked to transaction');
+    logger.info({ mutationId: m.id, transactionId: txId, amount: m.amount, website, mode: isAuto ? 'auto' : 'manual' }, 'pending booked to transaction');
+    if (isAuto) {
+      // Auto Deposit: picu kredit member via pipa deposit (attemptDeposit → receiver → worker panel).
+      // Booking sudah commit; kalau attemptDeposit gagal, loop deposit-retry qris-orkut akan mencoba lagi.
+      try { await attemptDeposit(txId); } catch (err) { logger.error({ err, txId }, 'pending auto-deposit: attemptDeposit gagal (akan retry)'); }
+    }
     return { ok: true, transactionId: txId };
   } catch (err) {
     if (err instanceof Error && err.message === 'ALREADY_MATCHED') {
