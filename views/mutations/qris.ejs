@@ -1064,6 +1064,66 @@
     return earliestBalance - getSignedAmount(earliest);
   }
 
+  // ── Cek Selisih rantai saldo (per akun) ────────────────────────────────────
+  // Selisih yg PENTING = saldo LONCAT NAIK antar mutasi (balanceBefore > saldo-akhir
+  // baris sebelumnya) = ada pembayaran MASUK yg HILANG. Turun (fee / pencairan ke Utama
+  // yg TAK tercatat di feed QRIS) = NORMAL, bukan selisih. KUNCI: urut per-MENIT
+  // (report ":00" & app ":detik" digabung, lalu diurut ikut rantai saldo) → tak ada
+  // alarm palsu dari urutan yang campur dalam 1 menit.
+  function _sdSigned(r){ return getStatusCode(r) === 'IN' ? Number(r.amount||0) : -Number(r.amount||0); }
+  function _sdAfter(r){ return Number(r.balanceAfter||0); }
+  function _sdBefore(r){ return _sdAfter(r) - _sdSigned(r); }
+  function _sdMinute(r){ return Math.floor(new Date(r.time).getTime()/60000); }
+
+  function _reorderChainMinute(rows) {
+    var out = [], i = 0;
+    while (i < rows.length) {
+      var j = i, m = _sdMinute(rows[i]);
+      while (j < rows.length && _sdMinute(rows[j]) === m) j++;
+      var group = rows.slice(i, j);
+      if (group.length <= 1) { out.push(group[0]); }
+      else {
+        var rem = group.slice(), afters = {};
+        group.forEach(function(r){ afters[_sdAfter(r)] = true; });
+        var cur = out.length ? _sdAfter(out[out.length - 1]) : null;
+        while (rem.length) {
+          var idx = (cur != null)
+            ? rem.findIndex(function(r){ return _sdBefore(r) === cur; })
+            : rem.findIndex(function(r){ return !afters[_sdBefore(r)]; });
+          if (idx < 0) idx = 0;
+          out.push(rem[idx]); cur = _sdAfter(rem[idx]); rem.splice(idx, 1);
+        }
+      }
+      i = j;
+    }
+    return out;
+  }
+
+  function _detectSelisihForAccount(rows) {
+    var arr = rows.filter(function(r){ return r && r.time; })
+                  .sort(function(a,b){ return new Date(a.time).getTime() - new Date(b.time).getTime(); });
+    var ordered = _reorderChainMinute(arr);
+    var prevAfter = null;
+    for (var k = 0; k < ordered.length; k++) {
+      var r = ordered[k];
+      if (prevAfter === null) { r._chainState = 'ok'; r._selisih = 0; }
+      else {
+        var gap = _sdBefore(r) - prevAfter;
+        if (gap > 0) { r._chainState = 'gap'; r._selisih = gap; }        // saldo loncat NAIK = mutasi masuk hilang
+        else if (gap < 0) { r._chainState = 'drop'; r._selisih = 0; }    // saldo turun (fee/pencairan ke Utama) = normal
+        else { r._chainState = 'ok'; r._selisih = 0; }                   // nyambung
+      }
+      prevAfter = _sdAfter(r);
+    }
+  }
+
+  function detectSelisih(rows) {
+    if (!Array.isArray(rows) || !rows.length) return;
+    var byAcct = {};
+    rows.forEach(function(r){ var k = r.accountCode || r.merchant || '_'; (byAcct[k] = byAcct[k] || []).push(r); });
+    Object.keys(byAcct).forEach(function(k){ _detectSelisihForAccount(byAcct[k]); });
+  }
+
   function getDescription(row) {
     return row.description || parseRaw(row).keterangan || '';
   }
@@ -1281,6 +1341,7 @@
       if (!data.ok) return;
 
       allRows = data.mutations || [];
+      detectSelisih(allRows);   // Cek Selisih rantai saldo (urut per-menit) + tanda loncatan-naik
       currentQrisBalance = isAll ? sumQrisBalance() : Number(data.currentBalance || accountMap[currentAccountId]?.lastQrisBalance || 0);
 
       // Update tab count badge (hanya mode akun tunggal)
@@ -1597,6 +1658,21 @@
             return '<div class="qris-mut-balance">' + esc(rp(r.balanceAfter)) + '</div>';
           },
           sorter: 'number'
+        },
+        {
+          title: 'CEK SELISIH', field: '_selisih', width: 160, hozAlign: 'center',
+          headerTooltip: 'Cek rantai saldo (DB). Saldo LONCAT NAIK antar mutasi = ada pembayaran MASUK yang HILANG (selisih). Saldo turun (fee/pencairan ke Utama) = normal.',
+          formatter: function(cell) {
+            var r = cell.getRow().getData();
+            if (r._chainState === 'gap') {
+              return '<span class="qris-mut-pill" style="background:rgba(239,68,68,.16);color:#fca5a5;font-weight:800" title="Saldo loncat naik = ada mutasi masuk yang hilang di titik ini"><i class="fa-solid fa-triangle-exclamation"></i> SELISIH +' + esc(rp(r._selisih)) + '</span>';
+            }
+            if (r._chainState === 'drop') {
+              return '<span style="color:var(--muted);font-size:11px" title="Saldo turun (pencairan/fee ke Utama) = normal, bukan selisih">↓ normal</span>';
+            }
+            return '<span style="color:#86efac;font-size:13px" title="Rantai saldo nyambung"><i class="fa-solid fa-check"></i></span>';
+          },
+          sorter: function(a, b, aRow, bRow) { return (Number(aRow.getData()._selisih)||0) - (Number(bRow.getData()._selisih)||0); }
         }
           ]
         });
