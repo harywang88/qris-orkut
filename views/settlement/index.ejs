@@ -1640,8 +1640,18 @@ function filterSettlementBySite(){
           const timeStr  = new Date(s.createdAt).toLocaleString('id-ID', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Jakarta' });
           const redirectUrl = extractSettlementRedirectUrl(s.note);
           const cleanNote = cleanSettlementNote(s.note);
-          const feeAmount = extractSettlementFee(s.note);
-          const totalAmount = extractSettlementTotal(s.note) ?? (s.amount + Math.max(0, feeAmount || 0));
+          const isMaderaBank = (s.fromWallet === 'madera' && s.toWallet === 'bank');
+          const feeAmount = isMaderaBank ? 2500 : extractSettlementFee(s.note);
+          const totalAmount = isMaderaBank ? (s.amount + 2500) : (extractSettlementTotal(s.note) ?? (s.amount + Math.max(0, feeAmount || 0)));
+          let keterangan;
+          if (s.status === 'done' && s.toWallet === 'bank') {
+            const _holder = String(s.note || '').split('|')[0].replace(/\[\[.*?\]\]/g, '').trim();
+            keterangan = [s.bankName, _holder, s.bankAccount].filter(Boolean).join(' - ') + ' Berhasil';
+          } else if (s.status === 'done') {
+            keterangan = 'Berhasil';
+          } else {
+            keterangan = cleanNote;
+          }
         %>
           <tr data-status="<%= s.status %>" data-ts="<%= new Date(s.createdAt).getTime() %>">
             <td class="text-xs text-muted whitespace-nowrap"><%= timeStr %></td>
@@ -1657,26 +1667,8 @@ function filterSettlementBySite(){
             <td class="text-xs text-muted hidden lg:table-cell" style="max-width:280px">
               <div class="setl-hist-note-wrap">
                 <div style="max-width:250px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                  <%= cleanNote || '—' %>
+                  <%= keterangan || '—' %>
                 </div>
-                <% if (redirectUrl) { %>
-                  <button
-                    type="button"
-                    class="setl-hist-action"
-                    onclick='openTransferFlowModal(<%- JSON.stringify({
-                      settlementId: s.id,
-                      referenceNo: s.referenceNo || null,
-                      redirectUrl,
-                      bankName: s.bankName || null,
-                      bankAccount: s.bankAccount || null,
-                      amount: s.amount,
-                      message: cleanNote || null,
-                      status: s.status,
-                    }) %>)'>
-                    <i class="fa-solid fa-link"></i>
-                    Lanjutkan PIN
-                  </button>
-                <% } %>
               </div>
             </td>
             <td class="text-center">
