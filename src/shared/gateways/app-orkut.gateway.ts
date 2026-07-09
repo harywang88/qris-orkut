@@ -635,14 +635,28 @@ function parseMutationEntry(raw: Record<string, unknown>, walletCat: 'qris' | 'u
             ? String(raw.no_referensi)
             : undefined;
 
+  // QRIS pencairan (uang KELUAR): app-api OrderKuota menaruh nominal di field `kredit`
+  // (isCredit=true) walau saldo QRIS TURUN → ter-catat 'credit'. Web report mencatatnya
+  // 'debit'. Samakan ke 'debit' (+ balanceBefore benar) supaya TER-DEDUP dgn report dan
+  // tak dobel di Mutasi QRIS (type ikut ke dalam hash dedup).
+  let outType: 'credit' | 'debit' = isCredit ? 'credit' : 'debit';
+  let outBalanceBefore = balanceBefore;
+  if (resolvedWalletCat === 'qris' && isCredit) {
+    const pTxt = (description + ' ' + issuerName).toLowerCase();
+    if (pTxt.includes('pencairan') || pTxt.includes('withdraw qris') || pTxt.includes('tarik saldo qris')) {
+      outType = 'debit';
+      outBalanceBefore = balanceAfter + amount; // OUT: saldo sebelum = saldo sesudah + nominal
+    }
+  }
+
   // ── Dedup hash ────────────────────────────────────────────────────────────
   const hashSource  = `app-orkut:${resolvedWalletCat}:${description}:${dateStr}:${amount}:${balanceAfter}`;
   const rawHash     = crypto.createHash('sha256').update(hashSource).digest('hex');
 
   return {
     amount,
-    type:            isCredit ? 'credit' : 'debit',
-    balanceBefore,
+    type:            outType,
+    balanceBefore:   outBalanceBefore,
     balanceAfter,
     issuerName:      issuerName || undefined,
     rrn,
