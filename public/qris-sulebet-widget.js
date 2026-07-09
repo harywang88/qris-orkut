@@ -122,11 +122,33 @@
       var text = String(raw).split('IDR')[0].split('|')[0].trim();
       if (text && text.length > 1 && text.length < 40) return text;
     }
-    // pola "nama | nama" (username muncul dua kali di header)
+    // DOM: header sulebet -> <span style="font-weight:bold">username</span>
+    // diikuti <span> | Nama Lengkap</span>. Cari <span> bold yang tetangganya
+    // mengandung "|". Ini pola paling andal untuk template sulebet mobile+desktop.
+    try {
+      var spans = document.querySelectorAll('span');
+      for (var s = 0; s < spans.length; s++) {
+        var sp = spans[s];
+        var style = (sp.getAttribute && sp.getAttribute('style')) || '';
+        if (!/font-weight\s*:\s*bold/i.test(style)) continue;
+        var next = sp.nextElementSibling;
+        var nextTxt = next ? (next.innerText || next.textContent || '') : '';
+        if (nextTxt.indexOf('|') === -1) continue;
+        var uname = String(sp.innerText || sp.textContent || '').trim();
+        if (uname && /^[A-Za-z0-9_.]{3,30}$/.test(uname)) return uname;
+      }
+    } catch (e) {}
+
+    // Teks: pola "username | Nama Lengkap" (username = token pertama, tanpa spasi).
+    // Ambil token pertama sebelum '|' yang berupa username valid.
     try {
       var body = document.body ? (document.body.innerText || '') : '';
-      var m = body.match(/([A-Za-z0-9_]{3,20})\s*\|\s*\1/);
-      if (m) return m[1];
+      // "username | nama" identik (fallback lama)
+      var mid = body.match(/([A-Za-z0-9_]{3,20})\s*\|\s*\1/);
+      if (mid) return mid[1];
+      // "username | Nama Lengkap" (beda) -> ambil username-nya
+      var m2 = body.match(/(?:^|\s)([A-Za-z0-9_.]{3,30})\s*\|\s+[A-Za-z]/);
+      if (m2) return m2[1];
     } catch (e) {}
     return null;
   }
