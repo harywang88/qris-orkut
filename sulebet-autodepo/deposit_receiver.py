@@ -122,6 +122,7 @@ def enqueue(payload: dict) -> dict:
         amount = int(payload.get("finalAmount") or payload.get("paidAmount") or 0)
     except (TypeError, ValueError):
         amount = 0
+    note = str(payload.get("note") or "").strip()[:180]  # note seragam dari qris-orkut
 
     if not member or member.lower() == "guest":
         return {"ok": False, "reason": "member_kosong", "http": 200}
@@ -143,8 +144,8 @@ def enqueue(payload: dict) -> dict:
         paid_at = payload.get("paidAt") or None
         conn.execute(
             """INSERT INTO transactions (site_id, member_id, amount, transaction_id,
-               status, paid_at) VALUES (?,?,?,?, 'paid', COALESCE(?, datetime('now')))""",
-            (SITE_ID, member, amount, ref, paid_at),
+               status, paid_at, note) VALUES (?,?,?,?, 'paid', COALESCE(?, datetime('now')), ?)""",
+            (SITE_ID, member, amount, ref, paid_at, note),
         )
         conn.commit()
         tid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]

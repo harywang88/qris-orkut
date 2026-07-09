@@ -350,8 +350,12 @@
     result.innerHTML =
       '<div class="text-center">' +
         '<div class="well well-sm" style="margin-top:10px;margin-bottom:15px;"><strong>Scan QR Code menggunakan e-wallet atau mobile banking</strong></div>' +
-        '<div style="background:#fff;border-radius:8px;padding:12px;display:inline-block;margin-bottom:15px;">' +
+        '<div style="background:#fff;border-radius:8px;padding:12px;display:inline-block;margin-bottom:10px;">' +
           '<img id="qp-qr-img" src="' + imgSrc + '" style="width:220px;height:220px;" alt="QR Code">' +
+        '</div>' +
+        '<div style="margin:0 auto 14px;max-width:300px;">' +
+          '<div style="color:#f0871e;font-weight:700;font-size:13px;">QR ini hanya untuk <span style="text-decoration:underline">1 kali pembayaran</span></div>' +
+          '<div style="color:#999;font-size:11px;margin-top:2px;">Jika terlanjur bayar 2 kali, hubungi CS</div>' +
         '</div>' +
         '<div style="font-size:24px;font-weight:bold;margin:10px 0;">' + amtText + '</div>' +
         (d.uniqueCode != null ? '<div style="font-size:11px;color:#999;margin-bottom:5px;">Kode Unik: ' + d.uniqueCode + '</div>' : '') +

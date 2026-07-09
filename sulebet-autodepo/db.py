@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     member_id             TEXT,                       -- username member di panel
     amount                INTEGER NOT NULL,
     transaction_id        TEXT,                       -- ref unik (mis. qrId gateway)
+    note                  TEXT DEFAULT '',            -- note deposit (dari payload qris-orkut)
     status                TEXT DEFAULT 'paid',        -- hanya 'paid' yang diproses
     paid_at               TEXT,
     auto_deposited        INTEGER DEFAULT 0,          -- 0/1/2/3 (lihat modul docstring)
@@ -70,6 +71,10 @@ def connect():
 def init_db():
     conn = connect()
     conn.executescript(SCHEMA)
+    # Migrasi additif: kolom note untuk DB lama yang tabelnya sudah ada tanpa 'note'.
+    cols = [r[1] for r in conn.execute("PRAGMA table_info(transactions)").fetchall()]
+    if "note" not in cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN note TEXT DEFAULT ''")
     conn.commit()
     conn.close()
 

@@ -207,7 +207,9 @@ class SulebetPanel:
         self._log(f"Form deposit loaded. Bank asal: {bank_asal}, Bank tujuan: {bank_id}")
 
         # Step 2: submit deposit
-        clean_note = re.sub(r"[^a-zA-Z0-9 ]", "", note or "Auto Deposit QRIS")
+        # Izinkan pemisah note format seragam (- | . : ( )) selain alnum+spasi,
+        # supaya note "QRIS Auto-Merchant-user-datetime | nominal" tampil utuh di panel.
+        clean_note = re.sub(r"[^A-Za-z0-9 \-|.:()]", "", note or "Auto Deposit QRIS")
         submit = self.request(
             self.site_root + "process/users/updateCreditUsersManual", "POST",
             {"username": member_username, "amount": amount, "op": "bayar",

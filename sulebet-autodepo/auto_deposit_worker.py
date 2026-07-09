@@ -84,7 +84,7 @@ def process_site(conn, site):
     log(f"Processing site: {site_name} (site_id: {site['id']})")
 
     txs = conn.execute(
-        """SELECT id, member_id, amount, transaction_id, paid_at
+        """SELECT id, member_id, amount, transaction_id, paid_at, note
            FROM transactions
            WHERE site_id = ? AND status = 'paid'
              AND member_id IS NOT NULL AND member_id != ''
@@ -133,7 +133,13 @@ def process_tx(conn, panel, trx, bank_id, site_id):
         log("    Skipped - already being processed")
         return
 
-    note = "QRIS Auto " + _clean(trx["transaction_id"] or "")
+    # Pakai note dari qris-orkut (format seragam: QRIS Auto-Merchant-user-datetime | nominal)
+    # bila tersedia; fallback ke format lama bila kosong (transaksi lama / non-qris).
+    try:
+        stored_note = (trx["note"] or "").strip()
+    except (KeyError, IndexError):
+        stored_note = ""
+    note = stored_note or ("QRIS Auto " + _clean(trx["transaction_id"] or ""))
     result = panel.deposit(member, int(trx["amount"]), bank_id, note)
     success = 1 if result.get("success") else 0
     message = result.get("message", "")

@@ -28,6 +28,31 @@ function buildIdempotencyKey(qrId: string): string {
   return `dep:${qrId}`;
 }
 
+// Stempel waktu WIB (UTC+7) format YYYYMMDDHHMMSS, mis. 20260708083821.
+function wibStamp(d: Date): string {
+  const t = new Date(d.getTime() + 7 * 3600_000);
+  const p = (n: number): string => String(n).padStart(2, '0');
+  return (
+    t.getUTCFullYear().toString() +
+    p(t.getUTCMonth() + 1) + p(t.getUTCDate()) +
+    p(t.getUTCHours()) + p(t.getUTCMinutes()) + p(t.getUTCSeconds())
+  );
+}
+
+// Note auto-deposit seragam untuk Transaction (History Generate QR kolom Note/Issuer)
+// SEKALIGUS dikirim ke panel game: "QRIS Auto-<Merchant>-<user>-<YYYYMMDDHHMMSS> | <nominal>".
+function buildAutoDepositNote(tx: {
+  userIdExt: string;
+  finalAmount: number;
+  paidAt: Date | null;
+  qrisAccount?: { merchantName: string | null; code: string | null } | null;
+}): string {
+  const merchant = (tx.qrisAccount?.merchantName || tx.qrisAccount?.code || 'QRIS').trim();
+  const user = (tx.userIdExt || '-').trim();
+  const stamp = wibStamp(tx.paidAt ?? new Date());
+  return `QRIS Auto-${merchant}-${user}-${stamp} | ${tx.finalAmount}`;
+}
+
 function buildPayload(tx: {
   qrId: string;
   id: string;
@@ -135,6 +160,7 @@ export async function attemptDeposit(transactionId: string): Promise<void> {
           depositApiKey: true,
         },
       },
+      qrisAccount: { select: { merchantName: true, code: true } },
     },
   });
 
@@ -146,6 +172,14 @@ export async function attemptDeposit(transactionId: string): Promise<void> {
   if (tx.statusPay !== 'paid') {
     logger.warn({ transactionId, statusPay: tx.statusPay }, 'attemptDeposit: not paid yet');
     return;
+  }
+
+  // Note seragam: tulis ke Transaction.note (→ History Generate QR) & ikut ke payload
+  // (buildPayload memakai tx.note) → panel game menerima note yang sama.
+  const autoNote = buildAutoDepositNote(tx);
+  if (tx.note !== autoNote) {
+    tx.note = autoNote;
+    await db.transaction.update({ where: { id: transactionId }, data: { note: autoNote } });
   }
 
   const idempotencyKey = buildIdempotencyKey(tx.qrId);
