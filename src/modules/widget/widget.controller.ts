@@ -4,6 +4,28 @@ import { generateQr, NoEligibleAccountError, AccountFullError } from '../../shar
 import { getTransactionByQrId } from '../transactions/transactions.service';
 import { findClientByWidgetKey, isOriginAllowed } from './widget.service';
 import { logger } from '../../config/logger';
+import { RateLimiter } from '../../core/rate-limit';
+
+// Batasi pembuatan QR: maks 5 per menit per (widgetKey + IP). Endpoint ini
+// publik (hanya dijaga key + Origin, dan Origin bisa dipalsukan dari script),
+// jadi ini pertahanan dasar anti-spam pembuatan QR massal.
+const generateLimiter = new RateLimiter({ windowMs: 60_000, max: 5 });
+
+/**
+ * Ambil IP ASLI client. Di depan app ada Cloudflare + nginx, jadi req.ip
+ * malah berisi IP edge Cloudflare yang BERUBAH-UBAH tiap request (bikin
+ * rate-limit tak pernah kena). IP client asli ada di elemen PERTAMA
+ * X-Forwarded-For: "clientAsli, cfEdge, ...". Fallback ke req.ip.
+ */
+function clientIp(req: Request): string {
+  const xff = req.headers['x-forwarded-for'];
+  const raw = Array.isArray(xff) ? xff[0] : xff;
+  if (raw) {
+    const first = raw.split(',')[0].trim();
+    if (first) return first;
+  }
+  return req.ip || req.socket.remoteAddress || 'unknown';
+}
 
 /**
  * Sets permissive-but-scoped CORS headers for the widget endpoints.
@@ -41,6 +63,23 @@ export async function handleWidgetGenerate(req: Request, res: Response): Promise
         'Widget generate blocked by origin allowlist',
       );
       res.status(403).json({ success: false, error: 'Origin tidak diizinkan' });
+      return;
+    }
+
+    // Rate limit per (widgetKey + IP). Dicek SETELAH key & origin valid supaya
+    // request sah tidak terganggu request bermasalah dari IP/kunci lain.
+    const rl = generateLimiter.check(`${client.id}:${clientIp(req)}`);
+    if (!rl.allowed) {
+      const retrySec = Math.ceil(rl.retryAfterMs / 1000);
+      logger.warn(
+        { clientId: client.id, ip: clientIp(req), retrySec },
+        'Widget generate rate-limited',
+      );
+      res.setHeader('Retry-After', String(retrySec));
+      res.status(429).json({
+        success: false,
+        error: `Terlalu banyak permintaan. Coba lagi dalam ${retrySec} detik.`,
+      });
       return;
     }
 
