@@ -362,7 +362,8 @@ async function runAppSaldoLane(account: QrisAccount, state: SchedulerState): Pro
 
 // System B utama: tarik mutasi UTAMA (fetchBalanceHistory, /api/v2/get bebas-limit). Dipanggil saat saldo utama berubah.
 async function pullUtamaMutationsOnce(account: QrisAccount): Promise<void> {
-  const result = await appGateway.fetchBalanceHistory(account);
+  // koko: saldo utama berubah -> tarik 10 BARIS TERAKHIR saja (bukan banyak halaman) -> simpan DB (dedup).
+  const result = await appGateway.fetchBalanceHistory(account, { maxRows: 10 });
   const newCount = await ingestMutationBatch(account, result.mutations);
   await db.qrisAccount.update({
     where: { id: account.id },
@@ -415,7 +416,8 @@ async function runAppBalanceLane(account: QrisAccount, state: SchedulerState): P
   state.balance.running = true;
 
   try {
-    const result = await appGateway.fetchBalanceHistory(account);
+    // koko: lane saldo utama -> 10 baris terakhir saja (hemat).
+    const result = await appGateway.fetchBalanceHistory(account, { maxRows: 10 });
     const newCount = await ingestMutationBatch(account, result.mutations);
 
     await db.qrisAccount.update({

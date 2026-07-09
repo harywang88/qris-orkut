@@ -1044,6 +1044,7 @@ export class AppOrkutGateway implements IOrkutGateway {
 
   async fetchBalanceHistory(
     account: Pick<QrisAccount, 'code' | 'sessionTokenEncrypted' | 'cookiesEncrypted' | 'deviceId'>,
+    opts?: { maxRows?: number },
   ): Promise<AppBalanceHistoryResult> {
     const empty: AppBalanceHistoryResult = { mutations: [], mainBalance: null };
     const ctx = resolveAppRequestContext(account);
@@ -1056,6 +1057,12 @@ export class AppOrkutGateway implements IOrkutGateway {
 
     const allMutations: RawMutation[] = this._parsePage(first.pageData, account.code, 'utama');
     const mainBalance = first.mainBalance;
+
+    // koko: pull Utama cukup N baris TERAKHIR (page 1 = terbaru) -> HANYA 1 halaman, potong ke maxRows.
+    // Hemat: tak tarik banyak halaman. Dedup (storeMutationIfNew) + report-lane cadangan tetap jaga kelengkapan.
+    if (opts?.maxRows && opts.maxRows > 0) {
+      return { mutations: allMutations.slice(0, opts.maxRows), mainBalance };
+    }
 
     const totalPages = Math.min(
       typeof first.pageData.pages === 'number' ? first.pageData.pages : 1,
