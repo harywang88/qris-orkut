@@ -419,6 +419,7 @@
     font-size: 10px;
     font-weight: 800;
     color: #f8fafc;
+    white-space: nowrap;   /* note 1 baris (issuer di bawah) -> total 2 baris, bukan 3 */
   }
   .tx-cell-issuer {
     font-size: 9px;
@@ -918,8 +919,8 @@ const txTable = new Tabulator('#transactions-table', {
     {
       title: 'Note / Issuer',
       field: 'note',
-      minWidth: 170,
-      width: 190,
+      minWidth: 300,
+      width: 360,
       formatter: (cell) => {
         const row = cell.getData();
         return `<div class="tx-cell-stack"><div class="tx-cell-note">${cell.getValue() || '-'}</div><div class="tx-cell-issuer">${row.issuerName || '-'}</div></div>`;
@@ -966,7 +967,7 @@ const txTable = new Tabulator('#transactions-table', {
         // bukan paidAt — keduanya beda beberapa detik (bot memproses setelah paid).
         if (val === 'deposit_success') {
           const row = cell.getData();
-          const t = row.botProcessedAt ? timeFmt(row.botProcessedAt).replace(/:/g, '.') : '';
+          const t = row.botProcessedAt ? timeFmt(new Date(row.botProcessedAt).getTime() + 1000).replace(/:/g, '.') : '';
           if (t) {
             return `<div class="tx-cell-stack" style="align-items:center;gap:2px">${pill}<div style="font-size:10px;font-weight:800;color:#86efac;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${t}</div></div>`;
           }
