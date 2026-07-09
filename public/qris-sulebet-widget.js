@@ -39,14 +39,27 @@
     tabLabel: 'QRIS QuickPay',
     pollIntervalMs: 3000,
 
+    // Aktif/nonaktif cepat tanpa mencopot tag script. false = widget diam total.
+    enabled: true,
+
     // Daftar username yang boleh MELIHAT tab (untuk uji bertahap saat situs live).
-    // Kosong = tampil untuk SEMUA member. Diisi dari atribut pada tag <script>:
-    //   <script src=".../qris-sulebet-widget.js" data-only-users="nagogilo"></script>
+    // Kosong = tampil untuk SEMUA member.
     onlyUsers: [],
   };
 
-  // Baca allowlist username dari tag <script> yang memuat widget ini.
-  (function readOnlyUsers() {
+  // ── Konfigurasi dari halaman sulebet (gaya AlfaelPay) ──────────────────────
+  // Prioritas: window.QRIS_QUICKPAY_CONFIG (snippet inline) > atribut data-* pada
+  // tag <script> > default di atas. Semua opsional; yang tidak diisi pakai default.
+  (function readPageConfig() {
+    function toUserList(v) {
+      if (!v) return [];
+      if (Object.prototype.toString.call(v) === '[object Array]') {
+        return v.map(function (s) { return String(s).trim().toLowerCase(); }).filter(Boolean);
+      }
+      return String(v).split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+    }
+
+    // (1) atribut pada tag <script src=".../qris-sulebet-widget.js" ...>
     try {
       var cs = document.currentScript;
       if (!cs) {
@@ -55,9 +68,29 @@
           if (ss[i].src && ss[i].src.indexOf('qris-sulebet-widget.js') !== -1) { cs = ss[i]; break; }
         }
       }
-      var raw = (cs && cs.getAttribute) ? (cs.getAttribute('data-only-users') || '') : '';
-      CONFIG.onlyUsers = raw.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
-    } catch (e) { CONFIG.onlyUsers = []; }
+      if (cs && cs.getAttribute) {
+        var attrUsers = cs.getAttribute('data-only-users');
+        if (attrUsers != null) CONFIG.onlyUsers = toUserList(attrUsers);
+        if (cs.getAttribute('data-enabled') === 'false') CONFIG.enabled = false;
+      }
+    } catch (e) {}
+
+    // (2) objek global window.QRIS_QUICKPAY_CONFIG (menimpa atribut)
+    try {
+      var g = window.QRIS_QUICKPAY_CONFIG;
+      if (g && typeof g === 'object') {
+        if (typeof g.enabled === 'boolean') CONFIG.enabled = g.enabled;
+        // whitelist / onlyUsers: dukung dua nama supaya mirip AlfaelPay.
+        if (g.whitelist != null) CONFIG.onlyUsers = toUserList(g.whitelist);
+        else if (g.onlyUsers != null) CONFIG.onlyUsers = toUserList(g.onlyUsers);
+        if (g.key) CONFIG.key = String(g.key);
+        if (g.baseUrl) CONFIG.baseUrl = String(g.baseUrl).replace(/\/+$/, '');
+        if (g.tabLabel) CONFIG.tabLabel = String(g.tabLabel);
+        if (g.minAmount > 0) CONFIG.minAmount = parseInt(g.minAmount, 10);
+        if (g.maxAmount > 0) CONFIG.maxAmount = parseInt(g.maxAmount, 10);
+        if (g.pollIntervalMs > 0) CONFIG.pollIntervalMs = parseInt(g.pollIntervalMs, 10);
+      }
+    } catch (e) {}
   })();
 
   // ── util ──────────────────────────────────────────────────────────────────
@@ -391,6 +424,7 @@
 
   // ── init: coba sisip tab sampai nav tersedia ───────────────────────────────
   function init() {
+    if (!CONFIG.enabled) return; // dimatikan dari config -> diam total
     var attempts = 0;
     var loop = setInterval(function () {
       if (injectTab() || ++attempts >= 40) clearInterval(loop);
