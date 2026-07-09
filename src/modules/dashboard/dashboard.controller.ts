@@ -47,6 +47,7 @@ import {
 import { publishMutationUpdated, storeMutationIfNew, canonicalMutationHash } from '../../shared/mutation-ingest.service';
 import { listOutboxEventsSince, parseOutboxPayload } from '../../shared/outbox.service';
 import { generateDashboardQrTransaction } from '../../shared/dashboard-generate-qr.service';
+import { readWebgameSites, writeWebgameSites } from '../../shared/webgame-sites.service';
 import { mapMaderaFeedItem } from '../../shared/madera-history.service';
 import {
   getSiteScopeForUser,
@@ -3044,6 +3045,29 @@ export async function checkWebGamePanelApi(req: Request, res: Response): Promise
   } catch (err) {
     logger.error({ err }, 'checkWebGamePanelApi error');
     res.status(500).json({ ok: false, online: false, message: 'Error internal saat cek panel.' });
+  }
+}
+
+// ── Web Game sites (SERVER-shared; dibagi semua akun ber-menu Pengaturan) ──
+export async function getWebgameSitesApi(req: Request, res: Response): Promise<void> {
+  try {
+    res.json({ ok: true, sites: readWebgameSites() });
+  } catch (err) {
+    logger.error({ err }, 'getWebgameSitesApi error');
+    res.status(500).json({ ok: false, sites: [] });
+  }
+}
+
+export async function saveWebgameSitesApi(req: Request, res: Response): Promise<void> {
+  try {
+    const body = (req.body || {}) as { sites?: unknown };
+    const sites = Array.isArray(body.sites) ? body.sites.slice(0, 100) : [];
+    writeWebgameSites(sites);
+    void logAction(req, { category: 'client', action: 'webgame_sites_save', summary: 'Simpan daftar Web Game (' + sites.length + ' site)', detail: { count: sites.length } });
+    res.json({ ok: true, count: sites.length });
+  } catch (err) {
+    logger.error({ err }, 'saveWebgameSitesApi error');
+    res.status(500).json({ ok: false });
   }
 }
 

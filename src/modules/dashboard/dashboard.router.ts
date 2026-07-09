@@ -46,6 +46,8 @@ import {
   showAliases,
   showAccountSettings,
   checkWebGamePanelApi,
+  getWebgameSitesApi,
+  saveWebgameSitesApi,
   showAkunAlias,
   getAliasAccountsApi,
   createAliasApi,
@@ -120,6 +122,8 @@ router.get('/login-logs', requireMenu('login-logs'), showLoginLogs);
 router.get('/aliases', requirePermission('setting:manage'), showAliases);
 router.get('/account-settings', requireMenu('settings'), showAccountSettings);
 router.post('/api/webgame/check', requirePermission('setting:manage'), checkWebGamePanelApi);
+router.get('/api/webgame/sites', requireMenu('settings'), getWebgameSitesApi);
+router.post('/api/webgame/sites', requireMenu('settings'), saveWebgameSitesApi);
 // ── Akun Alias (master-only) ──────────────────────────────────────────────────
 router.get('/akun-alias', requireMaster, showAkunAlias);
 router.get('/api/akun-alias', requireMaster, getAliasAccountsApi);

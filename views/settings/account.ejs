@@ -613,15 +613,44 @@ async function toggleAllAccounts(enabled) {
   }
 }
 
-/* ── Web Game: localStorage-based Site CRUD ────────────────────── */
-const WG_KEY = 'hw_wg_sites';
+/* ── Web Game: SERVER-backed Site CRUD (dibagi ke semua akun ber-akses Pengaturan) ── */
+const WG_KEY = 'hw_wg_sites';                          // cadangan lokal + sumber migrasi
+const WG_SITES_URL = '<%= url('/dashboard/api/webgame/sites') %>';
+var wgCache = null;                                     // daftar site di memori (dari server)
 
-function wgLoadSites() {
-  try { return JSON.parse(localStorage.getItem(WG_KEY) || '[]'); }
-  catch { return []; }
+function wgLoadSites() { return Array.isArray(wgCache) ? wgCache : []; }
+
+function wgSaveSites(sites) {
+  wgCache = Array.isArray(sites) ? sites : [];
+  try { localStorage.setItem(WG_KEY, JSON.stringify(wgCache)); } catch (e) {}   // cadangan lokal
+  fetch(WG_SITES_URL, { method: 'POST', credentials: 'include',
+    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sites: wgCache }) })
+    .catch(function () {});
 }
 
-function wgSaveSites(sites) { localStorage.setItem(WG_KEY, JSON.stringify(sites)); }
+// Muat daftar dari SERVER (dibagi semua akun). Jika server kosong tapi ada data lama
+// di localStorage → migrasi otomatis (seed ke server) supaya konfigurasi tak hilang.
+async function wgInit() {
+  var serverSites = null;
+  try {
+    var r = await fetch(WG_SITES_URL, { credentials: 'include' });
+    if (r.ok) { var d = await r.json(); if (d && Array.isArray(d.sites)) serverSites = d.sites; }
+  } catch (e) {}
+  if (serverSites && serverSites.length) {
+    wgCache = serverSites;
+  } else {
+    var local = [];
+    try { local = JSON.parse(localStorage.getItem(WG_KEY) || '[]'); } catch (e) { local = []; }
+    wgCache = Array.isArray(local) ? local : [];
+    if (wgCache.length) {
+      fetch(WG_SITES_URL, { method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sites: wgCache }) })
+        .catch(function () {});
+    }
+  }
+  wgRenderAll();
+  setTimeout(apAutoCheckAll, 400);
+}
 function wgGenKey() { return Array.from(crypto.getRandomValues(new Uint8Array(16))).map(b => b.toString(16).padStart(2,'0')).join(''); }
 function wgGenId()  { return 'wg_' + Date.now() + '_' + Math.random().toString(36).slice(2,7); }
 
@@ -1373,8 +1402,7 @@ async function apDeleteSite(siteId) {
 document.addEventListener('DOMContentLoaded', function() {
   const tab = new URLSearchParams(window.location.search).get('tab');
   if (tab) acsetTab(tab);
-  wgRenderAll();
-  // Auto-cek status Login/Logout tiap web game (badge hijau=Login / merah=Logout).
-  setTimeout(apAutoCheckAll, 400);
+  // Muat web game dari server (dibagi semua akun) lalu auto-cek status Login/Logout.
+  wgInit();
 });
 </script>
