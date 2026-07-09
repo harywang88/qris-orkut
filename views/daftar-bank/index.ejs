@@ -188,8 +188,8 @@
     if(!acc||!code||!norek){ toast('Pilih bank & isi no rekening dulu',true); return; }
     var btn=document.getElementById('dbank-cek-btn'); var oh=btn.innerHTML; btn.innerHTML='<span class="dbank-spin"></span>'; btn.disabled=true;
     fetch(INQUIRY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fromWallet:'madera',qrisAccountId:acc,bankCode:code,bankAccount:norek,amount:10000})}).then(function(r){return r.json();}).then(function(d){
-      var nama=d&&(d.accountName||d.name||d.ownerName||(d.result&&d.result.account_name));
-      if(d&&d.ok!==false&&nama){ document.getElementById('dbank-f-nama').value=nama; var o=document.getElementById('dbank-owner'); o.className='dbank-owner ok'; document.getElementById('dbank-owner-txt').innerHTML='<i class="fa-solid fa-circle-check chk"></i> <span class="dbank-owner-name">'+esc(nama)+'</span>'; toast('Nama rekening ditemukan'); }
+      var nama=(d&&d.data&&(d.data.accountName||d.data.name||d.data.ownerName))||"";
+      if(d&&d.ok&&nama){ document.getElementById('dbank-f-nama').value=nama; var o=document.getElementById('dbank-owner'); o.className='dbank-owner ok'; document.getElementById('dbank-owner-txt').innerHTML='<i class="fa-solid fa-circle-check chk"></i> <span class="dbank-owner-name">'+esc(nama)+'</span>'; toast('Nama rekening ditemukan'); }
       else { toast((d&&d.error)||'Nama tak ditemukan, isi manual',true); }
     }).catch(function(){ toast('Gagal cek, isi manual',true); }).finally(function(){ btn.innerHTML=oh; btn.disabled=false; });
   };
