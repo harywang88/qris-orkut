@@ -1115,6 +1115,14 @@ export async function showTransactions(
             orderBy: [{ transactionTime: 'desc' }, { createdAt: 'desc' }],
             take: 3,
           },
+          // Waktu bot benar-benar memproses deposit (beda dari paidAt). Ambil
+          // attempt sukses terakhir supaya kolom Bot bisa tampilkan jam proses.
+          depositAttempts: {
+            where: { status: 'success' },
+            select: { createdAt: true },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
         },
       }),
       db.transaction.count({ where }),
@@ -1301,6 +1309,12 @@ export async function getLatestTransactionsApi(req: Request, res: Response): Pro
           orderBy: [{ transactionTime: 'desc' }, { createdAt: 'desc' }],
           take: 3,
         },
+        depositAttempts: {
+          where: { status: 'success' },
+          select: { createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
       },
     });
     const _resolveSite = buildResolver();
@@ -1322,6 +1336,7 @@ export async function getLatestTransactionsApi(req: Request, res: Response): Pro
         statusBot: tx.statusBot,
         expiresAt: tx.expiresAt,
         paidAt: tx.paidAt || fb?.transactionTime || null,
+        botProcessedAt: tx.depositAttempts?.[0]?.createdAt || (tx.statusBot === 'deposit_success' ? tx.updatedAt : null),
         createdAt: tx.createdAt,
         note: tx.note,
         issuerName: tx.issuerName || fb?.issuerName || null,

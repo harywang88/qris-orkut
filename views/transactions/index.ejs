@@ -685,6 +685,9 @@ const tableData = <%- JSON.stringify(transactions.map((tx) => {
     statusBot: tx.statusBot,
     expiresAt: tx.expiresAt,
     paidAt: tx.paidAt || fallbackMutation?.transactionTime || null,
+    // Jam bot memproses deposit (dari attempt sukses). Fallback ke updatedAt
+    // bila attempt tidak tersedia (mis. transaksi lama). Beda dari paidAt.
+    botProcessedAt: tx.depositAttempts?.[0]?.createdAt || (tx.statusBot === 'deposit_success' ? tx.updatedAt : null),
     createdAt: tx.createdAt,
     note: tx.note,
     issuerName: tx.issuerName || fallbackMutation?.issuerName || null,
@@ -959,11 +962,11 @@ const txTable = new Tabulator('#transactions-table', {
           manual_booked: 'BOOKED',
         }[val] || String(val).replaceAll('_', ' ').toUpperCase();
         const pill = `<span class="${botBadge[val] || 'qris-pill qris-pill-muted'}">${label}</span>`;
-        // Kalau sudah selesai diproses bot, tampilkan jam prosesnya (pakai paidAt
-        // sebagai perkiraan waktu; sistem memproses deposit segera setelah paid).
+        // Kalau sudah selesai diproses bot, tampilkan JAM PROSES BOT (botProcessedAt),
+        // bukan paidAt — keduanya beda beberapa detik (bot memproses setelah paid).
         if (val === 'deposit_success') {
           const row = cell.getData();
-          const t = row.paidAt ? timeFmt(row.paidAt).replace(/:/g, '.') : '';
+          const t = row.botProcessedAt ? timeFmt(row.botProcessedAt).replace(/:/g, '.') : '';
           if (t) {
             return `<div class="tx-cell-stack" style="align-items:center;gap:2px">${pill}<div style="font-size:10px;font-weight:800;color:#86efac;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${t}</div></div>`;
           }
