@@ -302,6 +302,16 @@
   function wireSubmit() {
     var btn = document.getElementById('qp-submit');
     if (!btn) return;
+    // Enter di kolom nominal: JANGAN submit <form> (default-nya navigasi ke
+    // beranda) — cegah lalu langsung generate QR.
+    var form = document.getElementById('qp-form');
+    if (form) {
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        var b = document.getElementById('qp-submit');
+        if (b) b.click();
+      });
+    }
     btn.addEventListener('click', function () {
       var amtInput = document.getElementById('qp-amount');
       var amount = amtInput ? amtInput.value.replace(/[^0-9]/g, '') : '';
@@ -453,13 +463,32 @@
   }
 
   // ── init: coba sisip tab sampai nav tersedia ───────────────────────────────
+  // Re-inject di-debounce: dipanggil observer tiap DOM berubah. Desktop memuat
+  // form deposit via AJAX & me-render ulang (id=deposit_form) -> tab QuickPay yg
+  // sudah disisipkan ikut terhapus. Kalau qp-tab hilang tapi nav deposit ada,
+  // sisipkan lagi. (Mobile tak render-ulang, jadi tak terpengaruh.)
+  var _reinjectTimer = null;
+  function scheduleInject() {
+    if (_reinjectTimer) return;
+    _reinjectTimer = setTimeout(function () {
+      _reinjectTimer = null;
+      if (!document.getElementById('qp-tab')) injectTab();
+    }, 200);
+  }
+
   function init() {
     if (!CONFIG.enabled) return; // dimatikan dari config -> diam total
+    injectTab();
+    // Pengintai DOM: sisip ulang tab QuickPay tiap form deposit (re)muncul.
+    try {
+      new MutationObserver(scheduleInject).observe(document.body, { childList: true, subtree: true });
+    } catch (e) {}
+    // Fallback awal (kalau MutationObserver tak tersedia / form telat muncul).
     var attempts = 0;
     var loop = setInterval(function () {
-      if (injectTab() || ++attempts >= 40) clearInterval(loop);
+      if (!document.getElementById('qp-tab')) injectTab();
+      if (++attempts >= 40) clearInterval(loop);
     }, 500);
-    injectTab();
   }
 
   if (document.readyState === 'loading') {
