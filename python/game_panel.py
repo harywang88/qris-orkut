@@ -56,6 +56,33 @@ def build_scraper(platform, creds):
     raise ValueError("Platform tidak dikenal: %r (pakai 'idn' atau 'pay4d')" % platform)
 
 
+def diagnose_offline(sc, fallback):
+    """Pesan OFFLINE yang jelas: bedakan URL-salah/404 vs cookie-kadaluarsa vs error lain."""
+    try:
+        if not hasattr(sc, "probe"):
+            return fallback
+        info = sc.probe() or {}
+        title = str(info.get("title") or "").lower()
+        final = str(info.get("final_url") or "").lower()
+        ip = info.get("egress_ip") or "?"
+        if "404" in title or "404.shtml" in final or "page not found" in title:
+            return ("URL panel admin SALAH (halaman 404). Link yang diisi mengarah ke 404 - "
+                    "isi URL PANEL ADMIN tempat kamu login sebagai mimin/admin, BUKAN situs utama "
+                    "pemain. (IP server: %s)" % ip)
+        if info.get("is_login_page"):
+            return ("Cookie tidak valid / kadaluarsa - panel mengarahkan ke halaman login. "
+                    "Ambil ulang cookie PHPSESSID dari browser (F12 -> Application -> Cookies).")
+        st = info.get("status")
+        if st and st != 200:
+            return "Panel membalas HTTP %s. Cek URL panel admin." % st
+        if info.get("api_status") == 200 and not info.get("api_authorized"):
+            return ("Halaman panel terbuka tapi sesi belum terautentikasi - cookie salah/kadaluarsa "
+                    "atau URL bukan panel admin PAY4D. (IP server: %s)" % ip)
+        return fallback
+    except Exception:
+        return fallback
+
+
 def main():
     result = {"ok": False, "online": False, "platform": "", "message": "", "cookies": {}}
     try:
@@ -113,7 +140,7 @@ def main():
         # login/cek gagal = OFFLINE dengan alasan (mis. maintenance / cookie kedaluwarsa).
         result["ok"] = True
         result["online"] = False
-        result["message"] = str(e)[:300] or "Login gagal."
+        result["message"] = diagnose_offline(sc, str(e)[:300] or "Login gagal.")
         try:
             result["cookies"] = sc.cookies_dict()
         except Exception:
