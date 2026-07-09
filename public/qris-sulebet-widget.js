@@ -38,7 +38,27 @@
     maxAmount: 10000000,
     tabLabel: 'QRIS QuickPay',
     pollIntervalMs: 3000,
+
+    // Daftar username yang boleh MELIHAT tab (untuk uji bertahap saat situs live).
+    // Kosong = tampil untuk SEMUA member. Diisi dari atribut pada tag <script>:
+    //   <script src=".../qris-sulebet-widget.js" data-only-users="nagogilo"></script>
+    onlyUsers: [],
   };
+
+  // Baca allowlist username dari tag <script> yang memuat widget ini.
+  (function readOnlyUsers() {
+    try {
+      var cs = document.currentScript;
+      if (!cs) {
+        var ss = document.getElementsByTagName('script');
+        for (var i = ss.length - 1; i >= 0; i--) {
+          if (ss[i].src && ss[i].src.indexOf('qris-sulebet-widget.js') !== -1) { cs = ss[i]; break; }
+        }
+      }
+      var raw = (cs && cs.getAttribute) ? (cs.getAttribute('data-only-users') || '') : '';
+      CONFIG.onlyUsers = raw.split(',').map(function (s) { return s.trim().toLowerCase(); }).filter(Boolean);
+    } catch (e) { CONFIG.onlyUsers = []; }
+  })();
 
   // ── util ──────────────────────────────────────────────────────────────────
   function rupiah(n) {
@@ -78,6 +98,15 @@
     return null;
   }
 
+  // Cek apakah username saat ini termasuk yang diizinkan melihat tab.
+  // onlyUsers kosong -> semua boleh. Ada isinya -> hanya yang cocok (case-insensitive).
+  function isUserAllowed() {
+    if (!CONFIG.onlyUsers || CONFIG.onlyUsers.length === 0) return true;
+    var u = detectUsername();
+    if (!u) return false; // gating aktif tapi user belum terdeteksi -> jangan tampilkan dulu
+    return CONFIG.onlyUsers.indexOf(String(u).trim().toLowerCase()) !== -1;
+  }
+
   // ── sisip tab QRIS QuickPay ────────────────────────────────────────────────
   function findNav() {
     return document.getElementById('depo-nav-pills') ||
@@ -98,6 +127,11 @@
     var nav = findNav();
     if (!nav) return false;
     if (document.getElementById('qp-tab')) return true;
+    // Gating username (uji bertahap): kalau tidak diizinkan, jangan sisip tab.
+    // Return false supaya loop init tetap mencoba lagi (username mungkin baru
+    // muncul di DOM beberapa saat kemudian). Setelah retry habis, tab tetap
+    // tidak muncul untuk user yang tidak diizinkan.
+    if (!isUserAllowed()) return false;
 
     var sampleLi = nav.querySelector('li');
     if (!sampleLi) return false;
