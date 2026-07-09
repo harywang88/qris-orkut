@@ -184,6 +184,7 @@
     site:         { label:'Site',         icon:'fa-sitemap',             color:'#8b5cf6' },
     merchant:     { label:'Merchant QR',  icon:'fa-store',               color:'#10b981' },
     settlement:   { label:'Kirim Uang',   icon:'fa-money-bill-transfer', color:'#f59e0b' },
+    bank:         { label:'Daftar Bank',  icon:'fa-building-columns',    color:'#0d9488' },
     'generate-qr':{ label:'Generate QR',  icon:'fa-qrcode',              color:'#14b8a6' },
     pending:      { label:'Uang Pending', icon:'fa-hourglass-half',      color:'#eab308' },
     sync:         { label:'Sinkron',      icon:'fa-rotate',              color:'#0ea5e9' },
@@ -191,7 +192,7 @@
     rbac:         { label:'Operator/RBAC',icon:'fa-user-shield',         color:'#ef4444' },
     lain:         { label:'Lainnya',      icon:'fa-circle-info',         color:'#6b7280' },
   };
-  var CAT_ORDER = ['auth','account','site','merchant','settlement','generate-qr','pending','sync','client','rbac','lain'];
+  var CAT_ORDER = ['auth','account','site','merchant','settlement','bank','generate-qr','pending','sync','client','rbac','lain'];
 
   var state = { category:'', actor:'', status:'', severity:'', q:'', from:'', to:'', page:1 };
   var newestTs = null, liveOn = true, liveTimer = null, loading = false, reqSeq = 0, lastCounts = {};

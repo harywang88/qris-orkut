@@ -48,6 +48,7 @@ import { publishMutationUpdated, storeMutationIfNew, canonicalMutationHash } fro
 import { listOutboxEventsSince, parseOutboxPayload } from '../../shared/outbox.service';
 import { generateDashboardQrTransaction } from '../../shared/dashboard-generate-qr.service';
 import { readWebgameSites, writeWebgameSites } from '../../shared/webgame-sites.service';
+import { listBanks, listBanksForScope, getBankById, createBank, updateBank, deleteBank } from '../../shared/site-bank.service';
 import { mapMaderaFeedItem } from '../../shared/madera-history.service';
 import {
   getSiteScopeForUser,
@@ -3081,6 +3082,94 @@ export async function saveWebgameSitesApi(req: Request, res: Response): Promise<
   }
 }
 
+// ── Daftar Bank per-site (CRUD + integrasi Kirim Uang) ───────────────────────
+function _bankSiteName(siteId: string): string {
+  const s = listSites().find((x) => x.id === siteId);
+  return s ? s.name : siteId;
+}
+export async function showDaftarBank(req: Request, res: Response): Promise<void> {
+  try {
+    const user = req.session.user as AccessUser | undefined;
+    const scope = getSiteScopeForUser(user);
+    const _rawSites = scope ? listSites().filter((s) => s.id === scope) : listSites();
+    const sites = _rawSites.map((s) => ({ ...s, firstAccountId: accountIdsForSite(s.id)[0] || null }));
+    const canManage = isMasterUser(user) || canDo(getMenuPermsForUser(user), 'daftar-bank', 'manage');
+    res.render('daftar-bank/index', { title: 'Daftar Bank', sites, siteScope: scope, canManage });
+  } catch (err) {
+    logger.error({ err }, 'showDaftarBank error');
+    res.status(500).render('error/500', { title: 'Error' });
+  }
+}
+export async function getDaftarBankApi(req: Request, res: Response): Promise<void> {
+  try {
+    const scope = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const banks = listBanksForScope(scope).map((b) => ({ ...b, siteName: _bankSiteName(b.siteId) }));
+    res.json({ ok: true, banks });
+  } catch (err) { logger.error({ err }, 'getDaftarBankApi error'); res.status(500).json({ ok: false }); }
+}
+export async function createDaftarBankApi(req: Request, res: Response): Promise<void> {
+  try {
+    const scope = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const body = (req.body || {}) as Record<string, unknown>;
+    let siteId = String(body.siteId || '').trim();
+    if (scope) siteId = scope;
+    if (!siteId) { res.status(400).json({ ok: false, error: 'Site wajib dipilih' }); return; }
+    const rec = createBank({
+      siteId,
+      bankCode: String(body.bankCode || '').trim(),
+      bankName: String(body.bankName || '').trim(),
+      namaRekening: String(body.namaRekening || '').trim(),
+      noRekening: String(body.noRekening || '').trim(),
+    }, (req.session.user as AccessUser | undefined)?.username);
+    const siteName = _bankSiteName(rec.siteId);
+    void logAction(req, { category: 'bank', action: 'bank_create', severity: 'important', summary: 'Tambah rekening ' + rec.bankName + ' a.n. ' + rec.namaRekening + ' ' + rec.noRekening + ' (site ' + siteName + ')', targetType: 'BankAccount', targetId: rec.id, targetName: rec.bankName + ' ' + rec.noRekening, detail: { siteId: rec.siteId, siteName, bankCode: rec.bankCode, bankName: rec.bankName, namaRekening: rec.namaRekening, noRekening: rec.noRekening } });
+    res.json({ ok: true, bank: { ...rec, siteName } });
+  } catch (err) { res.status(400).json({ ok: false, error: (err as Error).message || 'Gagal menyimpan' }); }
+}
+export async function updateDaftarBankApi(req: Request, res: Response): Promise<void> {
+  try {
+    const scope = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const id = String(req.params.id || '');
+    const before = getBankById(id);
+    if (!before) { res.status(404).json({ ok: false, error: 'Rekening tidak ditemukan' }); return; }
+    if (scope && before.siteId !== scope) { res.status(403).json({ ok: false, error: 'Tidak boleh mengubah rekening site lain' }); return; }
+    const body = (req.body || {}) as Record<string, unknown>;
+    const after = updateBank(id, {
+      bankCode: body.bankCode !== undefined ? String(body.bankCode).trim() : undefined,
+      bankName: body.bankName !== undefined ? String(body.bankName).trim() : undefined,
+      namaRekening: body.namaRekening !== undefined ? String(body.namaRekening).trim() : undefined,
+      noRekening: body.noRekening !== undefined ? String(body.noRekening).trim() : undefined,
+    });
+    if (!after) { res.status(404).json({ ok: false, error: 'Rekening tidak ditemukan' }); return; }
+    const siteName = _bankSiteName(after.siteId);
+    void logAction(req, { category: 'bank', action: 'bank_update', summary: 'Ubah rekening ' + after.bankName + ' ' + after.noRekening + ' (site ' + siteName + ')', targetType: 'BankAccount', targetId: id, targetName: after.bankName + ' ' + after.noRekening, before: { bankCode: before.bankCode, bankName: before.bankName, namaRekening: before.namaRekening, noRekening: before.noRekening }, after: { bankCode: after.bankCode, bankName: after.bankName, namaRekening: after.namaRekening, noRekening: after.noRekening }, detail: { siteId: after.siteId, siteName } });
+    res.json({ ok: true, bank: { ...after, siteName } });
+  } catch (err) { res.status(400).json({ ok: false, error: (err as Error).message || 'Gagal mengubah' }); }
+}
+export async function deleteDaftarBankApi(req: Request, res: Response): Promise<void> {
+  try {
+    const scope = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const id = String(req.params.id || '');
+    const rec = getBankById(id);
+    if (!rec) { res.status(404).json({ ok: false, error: 'Rekening tidak ditemukan' }); return; }
+    if (scope && rec.siteId !== scope) { res.status(403).json({ ok: false, error: 'Tidak boleh menghapus rekening site lain' }); return; }
+    deleteBank(id);
+    const siteName = _bankSiteName(rec.siteId);
+    void logAction(req, { category: 'bank', action: 'bank_delete', severity: 'critical', summary: 'Hapus rekening ' + rec.bankName + ' ' + rec.noRekening + ' (site ' + siteName + ')', targetType: 'BankAccount', targetId: id, targetName: rec.bankName + ' ' + rec.noRekening, detail: { siteId: rec.siteId, siteName, bankCode: rec.bankCode, namaRekening: rec.namaRekening, noRekening: rec.noRekening } });
+    res.json({ ok: true });
+  } catch (err) { res.status(400).json({ ok: false, error: (err as Error).message || 'Gagal menghapus' }); }
+}
+export async function getSettlementSavedBanksApi(req: Request, res: Response): Promise<void> {
+  try {
+    const qrisAccountId = String(req.query.qrisAccountId || '');
+    const map = getAccountSiteMap();
+    const siteId = qrisAccountId ? map[qrisAccountId] : null;
+    if (!siteId) { res.json({ ok: true, banks: [] }); return; }
+    const scope = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    if (scope && siteId !== scope) { res.json({ ok: true, banks: [] }); return; }
+    res.json({ ok: true, siteId, banks: listBanks(siteId) });
+  } catch (err) { logger.error({ err }, 'getSettlementSavedBanksApi error'); res.status(500).json({ ok: false }); }
+}
 export async function showAccountSettings(req: Request, res: Response): Promise<void> {
   const _u = req.session.user as AccessUser | undefined;
   const canManageWebgame = !!_u && (isMasterUser(_u) || canDo(getMenuPermsForUser(_u), 'settings', 'manage'));

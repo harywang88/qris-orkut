@@ -37,6 +37,12 @@ import {
   handleRecentPaidApi,
   getQrisTemplate,
   showSettlement,
+  showDaftarBank,
+  getDaftarBankApi,
+  createDaftarBankApi,
+  updateDaftarBankApi,
+  deleteDaftarBankApi,
+  getSettlementSavedBanksApi,
   handleCreateSettlement,
   handleSettlementBankInquiryApi,
   handleAccountTransferApi,
@@ -114,6 +120,12 @@ router.get('/settlement', requireMenu('settlement'), showSettlement);
 router.post('/settlement', requireMenu('settlement', 'transfer'), handleCreateSettlement);
 router.post('/settlement/inquiry', requireMenu('settlement', 'transfer'), handleSettlementBankInquiryApi);
 router.post('/settlement/transfer', requireMenu('settlement', 'transfer'), handleAccountTransferApi);
+router.get('/api/settlement/saved-banks', requireMenu('settlement', 'transfer'), getSettlementSavedBanksApi);
+router.get('/daftar-bank', requireMenu('daftar-bank'), showDaftarBank);
+router.get('/api/daftar-bank', requireMenu('daftar-bank'), getDaftarBankApi);
+router.post('/api/daftar-bank', requireMenu('daftar-bank', 'manage'), createDaftarBankApi);
+router.put('/api/daftar-bank/:id', requireMenu('daftar-bank', 'manage'), updateDaftarBankApi);
+router.delete('/api/daftar-bank/:id', requireMenu('daftar-bank', 'manage'), deleteDaftarBankApi);
 router.post('/settlement/retry-pin', requireMenu('settlement', 'transfer'), handleRetryAutoPinApi);
 router.get('/settlement/banks', requireMenu('settlement', 'transfer'), handleBankListApi);
 router.get('/postgres-monitor', requireMenu('postgres'), showPostgresMonitor);

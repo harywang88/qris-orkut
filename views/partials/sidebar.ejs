@@ -108,6 +108,14 @@
       </span>
     </a>
     <% } %>
+    <% if (can('daftar-bank')) { %>
+    <a href="<%= url('/dashboard/daftar-bank') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-building-columns qris-nav-icon"></i>
+        <span>Daftar Bank</span>
+      </span>
+    </a>
+    <% } %>
 
     <% if (can('mutasi-qris')) { %>
     <a href="<%= url('/dashboard/pending-money') %>" class="qris-nav-link">

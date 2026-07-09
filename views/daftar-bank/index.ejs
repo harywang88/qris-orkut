@@ -1,0 +1,222 @@
+<div class="dbank-wrap">
+  <style>
+    .dbank-wrap{--db-accent:#0d9488;--db-card:rgba(255,255,255,.035);--db-card-brd:rgba(255,255,255,.09);--db-glow:rgba(13,148,136,.20);}
+    :root[data-theme="light"] .dbank-wrap, .dbank-wrap[data-lt]{--db-card:rgba(15,23,42,.03);--db-card-brd:rgba(15,23,42,.10);}
+    @media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) .dbank-wrap{--db-card:rgba(15,23,42,.03);--db-card-brd:rgba(15,23,42,.10);} }
+    .dbank-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:18px}
+    .dbank-title{font-size:20px;font-weight:900;color:var(--ink);letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+    .dbank-title .db-ic{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#0d9488,#0ea5e9);color:#fff;box-shadow:0 8px 22px var(--db-glow);font-size:16px}
+    .dbank-sub{font-size:12.5px;color:var(--muted);margin-top:4px}
+    .dbank-btn{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;font-size:13px;font-weight:800;cursor:pointer;border:1px solid transparent;transition:transform .15s,box-shadow .2s,filter .2s}
+    .dbank-btn:active{transform:scale(.96)}
+    .dbank-btn-primary{background:linear-gradient(135deg,#0d9488,#0ea5e9);color:#fff;box-shadow:0 10px 24px var(--db-glow)}
+    .dbank-btn-primary:hover{filter:brightness(1.08);transform:translateY(-1px)}
+    .dbank-btn-ghost{background:var(--db-card);border-color:var(--db-card-brd);color:var(--ink)}
+    .dbank-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
+    .dbank-select,.dbank-input{background:var(--db-card);border:1px solid var(--db-card-brd);color:var(--ink);border-radius:11px;padding:9px 12px;font-size:13px;font-weight:600;outline:none;transition:border-color .2s,box-shadow .2s}
+    .dbank-input:focus,.dbank-select:focus{border-color:#0d9488;box-shadow:0 0 0 3px var(--db-glow)}
+    .dbank-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+    .dbank-card{position:relative;background:var(--db-card);border:1px solid var(--db-card-brd);border-radius:18px;padding:16px 16px 14px;overflow:hidden;transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .25s,border-color .25s;animation:dbIn .45s cubic-bezier(.2,.8,.2,1) both}
+    .dbank-card:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(0,0,0,.22);border-color:var(--bk,#0d9488)}
+    .dbank-card::before{content:"";position:absolute;inset:0 0 auto 0;height:4px;background:var(--bk,#0d9488);opacity:.9}
+    .dbank-card::after{content:"";position:absolute;right:-40px;top:-40px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,var(--bk,#0d9488),transparent 70%);opacity:.12;pointer-events:none}
+    @keyframes dbIn{from{opacity:0;transform:translateY(14px) scale(.98)}to{opacity:1;transform:none}}
+    @keyframes dbOut{to{opacity:0;transform:scale(.9) translateY(6px)}}
+    .dbank-card.removing{animation:dbOut .3s ease forwards}
+    .dbank-brow{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+    .dbank-logo{width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-weight:900;font-size:15px;color:#fff;background:var(--bk,#0d9488);box-shadow:0 6px 16px rgba(0,0,0,.2);flex:none;letter-spacing:.02em}
+    .dbank-bname{font-size:14px;font-weight:900;color:var(--ink);line-height:1.2}
+    .dbank-site{display:inline-flex;align-items:center;gap:5px;margin-top:3px;font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;background:rgba(139,92,246,.14);border:1px solid rgba(139,92,246,.3);color:#c4b5fd}
+    .dbank-rek{font-family:ui-monospace,SFMono-Regular,monospace;font-size:19px;font-weight:900;color:var(--ink);letter-spacing:.04em;margin:2px 0 3px;display:flex;align-items:center;gap:8px}
+    .dbank-copy{cursor:pointer;color:var(--muted);font-size:12px;transition:color .2s,transform .15s}
+    .dbank-copy:hover{color:#0d9488}.dbank-copy:active{transform:scale(.85)}
+    .dbank-nama{font-size:12.5px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+    .dbank-actions{display:flex;gap:8px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--db-card-brd)}
+    .dbank-mini{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px;border-radius:10px;font-size:12px;font-weight:800;cursor:pointer;border:1px solid var(--db-card-brd);background:transparent;color:var(--muted);transition:all .18s}
+    .dbank-mini:hover{color:var(--ink);border-color:var(--ink)}
+    .dbank-mini.del:hover{color:#fca5a5;border-color:#ef4444;background:rgba(239,68,68,.08)}
+    .dbank-empty{text-align:center;padding:56px 20px;color:var(--muted)}
+    .dbank-empty i{font-size:38px;opacity:.4;margin-bottom:12px}
+    /* modal */
+    .dbank-modal{position:fixed;inset:0;z-index:120;display:none;align-items:center;justify-content:center;padding:16px;background:rgba(2,6,23,.62);backdrop-filter:blur(6px);animation:dbFade .2s ease}
+    .dbank-modal.open{display:flex}
+    @keyframes dbFade{from{opacity:0}to{opacity:1}}
+    .dbank-sheet{width:100%;max-width:440px;background:var(--card,#0f172a);border:1px solid var(--db-card-brd);border-radius:20px;padding:22px;box-shadow:0 30px 80px rgba(0,0,0,.5);animation:dbPop .32s cubic-bezier(.2,.9,.3,1.3)}
+    :root[data-theme="light"] .dbank-sheet{background:#fff}
+    @media (prefers-color-scheme: light){ :root:not([data-theme="dark"]) .dbank-sheet{background:#fff} }
+    @keyframes dbPop{from{opacity:0;transform:translateY(18px) scale(.94)}to{opacity:1;transform:none}}
+    .dbank-sheet h3{font-size:16px;font-weight:900;color:var(--ink);margin-bottom:4px;display:flex;align-items:center;gap:9px}
+    .dbank-field{margin-top:13px}
+    .dbank-lbl{font-size:11px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-bottom:6px;display:block}
+    .dbank-field .dbank-input,.dbank-field .dbank-select{width:100%}
+    .dbank-owner{margin-top:10px;padding:11px 13px;border-radius:12px;background:var(--db-card);border:1px solid var(--db-card-brd);font-size:12.5px;min-height:44px;display:flex;align-items:center;gap:9px;transition:all .25s}
+    .dbank-owner.ok{border-color:#22c55e;background:rgba(34,197,94,.08)}
+    .dbank-owner .chk{color:#22c55e;animation:dbChk .4s cubic-bezier(.2,.9,.3,1.4)}
+    @keyframes dbChk{from{transform:scale(0) rotate(-30deg);opacity:0}to{transform:none;opacity:1}}
+    .dbank-owner-name{font-weight:800;color:var(--ink)}
+    .dbank-sheet-actions{display:flex;gap:10px;margin-top:18px}
+    .dbank-spin{width:14px;height:14px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:dbSpin .7s linear infinite}
+    @keyframes dbSpin{to{transform:rotate(360deg)}}
+    .dbank-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%) translateY(20px);background:#0d9488;color:#fff;padding:11px 20px;border-radius:12px;font-size:13px;font-weight:800;box-shadow:0 12px 30px rgba(0,0,0,.3);opacity:0;pointer-events:none;transition:all .3s;z-index:200}
+    .dbank-toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    .dbank-toast.err{background:#ef4444}
+  </style>
+
+  <div class="dbank-head">
+    <div>
+      <div class="dbank-title"><span class="db-ic"><i class="fa-solid fa-building-columns"></i></span> Daftar Bank</div>
+      <div class="dbank-sub">Rekening tujuan pencairan per site. Dipakai di menu Kirim Uang untuk pilih cepat.</div>
+    </div>
+    <% if (canManage) { %>
+    <button class="dbank-btn dbank-btn-primary" onclick="dbankOpenAdd()"><i class="fa-solid fa-plus"></i> Tambah Rekening</button>
+    <% } %>
+  </div>
+
+  <div class="dbank-toolbar">
+    <% if (!siteScope && sites.length > 1) { %>
+    <select id="dbank-filter-site" class="dbank-select" onchange="dbankRender()">
+      <option value="">Semua Site</option>
+      <% sites.forEach(function(s){ %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+    </select>
+    <% } %>
+    <input id="dbank-search" class="dbank-input" placeholder="Cari bank / no rekening / nama..." oninput="dbankRender()" style="flex:1;min-width:180px" />
+  </div>
+
+  <div id="dbank-grid" class="dbank-grid"></div>
+  <div id="dbank-empty" class="dbank-empty" style="display:none"><i class="fa-solid fa-piggy-bank"></i><p style="font-size:13px;font-weight:700">Belum ada rekening tersimpan.</p><p style="font-size:12px">Klik "Tambah Rekening" untuk mulai.</p></div>
+
+  <!-- Modal Tambah/Edit -->
+  <div id="dbank-modal" class="dbank-modal">
+    <div class="dbank-sheet">
+      <h3><i class="fa-solid fa-building-columns" style="color:#0d9488"></i> <span id="dbank-modal-title">Tambah Rekening</span></h3>
+      <p class="dbank-sub" id="dbank-modal-hint">Pilih bank, isi nomor rekening, lalu cek nama otomatis.</p>
+      <input type="hidden" id="dbank-edit-id" value="" />
+      <% if (!siteScope) { %>
+      <div class="dbank-field">
+        <label class="dbank-lbl">Site</label>
+        <select id="dbank-f-site" class="dbank-select" onchange="dbankSiteChanged()">
+          <% sites.forEach(function(s){ %><option value="<%= s.id %>" data-acc="<%= s.firstAccountId || '' %>"><%= s.name %></option><% }); %>
+        </select>
+      </div>
+      <% } else { %>
+      <input type="hidden" id="dbank-f-site" value="<%= siteScope %>" data-acc="<%= (sites[0] && sites[0].firstAccountId) || '' %>" />
+      <% } %>
+      <div class="dbank-field">
+        <label class="dbank-lbl">Bank</label>
+        <select id="dbank-f-bank" class="dbank-select"><option value="">Memuat daftar bank...</option></select>
+      </div>
+      <div class="dbank-field">
+        <label class="dbank-lbl">Nomor Rekening</label>
+        <div style="display:flex;gap:8px">
+          <input id="dbank-f-norek" class="dbank-input" inputmode="numeric" placeholder="No. Rekening" style="flex:1" />
+          <button class="dbank-btn dbank-btn-ghost" id="dbank-cek-btn" onclick="dbankCekNama()"><i class="fa-solid fa-magnifying-glass"></i> Cek</button>
+        </div>
+      </div>
+      <div class="dbank-field">
+        <label class="dbank-lbl">Nama Rekening</label>
+        <div class="dbank-owner" id="dbank-owner"><span class="dbank-owner-name" id="dbank-owner-txt">Akan terisi otomatis setelah Cek (bisa diketik manual).</span></div>
+        <input id="dbank-f-nama" class="dbank-input" placeholder="Nama pemilik rekening" style="width:100%;margin-top:8px" />
+      </div>
+      <div class="dbank-sheet-actions">
+        <button class="dbank-btn dbank-btn-ghost" style="flex:1" onclick="dbankCloseModal()">Batal</button>
+        <button class="dbank-btn dbank-btn-primary" style="flex:1" id="dbank-save-btn" onclick="dbankSave()">Simpan</button>
+      </div>
+    </div>
+  </div>
+  <div id="dbank-toast" class="dbank-toast"></div>
+</div>
+
+<script>
+(function(){
+  var CAN_MANAGE = <%= canManage ? 'true' : 'false' %>;
+  var SITE_SCOPE = <%- JSON.stringify(siteScope || null) %>;
+  var API = '<%= url("/dashboard/api/daftar-bank") %>';
+  var BANKLIST = '<%= url("/dashboard/settlement/banks") %>';
+  var INQUIRY = '<%= url("/dashboard/settlement/inquiry") %>';
+  var ALL = [];
+  var esc = function(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
+  var BANK_META = {BCA:['#0060AF','BCA'],BNI:['#ED8B00','BNI'],BRI:['#00529C','BRI'],MANDIRI:['#003D79','MDR'],CIMB:['#7A1F2B','CIMB'],PERMATA:['#00A79D','PMT'],DANAMON:['#004C97','DNM'],BSI:['#00A39D','BSI'],BTN:['#003D79','BTN'],MEGA:['#E30613','MEGA'],OCBC:['#E30613','OCBC'],PANIN:['#00539B','PNN'],SINARMAS:['#E30613','SMS'],SEABANK:['#EE4D2D','SEA'],JAGO:['#F6B21B','JAGO'],GOPAY:['#00AED6','GO'],OVO:['#4C2A86','OVO'],DANA:['#118EEA','DANA'],SHOPEEPAY:['#EE4D2D','SPAY']};
+  function bankBrand(name){ var u=String(name||'').toUpperCase(); for(var k in BANK_META){ if(u.indexOf(k)>=0) return {color:BANK_META[k][0],ini:BANK_META[k][1]}; } var ini=(u.replace(/BANK/g,'').replace(/[^A-Z]/g,'').slice(0,3))||'BK'; var h=0; for(var i=0;i<u.length;i++)h=(h*31+u.charCodeAt(i))>>>0; return {color:'hsl('+(h%360)+',55%,45%)',ini:ini}; }
+  function toast(msg,err){ var t=document.getElementById('dbank-toast'); t.textContent=msg; t.className='dbank-toast show'+(err?' err':''); setTimeout(function(){t.className='dbank-toast';},2600); }
+
+  function dbankRender(){
+    var q=(document.getElementById('dbank-search').value||'').toLowerCase().trim();
+    var fs=document.getElementById('dbank-filter-site'); var siteF=fs?fs.value:'';
+    var rows=ALL.filter(function(b){
+      if(siteF && b.siteId!==siteF) return false;
+      if(q){ var hay=(b.bankName+' '+b.noRekening+' '+b.namaRekening+' '+(b.siteName||'')).toLowerCase(); if(hay.indexOf(q)<0) return false; }
+      return true;
+    });
+    var grid=document.getElementById('dbank-grid'), empty=document.getElementById('dbank-empty');
+    if(!rows.length){ grid.innerHTML=''; empty.style.display=''; return; }
+    empty.style.display='none';
+    grid.innerHTML=rows.map(function(b,i){
+      var br=bankBrand(b.bankName);
+      var acts = CAN_MANAGE ? ('<div class="dbank-actions"><button class="dbank-mini" onclick="dbankOpenEdit(\''+b.id+'\')"><i class="fa-solid fa-pen"></i> Edit</button><button class="dbank-mini del" onclick="dbankDelete(\''+b.id+'\')"><i class="fa-solid fa-trash"></i> Hapus</button></div>') : '';
+      var siteBadge = (!SITE_SCOPE && b.siteName) ? ('<span class="dbank-site"><i class="fa-solid fa-location-dot" style="font-size:8px"></i>'+esc(b.siteName)+'</span>') : '';
+      return '<div class="dbank-card" style="--bk:'+br.color+';animation-delay:'+(i*45)+'ms">'
+        +'<div class="dbank-brow"><div class="dbank-logo" style="background:'+br.color+'">'+esc(br.ini)+'</div><div><div class="dbank-bname">'+esc(b.bankName)+'</div>'+siteBadge+'</div></div>'
+        +'<div class="dbank-rek">'+esc(b.noRekening)+'<i class="fa-regular fa-copy dbank-copy" title="Salin" onclick="dbankCopy(\''+esc(b.noRekening)+'\')"></i></div>'
+        +'<div class="dbank-nama"><i class="fa-solid fa-user" style="font-size:10px;opacity:.6"></i> '+esc(b.namaRekening||'-')+'</div>'
+        +acts+'</div>';
+    }).join('');
+  }
+  function dbankCopy(v){ try{navigator.clipboard.writeText(v);toast('No. rekening disalin');}catch(e){} }
+
+  function load(){ fetch(API,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){ if(d.ok){ ALL=d.banks||[]; dbankRender(); } }).catch(function(){}); }
+
+  // ── Modal ──
+  function currentAcc(){ var el=document.getElementById('dbank-f-site'); if(!el) return ''; if(el.tagName==='SELECT'){ var o=el.options[el.selectedIndex]; return o?o.getAttribute('data-acc'):''; } return el.getAttribute('data-acc')||''; }
+  function loadBankOptions(){
+    var acc=currentAcc(); var sel=document.getElementById('dbank-f-bank');
+    sel.innerHTML='<option value="">Memuat daftar bank...</option>';
+    if(!acc){ sel.innerHTML='<option value="">(Site belum punya akun)</option>'; return; }
+    fetch(BANKLIST+'?qrisAccountId='+encodeURIComponent(acc),{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+      var banks=(d&&(d.banks||d.data||d))||[]; if(!Array.isArray(banks)) banks=[];
+      if(!banks.length){ sel.innerHTML='<option value="">(Daftar bank kosong)</option>'; return; }
+      sel.innerHTML='<option value="">Pilih bank...</option>'+banks.map(function(b){ return '<option value="'+esc(b.code)+'" data-name="'+esc(b.name)+'">'+esc(b.name)+'</option>'; }).join('');
+    }).catch(function(){ sel.innerHTML='<option value="">(Gagal memuat bank)</option>'; });
+  }
+  window.dbankSiteChanged=loadBankOptions;
+  window.dbankOpenAdd=function(){ document.getElementById('dbank-edit-id').value=''; document.getElementById('dbank-modal-title').textContent='Tambah Rekening'; document.getElementById('dbank-f-norek').value=''; document.getElementById('dbank-f-nama').value=''; resetOwner(); loadBankOptions(); document.getElementById('dbank-modal').classList.add('open'); };
+  window.dbankOpenEdit=function(id){ var b=ALL.filter(function(x){return x.id===id;})[0]; if(!b)return; document.getElementById('dbank-edit-id').value=id; document.getElementById('dbank-modal-title').textContent='Edit Rekening'; var siteEl=document.getElementById('dbank-f-site'); if(siteEl&&siteEl.tagName==='SELECT'){ siteEl.value=b.siteId; } document.getElementById('dbank-f-norek').value=b.noRekening; document.getElementById('dbank-f-nama').value=b.namaRekening||''; resetOwner(); loadBankOptions(); setTimeout(function(){ var sel=document.getElementById('dbank-f-bank'); sel.value=b.bankCode; if(sel.value!==b.bankCode){ var o=document.createElement('option'); o.value=b.bankCode; o.setAttribute('data-name',b.bankName); o.textContent=b.bankName; sel.appendChild(o); sel.value=b.bankCode; } },600); document.getElementById('dbank-modal').classList.add('open'); };
+  window.dbankCloseModal=function(){ document.getElementById('dbank-modal').classList.remove('open'); };
+  function resetOwner(){ var o=document.getElementById('dbank-owner'); o.className='dbank-owner'; document.getElementById('dbank-owner-txt').innerHTML='Akan terisi otomatis setelah Cek (bisa diketik manual).'; }
+
+  window.dbankCekNama=function(){
+    var acc=currentAcc(); var sel=document.getElementById('dbank-f-bank'); var code=sel.value; var norek=(document.getElementById('dbank-f-norek').value||'').replace(/[^0-9]/g,'');
+    if(!acc||!code||!norek){ toast('Pilih bank & isi no rekening dulu',true); return; }
+    var btn=document.getElementById('dbank-cek-btn'); var oh=btn.innerHTML; btn.innerHTML='<span class="dbank-spin"></span>'; btn.disabled=true;
+    fetch(INQUIRY,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fromWallet:'madera',qrisAccountId:acc,bankCode:code,bankAccount:norek,amount:10000})}).then(function(r){return r.json();}).then(function(d){
+      var nama=d&&(d.accountName||d.name||d.ownerName||(d.result&&d.result.account_name));
+      if(d&&d.ok!==false&&nama){ document.getElementById('dbank-f-nama').value=nama; var o=document.getElementById('dbank-owner'); o.className='dbank-owner ok'; document.getElementById('dbank-owner-txt').innerHTML='<i class="fa-solid fa-circle-check chk"></i> <span class="dbank-owner-name">'+esc(nama)+'</span>'; toast('Nama rekening ditemukan'); }
+      else { toast((d&&d.error)||'Nama tak ditemukan, isi manual',true); }
+    }).catch(function(){ toast('Gagal cek, isi manual',true); }).finally(function(){ btn.innerHTML=oh; btn.disabled=false; });
+  };
+
+  window.dbankSave=function(){
+    var id=document.getElementById('dbank-edit-id').value;
+    var siteEl=document.getElementById('dbank-f-site'); var siteId=siteEl?siteEl.value:'';
+    var sel=document.getElementById('dbank-f-bank'); var bankCode=sel.value; var bankName=(sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].getAttribute('data-name'))||sel.options[sel.selectedIndex]&&sel.options[sel.selectedIndex].textContent||'';
+    var noRekening=(document.getElementById('dbank-f-norek').value||'').replace(/[^0-9]/g,'');
+    var namaRekening=(document.getElementById('dbank-f-nama').value||'').trim();
+    if(!bankCode||!noRekening){ toast('Bank & no rekening wajib diisi',true); return; }
+    var btn=document.getElementById('dbank-save-btn'); var oh=btn.innerHTML; btn.innerHTML='<span class="dbank-spin"></span> Menyimpan'; btn.disabled=true;
+    var url=id?(API+'/'+id):API; var method=id?'PUT':'POST';
+    fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:JSON.stringify({siteId:siteId,bankCode:bankCode,bankName:bankName,namaRekening:namaRekening,noRekening:noRekening})}).then(function(r){return r.json();}).then(function(d){
+      if(d.ok){ toast(id?'Rekening diperbarui':'Rekening ditambahkan'); dbankCloseModal(); load(); }
+      else { toast(d.error||'Gagal menyimpan',true); }
+    }).catch(function(){ toast('Koneksi error',true); }).finally(function(){ btn.innerHTML=oh; btn.disabled=false; });
+  };
+
+  window.dbankDelete=function(id){ var b=ALL.filter(function(x){return x.id===id;})[0]; if(!b)return; if(!confirm('Hapus rekening '+b.bankName+' '+b.noRekening+' ?')) return;
+    fetch(API+'/'+id,{method:'DELETE'}).then(function(r){return r.json();}).then(function(d){
+      if(d.ok){ var cards=document.querySelectorAll('#dbank-grid .dbank-card'); toast('Rekening dihapus'); load(); }
+      else toast(d.error||'Gagal menghapus',true);
+    }).catch(function(){ toast('Koneksi error',true); });
+  };
+  window.dbankRender=dbankRender; window.dbankCopy=dbankCopy;
+  document.getElementById('dbank-modal').addEventListener('click',function(e){ if(e.target===this) dbankCloseModal(); });
+  load();
+})();
+</script>
