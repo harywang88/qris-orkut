@@ -164,9 +164,13 @@
 
   // ── sisip tab QRIS QuickPay ────────────────────────────────────────────────
   function findNav() {
-    return document.getElementById('depo-nav-pills') ||
-           document.getElementById('depo-nav-pills-m') ||
-           document.querySelector('.nav-pills, .nav-tabs, ul.nav');
+    // HANYA nav tab DEPOSIT. JANGAN menu game atas (.navbar-nav) / tab kategori
+    // game (.nav-tabs) / pills dashboard (#menu_dashboard). Bug lama: fallback
+    // 'ul.nav' cocok dgn <ul class="nav navbar-nav"> -> tab QuickPay nyasar ke
+    // menu atas di desktop. Desktop pakai #depo-nav-pills, mobile #depo-nav-pills-m.
+    return document.getElementById('depo-nav-pills') ||       // desktop
+           document.getElementById('depo-nav-pills-m') ||     // mobile
+           document.querySelector('.nav-pills:not(.navbar-nav):not(#menu_dashboard)');
   }
 
   function findTabContent(nav) {
