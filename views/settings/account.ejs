@@ -1304,10 +1304,12 @@ function apSetStatusBadge(siteId, state, text) {
   b.textContent = text;
 }
 
-async function apTestSite(siteId) {
+async function apTestSite(siteId, silent) {
   const type = document.getElementById('ap-panel-type-' + siteId)?.value || 'default';
   const link = document.getElementById('ap-panel-url-' + siteId)?.value || '';
   const isSule = type === 'sulebet';
+  // Auto-cek (silent): lewati site yang belum diisi link panel.
+  if (silent && !String(link).trim()) { apSetStatusBadge(siteId, 'unknown', '● belum diisi'); return; }
   const creds = isSule
     ? { link: link,
         cookie_name: (document.getElementById('ap-cookie-name-' + siteId)?.value || 'PHPSESSID'),
@@ -1318,7 +1320,7 @@ async function apTestSite(siteId) {
         password: (document.getElementById('ap-password-' + siteId)?.value || ''),
         pin: (document.getElementById('ap-pin-' + siteId)?.value || '') };
   const btn = document.getElementById('ap-test-btn-' + siteId);
-  if (btn) btn.disabled = true;
+  if (btn && !silent) btn.disabled = true;
   apSetStatusBadge(siteId, 'checking', '● cek...');
   try {
     const resp = await fetch('<%= url('/dashboard/api/webgame/check') %>', {
@@ -1328,17 +1330,26 @@ async function apTestSite(siteId) {
     });
     const data = await resp.json().catch(() => ({}));
     if (data && data.online) {
-      apSetStatusBadge(siteId, 'online', '● Online');
-      apShowSiteResult(siteId, 'Panel ONLINE — sesi login aktif. ' + (data.message || ''), true);
+      apSetStatusBadge(siteId, 'online', '● Login');
+      if (!silent) apShowSiteResult(siteId, 'Panel ONLINE — sesi login aktif. ' + (data.message || ''), true);
     } else {
-      apSetStatusBadge(siteId, 'offline', '● Offline');
-      apShowSiteResult(siteId, 'Panel OFFLINE / login gagal. ' + ((data && data.message) || ''), false);
+      apSetStatusBadge(siteId, 'offline', '● Logout');
+      if (!silent) apShowSiteResult(siteId, 'Panel OFFLINE / login gagal. ' + ((data && data.message) || ''), false);
     }
   } catch (e) {
-    apSetStatusBadge(siteId, 'offline', '● Offline');
-    apShowSiteResult(siteId, 'Gagal menghubungi server untuk cek panel.', false);
+    apSetStatusBadge(siteId, 'offline', '● Logout');
+    if (!silent) apShowSiteResult(siteId, 'Gagal menghubungi server untuk cek panel.', false);
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn && !silent) btn.disabled = false;
+  }
+}
+
+// Auto-cek status Login/Logout semua web game saat halaman dibuka (badge saja,
+// berurutan agar tak membanjiri server dengan spawn python paralel).
+async function apAutoCheckAll() {
+  const sites = (typeof wgLoadSites === 'function') ? wgLoadSites() : [];
+  for (const s of sites) {
+    try { await apTestSite(s.id, true); } catch (e) {}
   }
 }
 
@@ -1363,5 +1374,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const tab = new URLSearchParams(window.location.search).get('tab');
   if (tab) acsetTab(tab);
   wgRenderAll();
+  // Auto-cek status Login/Logout tiap web game (badge hijau=Login / merah=Logout).
+  setTimeout(apAutoCheckAll, 400);
 });
 </script>
