@@ -207,9 +207,11 @@ class SulebetPanel:
         self._log(f"Form deposit loaded. Bank asal: {bank_asal}, Bank tujuan: {bank_id}")
 
         # Step 2: submit deposit
-        # Izinkan pemisah note format seragam (- | . : ( )) selain alnum+spasi,
-        # supaya note "QRIS Auto-Merchant-user-datetime | nominal" tampil utuh di panel.
-        clean_note = re.sub(r"[^A-Za-z0-9 \-|.:()]", "", note or "Auto Deposit QRIS")
+        # PANEL SULEBET MENOLAK SIMBOL di note ("note tidak boleh mengandung simbol").
+        # Jadi note ke panel WAJIB huruf+angka+spasi saja: ganti simbol (- |) jadi spasi
+        # lalu rapikan. Format cantik (dgn - dan |) tetap ada di History Generate QR
+        # (Transaction.note qris-orkut), tak lewat sini.
+        clean_note = re.sub(r"\s+", " ", re.sub(r"[^A-Za-z0-9 ]", " ", note or "Auto Deposit QRIS")).strip()
         submit = self.request(
             self.site_root + "process/users/updateCreditUsersManual", "POST",
             {"username": member_username, "amount": amount, "op": "bayar",
