@@ -159,15 +159,16 @@
             <th class="text-right">Total QR</th>
             <th class="text-right">Lunas</th>
             <th class="text-right">Expired</th>
-            <th class="text-right">Open</th>
             <th class="text-right">Dep OK</th>
-            <th class="text-right">Dep Gagal</th>
-            <th class="text-right">Review</th>
+            <th class="text-right">Saldo Awal</th>
             <th class="text-right">Nominal</th>
             <th class="text-right" title="QRIS Biaya Layanan (0.3% OrderKuota)">Fee</th>
             <th class="text-right" title="Utama Biaya QRIS 1% (Percepatan Pencairan)">FEE 2</th>
             <th class="text-right" title="Madera Biaya Transfer BI-Fast">FEE 3</th>
             <th class="text-right">Net</th>
+            <th class="text-right" title="Total pencairan Madera BI-Fast ke bank">Pencairan</th>
+            <th class="text-right">Saldo Akhir</th>
+            <th class="text-right">Status</th>
           </tr>
         </thead>
         <tbody>
@@ -180,15 +181,16 @@
               <td class="text-right font-mono"><%= row.total %></td>
               <td class="text-right font-mono" style="color:#86efac"><%= row.paid %></td>
               <td class="text-right font-mono text-muted"><%= row.expired %></td>
-              <td class="text-right font-mono" style="color:#93c5fd"><%= row.open %></td>
               <td class="text-right font-mono" style="color:#86efac"><%= row.depositSuccess %></td>
-              <td class="text-right font-mono" style="color:#fca5a5"><%= row.depositFailed %></td>
-              <td class="text-right font-mono" style="color:#fdba74"><%= row.manualReview %></td>
+              <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= (row.saldoAwal || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= row.totalPaid.toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap text-muted">Rp <%= row.totalFee.toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#fbbf24">Rp <%= (row.fee2 || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#fca5a5">Rp <%= (row.fee3 || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap font-semibold" style="color:#86efac">Rp <%= row.netAmount.toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#f0abfc">Rp <%= (row.pencairan || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= (row.saldoAkhir || 0).toLocaleString('id-ID') %></td>
+              <td class="text-center font-mono"><% if (row.status === 'match') { %><span style="color:#86efac;font-weight:800">● MATCH</span><% } else { %><span style="color:#fca5a5;font-weight:800">● UNMATCH</span><% } %></td>
             </tr>
           <% }); %>
         </tbody>
@@ -198,15 +200,16 @@
             <td class="text-right font-mono font-bold text-ink"><%= overall.total %></td>
             <td class="text-right font-mono font-bold" style="color:#86efac"><%= overall.paid %></td>
             <td class="text-right font-mono font-bold text-muted"><%= overall.expired %></td>
-            <td class="text-right font-mono font-bold" style="color:#93c5fd"><%= overall.open %></td>
             <td class="text-right font-mono font-bold" style="color:#86efac"><%= overall.depositSuccess %></td>
-            <td class="text-right font-mono font-bold" style="color:#fca5a5"><%= overall.depositFailed %></td>
-            <td class="text-right font-mono font-bold" style="color:#fdba74"><%= overall.manualReview %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= (overall.saldoAwal || 0).toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= overall.totalPaid.toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap text-muted">Rp <%= overall.totalFee.toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#fbbf24">Rp <%= (overall.fee2 || 0).toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#fca5a5">Rp <%= (overall.fee3 || 0).toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#86efac">Rp <%= overall.netAmount.toLocaleString('id-ID') %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#f0abfc">Rp <%= (overall.pencairan || 0).toLocaleString('id-ID') %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= (overall.saldoAkhir || 0).toLocaleString('id-ID') %></td>
+            <td class="text-center font-mono font-bold"><% if (overall.status === 'match') { %><span style="color:#86efac">● MATCH</span><% } else { %><span style="color:#fca5a5">● UNMATCH</span><% } %></td>
           </tr>
         </tfoot>
       </table>

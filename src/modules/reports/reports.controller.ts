@@ -165,6 +165,54 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     }
     const overallAccIds = restrictAccountIds || accountsAll.map((a) => a.id);
 
+    // ── Saldo Awal/Akhir (hitung-mundur dari saldo terkini) + Pencairan + Direct Debit per akun ──
+    // saldo_asof(T) = saldoTerkini - Σ delta(mutasi transactionTime > T). delta order-independent (anti-artefak urutan).
+    const _balAccounts = await db.qrisAccount.findMany({
+      select: { id: true, lastQrisBalance: true, lastMainBalance: true, lastMaderaBalance: true },
+    });
+    const _balMuts = await db.mutation.findMany({
+      where: { transactionTime: { gte: from } },
+      select: { qrisAccountId: true, walletCategory: true, amount: true, type: true, balanceAfter: true, balanceBefore: true, transactionTime: true, rawDataJson: true },
+    });
+    const _accW: Record<string, { from: number; afterTo: number }> = {};
+    const _madOut: Record<string, { pencairan: number; directDebit: number }> = {};
+    for (const m of _balMuts) {
+      if (!m.qrisAccountId || !m.walletCategory) continue;
+      const _d = (m.balanceAfter !== 0 || m.balanceBefore !== 0) ? (m.balanceAfter - m.balanceBefore) : (m.type === 'credit' ? m.amount : -m.amount);
+      const _k = m.qrisAccountId + '|' + m.walletCategory;
+      const _e = _accW[_k] || (_accW[_k] = { from: 0, afterTo: 0 });
+      _e.from += _d;
+      if (m.transactionTime > to) _e.afterTo += _d;
+      if (m.walletCategory === 'madera' && m.type === 'debit' && m.transactionTime >= from && m.transactionTime <= to) {
+        const _raw = _parseRaw({ rawDataJson: m.rawDataJson });
+        const _dsc = String(_raw.keterangan || _raw.description || '').toUpperCase();
+        const _mo = _madOut[m.qrisAccountId] || (_madOut[m.qrisAccountId] = { pencairan: 0, directDebit: 0 });
+        if (_dsc.includes('BI FAST OUT')) _mo.pencairan += Math.abs(m.amount);
+        else if (_dsc.includes('DIRECT DEBIT')) _mo.directDebit += Math.abs(m.amount);
+      }
+    }
+    const _curBal: Record<string, { qris: number; utama: number; madera: number }> = {};
+    for (const a of _balAccounts) _curBal[a.id] = { qris: a.lastQrisBalance || 0, utama: a.lastMainBalance || 0, madera: a.lastMaderaBalance || 0 };
+    const _asofAcc = (accId: string, mode: 'awal' | 'akhir'): number => {
+      const _c = _curBal[accId] || { qris: 0, utama: 0, madera: 0 };
+      let _b = 0;
+      (['qris', 'utama', 'madera'] as const).forEach((_w) => {
+        const _e = _accW[accId + '|' + _w] || { from: 0, afterTo: 0 };
+        _b += _c[_w] - (mode === 'awal' ? _e.from : _e.afterTo);
+      });
+      return _b;
+    };
+    const _siteBal = (accIds: string[]) => {
+      let awal = 0, akhir = 0, pencairan = 0, directDebit = 0;
+      for (const id of accIds) {
+        awal += _asofAcc(id, 'awal');
+        akhir += _asofAcc(id, 'akhir');
+        const _mo = _madOut[id];
+        if (_mo) { pencairan += _mo.pencairan; directDebit += _mo.directDebit; }
+      }
+      return { awal, akhir, pencairan, directDebit };
+    };
+
     const siteBreakdown = await Promise.all(
       bucketsToShow.map(async (b) => {
         const baseWhere = { qrisAccountId: { in: b.accountIds }, createdAt: { gte: from, lte: to } };
@@ -185,6 +233,9 @@ export async function showReports(req: Request, res: Response): Promise<void> {
         const totalFee = _sumFee(feeQrisByAcc, b.accountIds);
         const fee2 = _sumFee(feeUtamaByAcc, b.accountIds);
         const fee3 = _sumFee(feeMaderaByAcc, b.accountIds);
+        const _sb = _siteBal(b.accountIds);
+        const _net = totalPaid - totalFee - fee2 - fee3;
+        const _status = Math.abs((_sb.awal + _net - _sb.pencairan - _sb.directDebit) - _sb.akhir) <= 5 ? 'match' : 'unmatch';
         return {
           siteName: b.name,
           accountCount: b.accountIds.length,
@@ -199,7 +250,11 @@ export async function showReports(req: Request, res: Response): Promise<void> {
           totalFee,
           fee2,
           fee3,
-          netAmount: totalPaid - totalFee - fee2,
+          saldoAwal: _sb.awal,
+          saldoAkhir: _sb.akhir,
+          pencairan: _sb.pencairan,
+          netAmount: _net,
+          status: _status,
         };
       }),
     );
@@ -224,6 +279,9 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     const overallTotalFee = _sumFee(feeQrisByAcc, overallAccIds);
     const overallFee2 = _sumFee(feeUtamaByAcc, overallAccIds);
     const overallFee3 = _sumFee(feeMaderaByAcc, overallAccIds);
+    const _osb = _siteBal(overallAccIds);
+    const _onet = overallTotalPaid - overallTotalFee - overallFee2 - overallFee3;
+    const _ostatus = Math.abs((_osb.awal + _onet - _osb.pencairan - _osb.directDebit) - _osb.akhir) <= 5 ? 'match' : 'unmatch';
 
     // Grafik (nominal terbayar by paidAt, per HARI WIB). Selalu cakup seluruh rentang, <=31 batang.
     const totalDaysWib = Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
@@ -277,7 +335,11 @@ export async function showReports(req: Request, res: Response): Promise<void> {
         totalFee: overallTotalFee,
         fee2: overallFee2,
         fee3: overallFee3,
-        netAmount: overallTotalPaid - overallTotalFee - overallFee2,
+        saldoAwal: _osb.awal,
+        saldoAkhir: _osb.akhir,
+        pencairan: _osb.pencairan,
+        netAmount: _onet,
+        status: _ostatus,
         pendingTotal: _pendingAgg.total,
         pendingCount: _pendingAgg.count,
       },
