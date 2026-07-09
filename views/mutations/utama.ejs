@@ -287,6 +287,15 @@
     if(isUtamaWallet){cols.push({title:'Biaya Percepatan Pencairan QRIS (1%)',field:'_fee',width:230,sorter:'number',formatter:(c)=>Number(c.getValue()||0)>0?`<div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:ui-monospace,SFMono-Regular,monospace">${esc(rp(c.getValue()))}</div>`:'<span style="color:var(--muted)">-</span>'});}
     if(isMaderaWallet){cols.push({title:'Biaya Transfer',field:'_fee3',width:170,sorter:'number',formatter:function(c){var v=Number(c.getValue()||0);return v>0?'<div style="font-size:14px;font-weight:900;color:#f59e0b;font-family:ui-monospace,SFMono-Regular,monospace">'+esc(rp(v))+'</div>':'<span style="color:var(--muted)">-</span>';}});}
     cols.push({title:'Saldo',field:'balanceAfter',width:150,sorter:'number',formatter:(c)=>`<div style="font-size:14px;font-weight:900;color:var(--ink);font-family:ui-monospace,SFMono-Regular,monospace">${esc(rp(c.getValue()))}</div>`});
+    if(isMaderaWallet){
+      // MADERA_COL_ORDER: rapi default (muat tanpa geser). Kredit tepat setelah Keterangan.
+      var byT={}; cols.forEach(function(c){byT[c.title]=c;});
+      var ordM=['No','Waktu','Akun','Site','Keterangan','Kredit','Debet','Biaya Transfer','Saldo'];
+      var Wm={No:46,Waktu:110,Akun:130,Site:105,Keterangan:150,Kredit:115,Debet:115,'Biaya Transfer':125,Saldo:120};
+      var outM=[];
+      ordM.forEach(function(t){ var c=byT[t]; if(!c) return; delete c.width; c.minWidth=Wm[t]||100; if(t==='Keterangan'){ c.widthGrow=3; } if(t==='Keterangan'){ c.hozAlign='left'; } outM.push(c); });
+      return outM;
+    }
     return cols;
   }
 
@@ -294,7 +303,7 @@
     if(table) return Promise.resolve(table);
     if(tableReady) return tableReady;
     tableReady=new Promise((resolve,reject)=>{try{
-      table=new Tabulator('#mut-main-tabulator',{layout:'fitDataStretch',placeholder:'Tidak ada data mutasi',pagination:true,paginationSize:50,paginationSizeSelector:PAGE_SIZES,paginationCounter:(ps,cr,cp,tr)=>`<span style="font-size:11px;color:var(--muted)">Menampilkan ${cr}-${Math.min(cr+ps-1,tr)} dari <b style="color:var(--ink)">${tr}</b> mutasi</span>`,columnDefaults:{vertAlign:'middle',headerHozAlign:'center',hozAlign:'center',headerSort:true,resizable:true},columns:buildColumns(),tableBuilt:()=>resolve(table)});
+      table=new Tabulator('#mut-main-tabulator',{layout:(isMaderaWallet?'fitColumns':'fitDataStretch'),placeholder:'Tidak ada data mutasi',pagination:true,paginationSize:50,paginationSizeSelector:PAGE_SIZES,paginationCounter:(ps,cr,cp,tr)=>`<span style="font-size:11px;color:var(--muted)">Menampilkan ${cr}-${Math.min(cr+ps-1,tr)} dari <b style="color:var(--ink)">${tr}</b> mutasi</span>`,columnDefaults:{vertAlign:'middle',headerHozAlign:'center',hozAlign:'center',headerSort:true,resizable:true},columns:buildColumns(),tableBuilt:()=>resolve(table)});
     }catch(e){tableReady=null;reject(e);}});
     return tableReady;
   }
