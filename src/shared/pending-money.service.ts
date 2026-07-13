@@ -15,6 +15,7 @@ import path from 'path';
 import { db } from '../config/database';
 import { logger } from '../config/logger';
 import { attemptDeposit } from './deposit.service';
+import { resolveListCutoffMs } from './operational-cutoff.service';
 
 const PENDING_MIN_AGE_MS = 2 * 60 * 1000; // 2 menit
 const WIB_MS = 7 * 60 * 60 * 1000;
@@ -190,7 +191,7 @@ function parseOriginalAmount(metadataJson: string | null): number | null {
 }
 
 /** Daftar uang pending (unmatched IN > 2 menit). accountIds opsional = filter scope. */
-export async function listPendingMoney(accountIds?: string[] | null): Promise<PendingMoneyRow[]> {
+export async function listPendingMoney(accountIds?: string[] | null, showAll = false): Promise<PendingMoneyRow[]> {
   const cutoff = new Date(Date.now() - PENDING_MIN_AGE_MS);
   const where: Record<string, unknown> = {
     walletCategory: 'qris',
@@ -201,6 +202,8 @@ export async function listPendingMoney(accountIds?: string[] | null): Promise<Pe
     NOT: { rawDataJson: { contains: '"status":"OUT"' } },
   };
   if (accountIds) where.qrisAccountId = { in: accountIds };
+  const _opCut = resolveListCutoffMs(showAll);
+  if (_opCut) (where.transactionTime as Record<string, Date>).gte = new Date(_opCut);
 
   const muts = await db.mutation.findMany({
     where,
@@ -373,6 +376,7 @@ export async function bookPendingMutation(
 
 export interface BookedPendingRow {
   id: string;
+  qrisAccountId: string;
   accountCode: string;
   merchantName: string | null;
   siteName: string | null;
@@ -388,17 +392,19 @@ export interface BookedPendingRow {
 }
 
 /** Uang pending yang SUDAH dibooking (matched ke tx manual_booked) — tampil terkunci di menu. */
-export async function listBookedPendings(accountIds?: string[] | null): Promise<BookedPendingRow[]> {
+export async function listBookedPendings(accountIds?: string[] | null, showAll = false): Promise<BookedPendingRow[]> {
   const where: Record<string, unknown> = {
     walletCategory: 'qris',
     type: 'credit',
-    matchedTransaction: { is: { statusBot: 'manual_booked' } },
+    matchedTransaction: { is: { metadataJson: { contains: 'pending_booking' } } },
   };
   if (accountIds) where.qrisAccountId = { in: accountIds };
+  const _opCutB = resolveListCutoffMs(showAll);
+  if (_opCutB) where.transactionTime = { gte: new Date(_opCutB) };
   const muts = await db.mutation.findMany({
     where,
     orderBy: { transactionTime: 'desc' },
-    take: 200,
+    take: 1000,
     include: {
       qrisAccount: { select: { code: true, merchantName: true } },
       matchedTransaction: { select: { paidAt: true, metadataJson: true, userIdExt: true } },
@@ -409,6 +415,7 @@ export async function listBookedPendings(accountIds?: string[] | null): Promise<
     try { meta = JSON.parse(m.matchedTransaction?.metadataJson || '{}'); } catch { /* ignore */ }
     return {
       id: m.id,
+      qrisAccountId: m.qrisAccountId,
       accountCode: m.qrisAccount?.code || '-',
       merchantName: m.qrisAccount?.merchantName || null,
       siteName: null,
@@ -423,4 +430,34 @@ export async function listBookedPendings(accountIds?: string[] | null): Promise<
       mode: meta.mode || null,
     };
   });
+}
+
+
+// PENDING_CARRY: uang 'pending_booking' (bayar-2x QRIS statis) yg DIPROSES LINTAS-HARI —
+// hari moneyInAt (uang fisik masuk) != hari paidAt (booking) dalam WIB. Uang ini SUDAH dihitung
+// sbg PENDING di hari uang-masuk, jadi JANGAN dihitung lagi sbg omset di hari proses (anti dobel).
+export function crossDayPendingBooking(
+  rows: Array<{ qrisAccountId?: string | null; finalAmount: number; paidAt: Date | null; metadataJson: string | null }>,
+): { total: number; byAccount: Record<string, number> } {
+  const WIB = 7 * 60 * 60 * 1000;
+  const dayWib = (d: Date): number => { const w = new Date(d.getTime() + WIB); return w.getUTCFullYear() * 10000 + (w.getUTCMonth() + 1) * 100 + w.getUTCDate(); };
+  let total = 0;
+  const byAccount: Record<string, number> = {};
+  for (const r of rows) {
+    if (!r.paidAt || !r.metadataJson || r.metadataJson.indexOf('pending_booking') === -1) continue;
+    let moneyInAt: string | undefined;
+    try {
+      const m = JSON.parse(r.metadataJson) as { source?: string; moneyInAt?: string };
+      if (m && m.source === 'pending_booking' && m.moneyInAt) moneyInAt = String(m.moneyInAt);
+    } catch { /* metadata bukan JSON valid -> lewati */ }
+    if (!moneyInAt) continue;
+    const miDate = new Date(moneyInAt);
+    if (Number.isNaN(miDate.getTime())) continue;
+    if (dayWib(miDate) !== dayWib(r.paidAt)) {
+      const amt = Number(r.finalAmount) || 0;
+      total += amt;
+      if (r.qrisAccountId) byAccount[r.qrisAccountId] = (byAccount[r.qrisAccountId] || 0) + amt;
+    }
+  }
+  return { total, byAccount };
 }

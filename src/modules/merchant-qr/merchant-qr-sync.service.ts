@@ -1211,7 +1211,8 @@ export async function syncAppMutationsNow(id: string, opts?: { skipThrottle?: bo
 
   const promise = (async () => {
     const account = await getAccountOrThrow(id);
-    if (account.status !== 'active') throw new Error('Merchant sedang nonaktif.');
+    // Opsi B (10 Jul): sinkron manual DIBOLEHKAN walau akun nonaktif -> jaring darurat menarik
+    // pembayaran QR yg terlanjur dibuat sebelum di-OFF. Generate QR BARU tetap diblok di endpoint generate.
     if (!account.sessionTokenEncrypted) throw new Error('Akun ini tidak memakai app-api (tidak ada sesi app).');
     const remaining = appCooldownRemainingMs(account);
     if (remaining > 0) throw new AppCooldownError(remaining);
@@ -1271,7 +1272,7 @@ export async function syncAppMutationsNow(id: string, opts?: { skipThrottle?: bo
 /** Report Sinkron per akun: tarik QRIS credit dari web report (API v2 autologin), dedup mutv2. */
 export async function syncReportMutationsNow(id: string): Promise<{ newQris: number }> {
   const account = await getAccountOrThrow(id);
-  if (account.status !== 'active') throw new Error('Merchant sedang nonaktif.');
+  // Opsi B (10 Jul): sinkron manual DIBOLEHKAN walau akun nonaktif (jaring darurat). Lihat syncAppMutationsNow.
   if (!account.webReportUrlEncrypted) throw new Error('Akun ini belum punya Link Web Report.');
   const newQris = await fetchAndIngestReportQrisCredit(account, 5);
   await db.qrisAccount

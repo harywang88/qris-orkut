@@ -9,6 +9,7 @@ import {
   updateQrisAccount,
   deleteQrisAccount,
   toggleAccountStatus,
+  AccountActivationError,
   setHealthStatus,
   resetDailyUsage,
 } from '../qris-accounts/qris-accounts.service';
@@ -238,6 +239,7 @@ export async function handleToggleMerchantQrStatus(req: Request, res: Response):
     void logAction(req, { category: 'merchant', action: 'merchant_toggle', severity: 'important', summary: (newStatus === 'active' ? 'Mengaktifkan' : 'Menonaktifkan') + ' Merchant QR', targetType: 'QrisAccount', targetId: req.params.id, detail: { status: newStatus } });
     res.json({ success: true, status: newStatus });
   } catch (err) {
+    if (err instanceof AccountActivationError) { res.status(400).json({ success: false, error: err.message }); return; }
     logger.error({ err }, 'handleToggleMerchantQrStatus error');
     res.status(500).json({ success: false, error: 'Gagal mengubah status Merchant QR' });
   }

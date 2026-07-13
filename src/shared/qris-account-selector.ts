@@ -1,6 +1,7 @@
 import type { QrisAccount, PrismaClient } from '@prisma/client';
 import { db } from '../config/database';
 import { logger } from '../config/logger';
+import { todayWibStart } from './daily-usage.service';
 
 /** Thrown when no QRIS account is available for assignment. */
 export class NoEligibleAccountError extends Error {
@@ -24,7 +25,8 @@ type TxClient = Omit<
  * Kriteria LAYAK (skip yang tak layak):
  *   1. status = 'active'          (akun yang di-OFF/nonaktif dilewati)
  *   2. healthStatus = 'healthy'   (akun bermasalah: login expired / rate-limit — dilewati)
- *   3. usedToday < dailyLimit     (akun yang sudah tembus limit harian — dilewati; 0 = unlimited)
+ *   3. DITERIMA hari ini (Σ mutasi kredit QRIS WIB, paid+pending) < dailyLimit — SAMA dengan "Limit
+ *      Harian (Diterima)"; auto-reset ganti hari (query per tanggal). 0 = unlimited.
  *
  * @param restrictAccountIds  Batasi giliran ke akun-akun ini saja (mis. akun 1 site). Kalau array
  *   (termasuk kosong) → hanya akun tsb; kalau null/undefined → semua akun. Array kosong = tak ada layak.
@@ -45,7 +47,20 @@ export async function selectQrisAccount(
     orderBy: { lastAssignedAt: 'asc' }, // paling lama tak dipakai = giliran
   });
 
-  const eligible = accounts.filter((a) => a.dailyLimit === 0 || a.usedToday < a.dailyLimit);
+  // Kelayakan limit = DITERIMA hari ini (Σ mutasi kredit QRIS WIB) — SAMA dgn "Limit Harian (Diterima)".
+  // Kolom usedToday (basis GENERATE + tak auto-reset) TIDAK dipakai lagi. Query pakai tx yang sama (anti-rebutan SQLite).
+  const _recvStart = todayWibStart();
+  const _accIds = accounts.map((a) => a.id);
+  const _recvAgg = _accIds.length
+    ? await tx.mutation.groupBy({
+        by: ['qrisAccountId'],
+        where: { qrisAccountId: { in: _accIds }, walletCategory: 'qris', type: 'credit', transactionTime: { gte: _recvStart }, NOT: { rawDataJson: { contains: '"status":"OUT"' } } },
+        _sum: { amount: true },
+      })
+    : [];
+  const _recvMap: Record<string, number> = {};
+  for (const r of _recvAgg) { if (r.qrisAccountId) _recvMap[r.qrisAccountId] = r._sum.amount || 0; }
+  const eligible = accounts.filter((a) => a.dailyLimit === 0 || (_recvMap[a.id] || 0) < a.dailyLimit);
 
   if (eligible.length === 0) {
     logger.warn(

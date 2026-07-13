@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { requireMenu, requirePermission, requireMaster } from '../../core/rbac.middleware';
+import { showCariSelisih } from './cari-selisih.controller';
 import {
   showDashboard,
   showTransactions,
@@ -26,6 +27,8 @@ import {
   getGenerateQrStatusApi,
   getTransactionsSnapshotApi,
   getLatestTransactionsApi,
+  postDashRetryDeposit,
+  postDashManualCredit,
   getMutationsJson,
   streamMutationsSse,
   getQrisReconcileApi,
@@ -43,6 +46,9 @@ import {
   updateDaftarBankApi,
   deleteDaftarBankApi,
   getSettlementSavedBanksApi,
+  getNagoxStatusApi,
+  nagoxApproveApi,
+  nagoxRejectApi,
   handleCreateSettlement,
   handleSettlementBankInquiryApi,
   handleAccountTransferApi,
@@ -104,6 +110,9 @@ router.post('/api/generate-qr', requireMenu('generate-qr', 'create'), handleDash
 router.get('/api/generate-qr/status', requireMenu('generate-qr'), getGenerateQrStatusApi);
 router.post('/api/transactions/snapshot', getTransactionsSnapshotApi);
 router.get('/api/transactions/latest', getLatestTransactionsApi);
+// Aksi operator per-transaksi (History Generate QR): force retry & kredit manual.
+router.post('/api/transactions/:qrId/retry', requireMenu('history-generate-qr'), postDashRetryDeposit);
+router.post('/api/transactions/:qrId/manual-credit', requireMenu('history-generate-qr'), postDashManualCredit);
 router.get('/api/mutations', getMutationsJson);
 router.get('/api/mutations/stream', streamMutationsSse);
 router.get('/api/mutations/reconcile', getQrisReconcileApi);
@@ -116,16 +125,22 @@ router.get('/api/recent-paid', handleRecentPaidApi);
 router.get('/api/qris-template', getQrisTemplate);
 router.get('/wallet/saldo-utama', requireMenu('reports'), showSaldoUtama);
 router.get('/wallet/madera', requireMenu('reports'), showMadera);
+router.get('/cari-selisih', requireMenu('cari-selisih'), showCariSelisih);
 router.get('/settlement', requireMenu('settlement'), showSettlement);
 router.post('/settlement', requireMenu('settlement', 'transfer'), handleCreateSettlement);
 router.post('/settlement/inquiry', requireMenu('settlement', 'transfer'), handleSettlementBankInquiryApi);
 router.post('/settlement/transfer', requireMenu('settlement', 'transfer'), handleAccountTransferApi);
 router.get('/api/settlement/saved-banks', requireMenu('settlement', 'transfer'), getSettlementSavedBanksApi);
+router.get('/api/nagox/status', requireMenu('settlement'), getNagoxStatusApi);
+router.post('/api/settlement/nagox-approve', requireMenu('settlement', 'transfer'), nagoxApproveApi);
+router.post('/api/settlement/nagox-reject', requireMenu('settlement', 'transfer'), nagoxRejectApi);
 router.get('/daftar-bank', requireMenu('daftar-bank'), showDaftarBank);
 router.get('/api/daftar-bank', requireMenu('daftar-bank'), getDaftarBankApi);
 router.post('/api/daftar-bank', requireMenu('daftar-bank', 'manage'), createDaftarBankApi);
 router.put('/api/daftar-bank/:id', requireMenu('daftar-bank', 'manage'), updateDaftarBankApi);
 router.delete('/api/daftar-bank/:id', requireMenu('daftar-bank', 'manage'), deleteDaftarBankApi);
+router.get('/api/daftar-bank/bank-list', requireMenu('daftar-bank', 'manage'), handleBankListApi); // daftar bank tujuan utk Daftar Bank (tanpa perlu izin settlement.transfer)
+router.post('/api/daftar-bank/inquiry', requireMenu('daftar-bank', 'manage'), handleSettlementBankInquiryApi); // cek nama rekening utk Daftar Bank (tanpa perlu izin settlement.transfer)
 router.post('/settlement/retry-pin', requireMenu('settlement', 'transfer'), handleRetryAutoPinApi);
 router.get('/settlement/banks', requireMenu('settlement', 'transfer'), handleBankListApi);
 router.get('/postgres-monitor', requireMenu('postgres'), showPostgresMonitor);

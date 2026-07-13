@@ -391,16 +391,17 @@
         <select id="filter-account" class="mqf-input" onchange="onAccountChange(this.value)">
           <option value="__all__">Semua Akun</option>
           <% accounts.forEach(function(acct){ %>
-          <option value="<%= acct.id %>" data-site="<%= acct.siteName ? String(acct.siteName).toLowerCase() : '__none__' %>"><%= acct.merchantName %></option>
+          <option value="<%= acct.id %>" data-site="<%= acct.siteName ? String(acct.siteName).toLowerCase() : '__none__' %>"><%= acct.merchantName %><%= acct.status && acct.status !== 'active' ? ' · OFF' : '' %></option>
           <% }) %>
         </select>
       </div>
       <div class="mqf-field">
         <span class="mqf-label">Tipe</span>
-        <select id="filter-type" class="mqf-input" onchange="applyFilter()">
+        <select id="filter-type" class="mqf-input" onchange="onTypeFilterChange()">
           <option value="">Semua</option>
           <option value="credit">Masuk (IN)</option>
           <option value="debit">Keluar (OUT)</option>
+          <option value="fee">Biaya</option>
         </select>
       </div>
       <div class="mqf-field">
@@ -486,14 +487,17 @@
 </div>
 
 <!-- ── Mutation Table ─────────────────────────────────────────────────────────── -->
+<script src="/js/mut-export.js"></script>
 <div class="qris-mut-tablewrap" style="margin-top:12px">
   <div class="flex items-center justify-between px-5 py-3 border-b border-line flex-wrap gap-2">
     <h3 class="text-sm font-bold text-ink" id="tbl-title">
       Pilih akun di atas untuk melihat mutasi
       <span id="tbl-count" class="text-xs font-normal text-muted ml-1"></span>
     </h3>
-    <div class="flex items-center gap-2" id="tbl-actions" style="display:none!important">
+    <div class="flex items-center gap-2" id="tbl-actions">
       <span id="sync-status" style="font-size:11px;color:var(--color-muted)"></span>
+      <button onclick="qrisExport('csv')" class="mqf-btn mqf-btn-ghost" style="height:32px;padding:0 13px;font-size:12px" title="Download CSV baris yang tampil"><i class="fa-solid fa-file-csv" style="font-size:12px"></i> CSV</button>
+      <button onclick="qrisExport('xlsx')" class="mqf-btn mqf-btn-ghost" style="height:32px;padding:0 13px;font-size:12px" title="Download Excel baris yang tampil"><i class="fa-solid fa-file-excel" style="font-size:12px"></i> Excel</button>
     </div>
   </div>
 
@@ -1332,14 +1336,25 @@
     try {
       // Build URL with date filter params for backend
       const isAll = currentAccountId === ALL_ID;
+      const _typeEl = document.getElementById('filter-type');
+      // Batas ambil server: Hari Ini (live-poll 10s) = 500 supaya ringan. Tanggal LAMPAU / rentang
+      // (Kemarin/7 Hari/30 Hari/Semua/custom) ATAU filter Biaya = 5000 supaya SEMUA baris periode itu
+      // tampil (Semua Akun hari ramai bisa >3000 qris; 1 hari semua-wallet < 5000 -> semua kebawa).
+      // Cegah kasus "cuma 436 dari 3157" karena 500 baris pertama keburu habis oleh utama+madera.
+      const _pillA = document.querySelector('.date-pill.active');
+      const _presetA = _pillA ? _pillA.dataset.preset : 'today';
+      const _searchNow = (document.getElementById('search-input').value || '').trim();
+      const _needAll = (_typeEl && _typeEl.value === 'fee') || (_presetA !== 'today') || !!_searchNow;
+      const _lim = _needAll ? 5000 : 500;
       let url = isAll
-        ? `${apiMutUrl}?source=qris&bucket=qris&limit=500`
-        : `${apiMutUrl}?source=qris&accountId=${currentAccountId}&bucket=qris&limit=500`;
+        ? `${apiMutUrl}?source=qris&bucket=qris&limit=${_lim}`
+        : `${apiMutUrl}?source=qris&accountId=${currentAccountId}&bucket=qris&limit=${_lim}`;
       const dateWindow = getDateWindow();
       if (dateWindow) {
         if (dateWindow.start) url += '&dateFrom=' + formatDateInputValue(dateWindow.start);
         if (dateWindow.end) url += '&dateTo=' + formatDateInputValue(dateWindow.end);
       }
+      if (_searchNow) url += '&search=' + encodeURIComponent(_searchNow);
       const res = await fetch(url, { cache: 'no-store' });
       const data = await res.json();
       if (!data.ok) return;
@@ -1356,10 +1371,13 @@
 
       // Update header stats
       // Masuk/Keluar ikut label OrderKuota (getStatusCode): Pencairan Saldo QRIS status "OUT" -> Keluar.
-      const inAmt  = allRows.filter(r => getStatusCode(r) === 'IN').reduce((s, r) => s + Number(r.amount||0), 0);
-      const outAmt = allRows.filter(r => getStatusCode(r) !== 'IN').reduce((s, r) => s + Number(r.amount||0), 0);
-      const feeAmt = allRows.reduce((s, r) => s + getServiceFee(r), 0);
-      const openingBalance = isAll ? currentQrisBalance : getOpeningBalance(allRows, currentQrisBalance);
+      // Kartu dihitung SERVER atas seluruh baris periode (data.summary) -> akurat walau tabel dibatasi.
+      // Fallback ke hitung dari baris ter-load kalau summary tak ada (endpoint lama).
+      const _sum = data.summary || null;
+      const inAmt  = _sum ? Number(_sum.masuk||0)  : allRows.filter(r => getStatusCode(r) === 'IN').reduce((s, r) => s + Number(r.amount||0), 0);
+      const outAmt = _sum ? Number(_sum.keluar||0) : allRows.filter(r => getStatusCode(r) !== 'IN').reduce((s, r) => s + Number(r.amount||0), 0);
+      const feeAmt = _sum ? Number(_sum.fee||0)    : allRows.reduce((s, r) => s + getServiceFee(r), 0);
+      const openingBalance = (isAll || _sum) ? (currentQrisBalance - (inAmt - outAmt)) : getOpeningBalance(allRows, currentQrisBalance);
       document.getElementById('hdr-main').textContent = rp(openingBalance);
       document.getElementById('hdr-qris').textContent = fmt(currentQrisBalance);
       document.getElementById('hdr-in').textContent  = rp(inAmt);
@@ -1720,6 +1738,9 @@
 
   // ── Render Table ──────────────────────────────────────────────────────────
 
+  var lastFilteredRows = [];
+  window.qrisExport = function (fmt) { mutExport(fmt, 'qris', lastFilteredRows, 'mutasi-qris', 'Mutasi QRIS'); };
+
   function renderTable(rows) {
     const search = document.getElementById('search-input').value.toLowerCase();
     const typeFilter = document.getElementById('filter-type').value;
@@ -1729,14 +1750,15 @@
 
     let filtered = rows;
 
-    if (typeFilter) filtered = filtered.filter(r => getStatusCode(r) === (typeFilter === 'credit' ? 'IN' : 'OUT'));
+    if (typeFilter === 'fee') filtered = filtered.filter(r => getServiceFee(r) > 0);
+    else if (typeFilter) filtered = filtered.filter(r => getStatusCode(r) === (typeFilter === 'credit' ? 'IN' : 'OUT'));
     if (siteFilter === '__none__') filtered = filtered.filter(r => !String(r.siteName || '').trim());
     else if (siteFilter) filtered = filtered.filter(r => String(r.siteName || '').toLowerCase() === siteFilter);
     const matchEl = document.getElementById('filter-match');
     const matchFilter = matchEl ? matchEl.value : '';
     if (matchFilter === 'matched') filtered = filtered.filter(r => !!r.matched);
     else if (matchFilter === 'unmatched') filtered = filtered.filter(r => !r.matched && getStatusCode(r) === 'IN');
-    if (dateWindow) {
+    if (dateWindow && !search) {
       filtered = filtered.filter(r => {
         const rowDate = getRowDate(r);
         if (!rowDate) return false;
@@ -1788,6 +1810,7 @@
     // Filter Site kini diisi dari sites.json (server-render), tak dibangun ulang dari baris —
     // supaya SEMUA site tampil (termasuk yang belum ada mutasi termuat) + opsi "Tanpa site".
 
+    lastFilteredRows = filtered;
     syncTabulatorRows(filtered);
   }
 
@@ -1851,7 +1874,7 @@
       document.getElementById('filter-date-to').value = '';
     }
     updateDateRangeLabel(preset);
-    renderTable(allRows);
+    fetchAndRender(); /* refetch-on-date */
   };
 
   // Diketik manual di Custom Range -> aktifkan mode custom (pill tersembunyi) + render.
@@ -1860,7 +1883,7 @@
     const c = document.querySelector('.date-pill[data-preset="custom"]');
     if (c) c.classList.add('active');
     updateDateRangeLabel('custom');
-    renderTable(allRows);
+    fetchAndRender();
   };
 
   // Ganti akun via dropdown "Akun QRIS".
@@ -1916,7 +1939,12 @@
     const activePill = document.querySelector('.date-pill.active');
     const preset = activePill ? activePill.dataset.preset : 'today';
     updateDateRangeLabel(preset);
-    if (allRows.length) renderTable(allRows);
+    fetchAndRender();
+  };
+  // Ganti Tipe (khususnya ke/dari 'Biaya') mengubah limit fetch -> refetch supaya baris fee lengkap.
+  window.onTypeFilterChange = function() {
+    if (typeof fetchAndRender === 'function') { fetchAndRender(); }
+    else if (allRows.length) { renderTable(allRows); }
   };
   window.resetFilter = function() {
     document.getElementById('filter-type').value = '';
@@ -1925,7 +1953,7 @@
     syncAccountBySite('');
     var searchEl = document.getElementById('search-input'); if (searchEl) searchEl.value = '';
     setDefaultDateFilter();
-    if (allRows.length) renderTable(allRows);
+    fetchAndRender();
   };
 
   // ── Tab scroll ────────────────────────────────────────────────────────────
@@ -1939,6 +1967,7 @@
 
   document.getElementById('search-input').addEventListener('input', function() {
     if (allRows.length) renderTable(allRows);
+    clearTimeout(window.__qrisSearchDeb); window.__qrisSearchDeb = setTimeout(function(){ if (typeof fetchAndRender === 'function') fetchAndRender(); }, 350);
   });
 
   // ── Load all account counts on page load ──────────────────────────────────

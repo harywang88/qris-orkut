@@ -7,7 +7,7 @@
  *   - uang masuk yang belum ter-match (pending / bayar QR statis / double-pay).
  * Bukan hanya transaksi paid (yang bisa lebih kecil dari hitungan bank).
  *
- * Auto-off: begitu uang masuk hari ini >= 29.9jt, akun otomatis dinonaktifkan
+ * Auto-off: begitu uang masuk hari ini >= 29.6jt, akun otomatis dinonaktifkan
  * supaya tak dipilih untuk QR baru (hindari tembus 30jt). Re-enable MANUAL oleh koko.
  */
 import { db } from '../config/database';
@@ -15,8 +15,8 @@ import { logger } from '../config/logger';
 
 const WIB_MS = 7 * 60 * 60 * 1000;
 
-/** Ambang auto-off: 100rb di bawah limit default 30jt. Samakan dgn CAP di views/settlement. */
-export const QRIS_AUTO_OFF_THRESHOLD = 29_900_000;
+/** Ambang auto-off: 400rb di bawah limit default 30jt. Samakan dgn CAP di views/settlement. */
+export const QRIS_AUTO_OFF_THRESHOLD = 29_600_000;
 
 /** Awal hari ini dalam WIB (00:00 WIB) sebagai Date. */
 export function todayWibStart(): Date {
@@ -58,7 +58,7 @@ export async function qrisReceivedTodayFor(accountId: string): Promise<number> {
 }
 
 /**
- * Auto-off: kalau uang masuk QRIS hari ini (WIB) untuk akun >= 29.9jt, set status='inactive'
+ * Auto-off: kalau uang masuk QRIS hari ini (WIB) untuk akun >= 29.6jt, set status='inactive'
  * supaya tak dipilih untuk QR baru. Re-enable MANUAL oleh koko. Return true kalau baru dimatikan.
  * dailyLimit=0 (unlimited) tidak di-auto-off.
  */

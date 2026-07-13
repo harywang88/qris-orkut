@@ -86,11 +86,51 @@
     <div>
       <p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Total Uang Pending</p>
       <p class="text-base font-bold leading-tight" style="color:#fbbf24">Rp <%= totalPending.toLocaleString('id-ID') %></p>
-      <p class="text-xs text-muted-2 mt-0.5"><%= rows.length %> uang masuk belum ter-match</p>
+      <p class="text-xs text-muted-2 mt-0.5"><%= (typeof total!=='undefined'?total:rows.length) %> uang masuk belum ter-match</p>
     </div>
   </div>
 </div>
 
+<%
+  function pmUrl(ov) {
+    var p = Object.assign({ period: (typeof period!=='undefined'?period:'today'), from: (typeof fromValue!=='undefined'?fromValue:''), to: (typeof toValue!=='undefined'?toValue:''), pageSize: (typeof pageSize!=='undefined'?pageSize:25), page: (typeof page!=='undefined'?page:1), dPageSize: (typeof dPageSize!=='undefined'?dPageSize:10), dPage: (typeof dPage!=='undefined'?dPage:1) }, ov || {});
+    var parts = []; Object.keys(p).forEach(function (k) { if (p[k] !== '' && p[k] != null) parts.push(k + '=' + encodeURIComponent(p[k])); });
+    return '/dashboard/pending-money?' + parts.join('&');
+  }
+  var _pd = (typeof period !== 'undefined') ? period : 'today';
+%>
+<style>
+  .pmf { display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px;padding:13px 15px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.09);border-radius:14px;margin-bottom:14px; }
+  .pmf-l { font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#8b8b8b);display:block;margin-bottom:5px; }
+  .pmf-in { height:36px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);color:var(--ink);border-radius:9px;padding:0 11px;font-size:13px;outline:none; }
+  .pmf-in option { background:#141a26;color:#e6ebf5; }
+  .pmf-pill { padding:7px 14px;border-radius:999px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid rgba(255,255,255,.1);background:transparent;color:var(--muted,#8b8b8b);text-decoration:none;transition:all .18s; }
+  .pmf-pill:hover { border-color:rgba(255,255,255,.25);color:var(--ink); }
+  .pmf-pill.on { border-color:rgba(251,191,36,.5);background:rgba(251,191,36,.15);color:#fbbf24;font-weight:800; }
+  .pmf-btn { height:36px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 13px;min-width:34px;border-radius:9px;font-size:13px;font-weight:800;cursor:pointer;border:1px solid transparent;text-decoration:none; }
+</style>
+<div class="pmf">
+  <div>
+    <span class="pmf-l">Periode</span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <a href="<%= pmUrl({period:'today',from:'',to:'',page:1}) %>" class="pmf-pill <%= _pd==='today'?'on':'' %>">Hari Ini</a>
+      <a href="<%= pmUrl({period:'yesterday',from:'',to:'',page:1}) %>" class="pmf-pill <%= _pd==='yesterday'?'on':'' %>">Kemarin</a>
+      <a href="<%= pmUrl({period:'all',from:'',to:'',page:1}) %>" class="pmf-pill <%= _pd==='all'?'on':'' %>">Semua</a>
+      <a href="<%= pmUrl({period:'custom',page:1}) %>" class="pmf-pill <%= _pd==='custom'?'on':'' %>">Custom</a>
+    </div>
+  </div>
+  <form method="get" action="/dashboard/pending-money" style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap">
+    <input type="hidden" name="period" id="pmPeriod" value="<%= _pd %>" />
+    <div><span class="pmf-l">Dari</span><input type="date" name="from" value="<%= typeof fromValue!=='undefined'?fromValue:'' %>" onchange="document.getElementById('pmPeriod').value='custom'" class="pmf-in" style="width:145px"></div>
+    <div><span class="pmf-l">Sampai</span><input type="date" name="to" value="<%= typeof toValue!=='undefined'?toValue:'' %>" onchange="document.getElementById('pmPeriod').value='custom'" class="pmf-in" style="width:145px"></div>
+    <div><span class="pmf-l">Baris/Hal</span>
+      <select name="pageSize" class="pmf-in" style="width:80px" onchange="this.form.submit()">
+        <% [25,50,100].forEach(function(ps){ %><option value="<%= ps %>" <%= (typeof pageSize!=='undefined'?Number(pageSize):25)===ps?'selected':'' %>><%= ps %></option><% }); %>
+      </select>
+    </div>
+    <button type="submit" class="pmf-btn" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#3a2500"><i class="fa-solid fa-magnifying-glass" style="font-size:11px"></i> Terapkan</button>
+  </form>
+</div>
 <div class="qris-card p-4">
   <% if (!rows || rows.length === 0) { %>
     <div class="text-center py-10 text-muted-2">
@@ -169,19 +209,45 @@
   <% } %>
 </div>
 
+<% if (typeof totalPages !== 'undefined' && totalPages > 1) { %>
+<div class="qris-card p-3 mt-3" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+  <span class="text-[11px] text-muted-2">Halaman <b class="text-ink"><%= page %></b> dari <%= totalPages %> · <%= total %> uang pending</span>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <% var _lo=Math.max(1,page-2),_hi=Math.min(totalPages,page+2); var _pl=[]; if(_lo>1){_pl.push(1); if(_lo>2)_pl.push('...');} for(var _i=_lo;_i<=_hi;_i++)_pl.push(_i); if(_hi<totalPages){if(_hi<totalPages-1)_pl.push('...');_pl.push(totalPages);} %>
+    <a href="<%= pmUrl({page:Math.max(1,page-1)}) %>" class="pmf-btn" style="background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12);color:var(--muted);<%= page<=1?'opacity:.4;pointer-events:none':'' %>"><i class="fa-solid fa-chevron-left" style="font-size:10px"></i></a>
+    <% _pl.forEach(function(pn){ %>
+      <% if(pn==='...'){ %><span style="padding:0 6px;color:var(--muted);align-self:center">…</span><% } else { %>
+      <a href="<%= pmUrl({page:pn}) %>" class="pmf-btn" style="<%= pn===page?'background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#3a2500':'background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12);color:var(--ink)' %>"><%= pn %></a>
+      <% } %>
+    <% }); %>
+    <a href="<%= pmUrl({page:Math.min(totalPages,page+1)}) %>" class="pmf-btn" style="background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12);color:var(--muted);<%= page>=totalPages?'opacity:.4;pointer-events:none':'' %>"><i class="fa-solid fa-chevron-right" style="font-size:10px"></i></a>
+  </div>
+</div>
+<% } %>
+
 <!-- ── Sudah Diproses (terkunci) ── -->
 <% var _locked = (typeof lockedRows !== 'undefined' && lockedRows) ? lockedRows : []; %>
-<% if (_locked.length) { %>
+<% var _dTotal = (typeof dTotal !== 'undefined') ? dTotal : _locked.length; %>
+<% if (_dTotal > 0) { %>
 <div class="qris-card p-4 mt-5">
-  <div class="flex items-center gap-2 mb-3">
-    <i class="fa-solid fa-lock" style="color:#86efac"></i>
-    <h2 class="text-sm font-bold text-ink">Sudah Diproses <span class="text-muted-2 font-normal">(<%= _locked.length %> — terkunci, tak bisa diubah)</span></h2>
+  <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-lock" style="color:#86efac"></i>
+      <h2 class="text-sm font-bold text-ink">Sudah Diproses <span class="text-muted-2 font-normal">(<%= _dTotal %> — manual + auto deposit, terkunci)</span></h2>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <span class="pmf-l" style="margin:0">Baris/Hal</span>
+      <select class="pmf-in" style="width:78px" onchange="var u=new URL(location.href);u.searchParams.set('dPageSize',this.value);u.searchParams.set('dPage','1');location.href=u.toString()">
+        <% [10,50,100].forEach(function(ps){ %><option value="<%= ps %>" <%= (typeof dPageSize!=='undefined'?Number(dPageSize):10)===ps?'selected':'' %>><%= ps %></option><% }); %>
+      </select>
+    </div>
   </div>
   <div class="overflow-x-auto">
     <table class="w-full pm-table">
       <thead>
         <tr>
           <th>Uang Masuk</th>
+          <th>User ID</th>
           <th>Akun / Site</th>
           <th>Nominal</th>
           <th>Pengirim / RRN</th>
@@ -195,6 +261,7 @@
         %>
           <tr class="pm-locked-row" title="<%= tip %>">
             <td class="whitespace-nowrap text-muted-2"><%= fmtWib(r.transactionTime) %></td>
+            <td class="whitespace-nowrap"><span class="pm-badge" style="background:rgba(96,165,250,.15);color:#93c5fd"><%= r.userIdExt || '-' %></span></td>
             <td class="whitespace-nowrap">
               <span class="text-ink font-semibold"><%= r.merchantName || r.accountCode %></span>
               <span class="block text-[10px] text-muted"><%= r.siteName || 'Tanpa site' %></span>
@@ -216,6 +283,21 @@
       </tbody>
     </table>
   </div>
+  <% if (typeof dTotalPages !== 'undefined' && dTotalPages > 1) { %>
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08)">
+    <span class="text-[11px] text-muted-2">Halaman <b class="text-ink"><%= dPage %></b> dari <%= dTotalPages %></span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <% var _dlo=Math.max(1,dPage-2),_dhi=Math.min(dTotalPages,dPage+2); var _dpl=[]; if(_dlo>1){_dpl.push(1); if(_dlo>2)_dpl.push('...');} for(var _di=_dlo;_di<=_dhi;_di++)_dpl.push(_di); if(_dhi<dTotalPages){if(_dhi<dTotalPages-1)_dpl.push('...');_dpl.push(dTotalPages);} %>
+      <a href="<%= pmUrl({dPage:Math.max(1,dPage-1)}) %>" class="pmf-btn" style="background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12);color:var(--muted);<%= dPage<=1?'opacity:.4;pointer-events:none':'' %>"><i class="fa-solid fa-chevron-left" style="font-size:10px"></i></a>
+      <% _dpl.forEach(function(pn){ %>
+        <% if(pn==='...'){ %><span style="padding:0 6px;color:var(--muted);align-self:center">…</span><% } else { %>
+        <a href="<%= pmUrl({dPage:pn}) %>" class="pmf-btn" style="<%= pn===dPage?'background:linear-gradient(135deg,#86efac,#22c55e);color:#052e16':'background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12);color:var(--ink)' %>"><%= pn %></a>
+        <% } %>
+      <% }); %>
+      <a href="<%= pmUrl({dPage:Math.min(dTotalPages,dPage+1)}) %>" class="pmf-btn" style="background:rgba(255,255,255,.05);border-color:rgba(255,255,255,.12);color:var(--muted);<%= dPage>=dTotalPages?'opacity:.4;pointer-events:none':'' %>"><i class="fa-solid fa-chevron-right" style="font-size:10px"></i></a>
+    </div>
+  </div>
+  <% } %>
 </div>
 <% } %>
 
@@ -256,16 +338,19 @@
 </div>
 
 <script>
-  var pmCur = { bookUrl: '', mode: 'manual' };
+  var pmCur = { bookUrl: '', mode: 'auto' };
   function pmOpenPush(btn) {
     pmCur.bookUrl = btn.dataset.bookUrl;
     document.getElementById('pmiIssuer').textContent = btn.dataset.issuer;
     document.getElementById('pmiAmount').textContent = btn.dataset.amount;
     document.getElementById('pmiRrn').textContent = btn.dataset.rrn;
     document.getElementById('pmMember').value = btn.dataset.member || '';
-    document.getElementById('pmWebsite').value = '';
+    var _ws = document.getElementById('pmWebsite'); var _def = '';
+    for (var _i=0;_i<_ws.options.length;_i++){ if((_ws.options[_i].value||'').toLowerCase()==='sulebet'){_def=_ws.options[_i].value;break;} }
+    if(!_def){ for (var _j=0;_j<_ws.options.length;_j++){ if(_ws.options[_j].value){_def=_ws.options[_j].value;break;} } }
+    _ws.value = _def;
     document.getElementById('pmNote').value = '';
-    pmSwitch('manual');
+    pmSwitch('auto');
     document.getElementById('pmModal').classList.add('show');
   }
   function pmClose() { document.getElementById('pmModal').classList.remove('show'); }

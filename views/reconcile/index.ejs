@@ -9,60 +9,187 @@
   }
   function rp(n) { return 'Rp ' + Number(n || 0).toLocaleString('id-ID'); }
   function badge(s) {
-    if (s === 'match') return '<span class="rk-badge" style="background:rgba(34,197,94,.16);color:#4ade80"><i class="fa-solid fa-circle-check"></i> MATCH</span>';
-    if (s === 'pending') return '<span class="rk-badge" style="background:rgba(251,191,36,.16);color:#fbbf24"><i class="fa-solid fa-clock"></i> PENDING</span>';
-    return '<span class="rk-badge" style="background:rgba(239,68,68,.16);color:#f87171"><i class="fa-solid fa-triangle-exclamation"></i> UNMATCH</span>';
+    if (s === 'match') return '<span class="rk-badge rk-b-ok"><i class="fa-solid fa-circle-check"></i> MATCH</span>';
+    if (s === 'pending') return '<span class="rk-badge rk-b-pend"><i class="fa-solid fa-clock"></i> PENDING</span>';
+    return '<span class="rk-badge rk-b-bad"><i class="fa-solid fa-triangle-exclamation"></i> UNMATCH</span>';
   }
-  var sections = [
-    { h: 1, rows: hop1, sum: summary.hop1, title: 'QRIS → Utama', sub: 'Pencairan Saldo QRIS → Saldo Utama · cocok by nominal + akun + waktu (±3 mnt)' },
-    { h: 2, rows: hop2, sum: summary.hop2, title: 'Utama → Madera', sub: 'Pindah Saldo ke Madera → TOPUP Madera · cocok by kode P# (gratis, tanpa biaya)' }
-  ];
+  function buildUrl(ov) {
+    var p = Object.assign({ hop: hop, period: period, from: fromValue, to: toValue, accountCode: accountCode, nominal: nominal, status: status, pageSize: pageSize, page: page }, ov || {});
+    var parts = [];
+    Object.keys(p).forEach(function (k) { if (p[k] !== '' && p[k] != null) parts.push(k + '=' + encodeURIComponent(p[k])); });
+    return '/dashboard/reconcile?' + parts.join('&');
+  }
+  var hopTitle = hop === 2 ? 'Utama → Madera' : 'QRIS → Utama';
+  var hopSub = hop === 2 ? 'Pindah Saldo ke Madera → TOPUP Madera · cocok by kode P#' : 'Pencairan Saldo QRIS → Saldo Utama · cocok by nominal + akun + waktu (±3 mnt)';
+  var startRow = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  var endRow = Math.min(page * pageSize, total);
+  var pageList = [];
+  var win = 2;
+  var lo = Math.max(1, page - win), hi = Math.min(totalPages, page + win);
+  if (lo > 1) { pageList.push(1); if (lo > 2) pageList.push('...'); }
+  for (var i = lo; i <= hi; i++) pageList.push(i);
+  if (hi < totalPages) { if (hi < totalPages - 1) pageList.push('...'); pageList.push(totalPages); }
 %>
 <style>
-  .rk-badge { display:inline-block; padding:2px 9px; border-radius:999px; font-size:11px; font-weight:700; white-space:nowrap; }
-  .rk-table th { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted,#8b8b8b); text-align:left; padding:8px 10px; border-bottom:1px solid rgba(255,255,255,.08); }
-  .rk-table td { padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:top; }
+  .rk-wrap { --rk-line: rgba(255,255,255,.09); }
+  .rk-badge { display:inline-flex; align-items:center; gap:5px; padding:3px 10px; border-radius:999px; font-size:11px; font-weight:800; white-space:nowrap; }
+  .rk-b-ok { background:rgba(34,197,94,.16); color:#4ade80; }
+  .rk-b-pend { background:rgba(251,191,36,.16); color:#fbbf24; }
+  .rk-b-bad { background:rgba(239,68,68,.16); color:#f87171; }
+  /* dropdown hop */
+  .rk-dd { position:relative; }
+  .rk-dd-btn { display:inline-flex; align-items:center; gap:10px; padding:10px 16px; border-radius:12px; background:linear-gradient(135deg,rgba(255,124,108,.16),rgba(244,63,94,.12)); border:1px solid rgba(255,124,108,.35); color:var(--ink); font-weight:800; font-size:14px; cursor:pointer; box-shadow:0 6px 20px -10px rgba(244,63,94,.6); }
+  .rk-dd-btn .fa-chevron-down { font-size:11px; transition:transform .2s; color:#ffb4a8; }
+  .rk-dd.open .fa-chevron-down { transform:rotate(180deg); }
+  .rk-dd-menu { position:absolute; top:calc(100% + 8px); left:0; min-width:260px; background:var(--card,#141a26); border:1px solid var(--rk-line); border-radius:14px; box-shadow:0 24px 60px -20px rgba(0,0,0,.7); padding:6px; z-index:50; display:none; }
+  .rk-dd.open .rk-dd-menu { display:block; }
+  .rk-dd-item { display:flex; align-items:center; gap:11px; padding:11px 13px; border-radius:10px; text-decoration:none; color:var(--ink); font-size:13px; font-weight:700; transition:background .15s; }
+  .rk-dd-item:hover { background:rgba(255,255,255,.06); }
+  .rk-dd-item.active { background:rgba(255,124,108,.14); color:#ffb4a8; }
+  .rk-dd-item .ic { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .rk-dd-item small { display:block; font-size:10px; font-weight:600; color:var(--muted,#8b8b8b); margin-top:2px; }
+  /* filter bar */
+  .rk-filter { display:flex; flex-wrap:wrap; align-items:flex-end; gap:11px; padding:14px 16px; background:rgba(255,255,255,.025); border:1px solid var(--rk-line); border-radius:16px; }
+  .rk-fg { display:flex; flex-direction:column; gap:5px; }
+  .rk-lbl { font-size:10px; font-weight:800; letter-spacing:.09em; text-transform:uppercase; color:var(--muted,#8b8b8b); }
+  .rk-in { height:38px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.1); color:var(--ink); border-radius:10px; padding:0 12px; font-size:13px; outline:none; }
+  .rk-in:focus { border-color:rgba(99,179,237,.45); }
+  select.rk-in { cursor:pointer; }
+  .rk-in option { background:#141a26; color:#e6ebf5; }
+  .rk-pill { padding:8px 15px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid rgba(255,255,255,.1); background:transparent; color:var(--muted,#8b8b8b); transition:all .18s; }
+  .rk-pill:hover { border-color:rgba(255,255,255,.25); color:var(--ink); }
+  .rk-pill.active { border-color:rgba(255,124,108,.5); background:rgba(255,124,108,.15); color:#ffb4a8; font-weight:800; }
+  .rk-btn { height:38px; display:inline-flex; align-items:center; gap:7px; padding:0 16px; border-radius:10px; font-size:13px; font-weight:800; cursor:pointer; border:1px solid transparent; text-decoration:none; }
+  .rk-btn-primary { background:linear-gradient(135deg,#ff7c6c,#f43f5e); color:#fff; box-shadow:0 6px 18px -8px rgba(244,63,94,.7); }
+  .rk-btn-ghost { background:rgba(255,255,255,.05); border-color:rgba(255,255,255,.12); color:var(--muted,#8b8b8b); }
+  /* stat */
+  .rk-stat { border:1px solid var(--rk-line); border-radius:14px; padding:12px 14px; background:rgba(255,255,255,.02); }
+  .rk-stat .n { font-size:20px; font-weight:900; line-height:1; }
+  .rk-stat .l { font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted,#8b8b8b); margin-top:5px; font-weight:700; }
+  /* table */
+  .rk-table { width:100%; border-collapse:collapse; }
+  .rk-table th { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted,#8b8b8b); text-align:left; padding:10px 12px; border-bottom:1px solid var(--rk-line); font-weight:800; }
+  .rk-table td { padding:11px 12px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:middle; }
   .rk-table tbody tr:hover { background:rgba(255,255,255,.03); }
-  .rk-stat { border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px 12px; }
-  .rk-stat .n { font-size:18px; font-weight:800; line-height:1; }
-  .rk-stat .l { font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted,#8b8b8b); margin-top:4px; }
+  /* pager */
+  .rk-pager { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+  .rk-pg { min-width:34px; height:34px; padding:0 10px; display:inline-flex; align-items:center; justify-content:center; border-radius:9px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); color:var(--ink); font-size:13px; font-weight:700; text-decoration:none; cursor:pointer; }
+  .rk-pg:hover { border-color:rgba(255,124,108,.4); }
+  .rk-pg.active { background:linear-gradient(135deg,#ff7c6c,#f43f5e); color:#fff; border-color:transparent; }
+  .rk-pg.disabled { opacity:.4; pointer-events:none; }
+  .rk-pg.dots { border:none; background:none; cursor:default; }
 </style>
 
-<div class="qris-page-header flex flex-wrap items-start justify-between gap-4">
-  <div>
-    <h1 class="qris-page-title">Rekonsiliasi <span>Saldo</span></h1>
-    <p class="qris-section-sub mt-1">Cocokkan perpindahan uang KELUAR antar-saldo: QRIS → Utama → Madera</p>
-  </div>
-  <form method="get" style="display:flex;align-items:center;gap:8px">
-    <label class="text-xs text-muted-2">Rentang</label>
-    <select name="days" onchange="this.form.submit()" class="text-sm" style="padding:6px 10px;border-radius:8px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);color:inherit">
-      <% [1,3,7,14,30].forEach(function(d){ %><option value="<%= d %>" <%= days===d?'selected':'' %>><%= d %> hari</option><% }); %>
-    </select>
-  </form>
-</div>
-
-<% sections.forEach(function (sec) { %>
-  <div class="qris-card p-4 mb-5">
-    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-      <div>
-        <h2 class="text-base font-bold text-ink">Hop <%= sec.h %>: <%= sec.title %></h2>
-        <p class="text-xs text-muted-2"><%= sec.sub %></p>
+<div class="rk-wrap">
+  <div class="qris-page-header flex flex-wrap items-start justify-between gap-4">
+    <div>
+      <h1 class="qris-page-title">Rekonsiliasi <span>Saldo</span></h1>
+      <p class="qris-section-sub mt-1">Cocokkan perpindahan uang KELUAR antar-saldo · pilih arah di dropdown</p>
+    </div>
+    <!-- Dropdown pilih arah rekonsiliasi -->
+    <div class="rk-dd" id="rkDd">
+      <button type="button" class="rk-dd-btn" onclick="document.getElementById('rkDd').classList.toggle('open')">
+        <i class="fa-solid fa-arrow-right-arrow-left" style="color:#ffb4a8"></i>
+        <span>Rekonsiliasi: <%= hopTitle %></span>
+        <i class="fa-solid fa-chevron-down"></i>
+      </button>
+      <div class="rk-dd-menu">
+        <a href="<%= buildUrl({ hop: 1, page: 1 }) %>" class="rk-dd-item <%= hop === 1 ? 'active' : '' %>">
+          <span class="ic" style="background:rgba(34,197,94,.15);color:#4ade80"><i class="fa-solid fa-right-long"></i></span>
+          <span>QRIS → Utama<small>Pencairan QRIS ke saldo Utama</small></span>
+        </a>
+        <a href="<%= buildUrl({ hop: 2, page: 1 }) %>" class="rk-dd-item <%= hop === 2 ? 'active' : '' %>">
+          <span class="ic" style="background:rgba(96,165,250,.15);color:#60a5fa"><i class="fa-solid fa-right-long"></i></span>
+          <span>Utama → Madera<small>Pindah saldo Utama ke Madera</small></span>
+        </a>
       </div>
     </div>
+  </div>
 
-    <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-4">
-      <div class="rk-stat"><div class="n text-ink"><%= sec.sum.total %></div><div class="l">Total OUT</div></div>
-      <div class="rk-stat" style="border-color:rgba(34,197,94,.2)"><div class="n" style="color:#4ade80"><%= sec.sum.match %></div><div class="l">Match</div></div>
-      <div class="rk-stat" style="border-color:rgba(251,191,36,.2)"><div class="n" style="color:#fbbf24"><%= sec.sum.pending %></div><div class="l">Pending</div></div>
-      <div class="rk-stat" style="border-color:rgba(239,68,68,.2)"><div class="n" style="color:#f87171"><%= sec.sum.unmatch %></div><div class="l">Unmatch</div></div>
-      <div class="rk-stat"><div class="n text-ink" style="font-size:14px">Rp <%= sec.sum.selisih.toLocaleString('id-ID') %></div><div class="l">Selisih (belum match)</div></div>
+  <!-- Filter -->
+  <form method="get" action="/dashboard/reconcile" class="mb-4">
+    <input type="hidden" name="hop" value="<%= hop %>" />
+    <input type="hidden" name="period" id="rkPeriod" value="<%= period %>" />
+    <div class="rk-filter">
+      <div class="rk-fg">
+        <span class="rk-lbl">Periode</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <a href="<%= buildUrl({ period: 'today', from: '', to: '', page: 1 }) %>" class="rk-pill <%= period === 'today' ? 'active' : '' %>">Hari Ini</a>
+          <a href="<%= buildUrl({ period: 'yesterday', from: '', to: '', page: 1 }) %>" class="rk-pill <%= period === 'yesterday' ? 'active' : '' %>">Kemarin</a>
+          <a href="<%= buildUrl({ period: 'custom', page: 1 }) %>" class="rk-pill <%= period === 'custom' ? 'active' : '' %>">Custom</a>
+        </div>
+      </div>
+      <div class="rk-fg">
+        <span class="rk-lbl">Dari</span>
+        <input type="date" name="from" value="<%= fromValue %>" onchange="document.getElementById('rkPeriod').value='custom'" class="rk-in" style="width:150px" />
+      </div>
+      <div class="rk-fg">
+        <span class="rk-lbl">Sampai</span>
+        <input type="date" name="to" value="<%= toValue %>" onchange="document.getElementById('rkPeriod').value='custom'" class="rk-in" style="width:150px" />
+      </div>
+      <div class="rk-fg">
+        <span class="rk-lbl">Akun QRIS</span>
+        <select name="accountCode" class="rk-in" style="width:180px">
+          <option value="">Semua Akun</option>
+          <% accounts.forEach(function (a) { %>
+            <option value="<%= a.code %>" <%= accountCode === a.code ? 'selected' : '' %>><%= a.code %> - <%= a.merchantName %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div class="rk-fg">
+        <span class="rk-lbl">Nominal</span>
+        <input type="text" name="nominal" value="<%= nominal %>" inputmode="numeric" placeholder="mis. 100.000" oninput="this.value=this.value.replace(/[^0-9.,]/g,'')" class="rk-in" style="width:120px" />
+      </div>
+      <div class="rk-fg">
+        <span class="rk-lbl">Status</span>
+        <select name="status" class="rk-in" style="width:130px">
+          <option value="">Semua</option>
+          <option value="match" <%= status === 'match' ? 'selected' : '' %>>Match</option>
+          <option value="pending" <%= status === 'pending' ? 'selected' : '' %>>Pending</option>
+          <option value="unmatch" <%= status === 'unmatch' ? 'selected' : '' %>>Unmatch</option>
+        </select>
+      </div>
+      <div class="rk-fg">
+        <span class="rk-lbl">Baris/Hal</span>
+        <select name="pageSize" class="rk-in" style="width:90px" onchange="this.form.submit()">
+          <% [25,50,100,200,500].forEach(function (ps) { %>
+            <option value="<%= ps %>" <%= Number(pageSize) === ps ? 'selected' : '' %>><%= ps %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div class="rk-fg">
+        <span class="rk-lbl">&nbsp;</span>
+        <div style="display:flex;gap:8px">
+          <button type="submit" class="rk-btn rk-btn-primary"><i class="fa-solid fa-magnifying-glass" style="font-size:12px"></i> Filter</button>
+          <a href="/dashboard/reconcile?hop=<%= hop %>" class="rk-btn rk-btn-ghost">Reset</a>
+        </div>
+      </div>
     </div>
+  </form>
 
-    <% if (!sec.rows.length) { %>
-      <div class="text-center py-6 text-muted-2 text-sm"><i class="fa-solid fa-circle-check mr-1" style="color:#86efac"></i> Tak ada perpindahan pada rentang ini.</div>
+  <!-- Ringkasan -->
+  <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
+    <div class="rk-stat"><div class="n text-ink"><%= summary.total.toLocaleString('id-ID') %></div><div class="l">Total Keluar</div></div>
+    <div class="rk-stat" style="border-color:rgba(34,197,94,.25)"><div class="n" style="color:#4ade80"><%= summary.match.toLocaleString('id-ID') %></div><div class="l">Match</div></div>
+    <div class="rk-stat" style="border-color:rgba(251,191,36,.25)"><div class="n" style="color:#fbbf24"><%= summary.pending.toLocaleString('id-ID') %></div><div class="l">Pending</div></div>
+    <div class="rk-stat" style="border-color:rgba(239,68,68,.25)"><div class="n" style="color:#f87171"><%= summary.unmatch.toLocaleString('id-ID') %></div><div class="l">Unmatch</div></div>
+    <div class="rk-stat"><div class="n text-ink" style="font-size:15px">Rp <%= summary.selisih.toLocaleString('id-ID') %></div><div class="l">Selisih (belum match)</div></div>
+  </div>
+
+  <!-- Tabel -->
+  <div class="qris-card p-0" style="overflow:hidden">
+    <div class="flex items-center justify-between px-5 py-3" style="border-bottom:1px solid var(--rk-line)">
+      <div>
+        <h2 class="text-sm font-bold text-ink"><%= hopTitle %></h2>
+        <p class="text-[11px] text-muted-2"><%= hopSub %></p>
+      </div>
+      <span class="text-[11px] text-muted-2">Menampilkan <b class="text-ink"><%= startRow %>-<%= endRow %></b> dari <b class="text-ink"><%= total.toLocaleString('id-ID') %></b></span>
+    </div>
+    <% if (!rows.length) { %>
+      <div class="text-center py-14 text-muted-2 text-sm"><i class="fa-solid fa-inbox mr-1" style="color:#86efac;font-size:22px;display:block;margin-bottom:8px"></i> Tak ada data untuk filter ini.</div>
     <% } else { %>
     <div class="overflow-x-auto">
-      <table class="w-full rk-table">
+      <table class="rk-table">
         <thead>
           <tr>
             <th>Waktu Keluar</th>
@@ -70,11 +197,11 @@
             <th class="text-right">Nominal</th>
             <th>Status</th>
             <th>Pasangan Masuk</th>
-            <% if (sec.h === 2) { %><th>Kode P#</th><% } %>
+            <% if (hop === 2) { %><th>Kode P#</th><% } %>
           </tr>
         </thead>
         <tbody>
-          <% sec.rows.slice(0, 300).forEach(function (r) { %>
+          <% rows.forEach(function (r) { %>
             <tr>
               <td class="whitespace-nowrap text-muted-2"><%= fmtWib(r.outTime) %></td>
               <td class="whitespace-nowrap text-ink font-semibold"><%= r.accountCode %></td>
@@ -83,23 +210,44 @@
               <td class="text-xs">
                 <% if (r.inTime) { %>
                   <span class="text-muted-2"><%= fmtWib(r.inTime) %></span>
-                  <span class="block text-[10px] text-muted"><%= (r.inKet || '').slice(0, 46) %></span>
+                  <span class="block text-[10px] text-muted"><%= (r.inKet || '').slice(0, 50) %></span>
                 <% } else { %>
                   <span class="text-[11px]" style="color:#f87171">— belum ada uang masuk —</span>
                 <% } %>
               </td>
-              <% if (sec.h === 2) { %><td class="text-[10px] font-mono text-muted"><%= r.code || '-' %></td><% } %>
+              <% if (hop === 2) { %><td class="text-[10px] font-mono text-muted"><%= r.code || '-' %></td><% } %>
             </tr>
           <% }); %>
         </tbody>
       </table>
-      <% if (sec.rows.length > 300) { %><p class="text-[11px] text-muted mt-2">Menampilkan 300 dari <%= sec.rows.length %> baris (perbesar rentang untuk memfilter).</p><% } %>
+    </div>
+    <!-- Pagination -->
+    <div class="flex items-center justify-between px-5 py-3 flex-wrap gap-3" style="border-top:1px solid var(--rk-line)">
+      <span class="text-[11px] text-muted-2">Halaman <b class="text-ink"><%= page %></b> dari <%= totalPages %></span>
+      <div class="rk-pager">
+        <a href="<%= buildUrl({ page: Math.max(1, page - 1) }) %>" class="rk-pg <%= page <= 1 ? 'disabled' : '' %>"><i class="fa-solid fa-chevron-left" style="font-size:11px"></i></a>
+        <% pageList.forEach(function (pn) { %>
+          <% if (pn === '...') { %>
+            <span class="rk-pg dots">…</span>
+          <% } else { %>
+            <a href="<%= buildUrl({ page: pn }) %>" class="rk-pg <%= pn === page ? 'active' : '' %>"><%= pn %></a>
+          <% } %>
+        <% }); %>
+        <a href="<%= buildUrl({ page: Math.min(totalPages, page + 1) }) %>" class="rk-pg <%= page >= totalPages ? 'disabled' : '' %>"><i class="fa-solid fa-chevron-right" style="font-size:11px"></i></a>
+      </div>
     </div>
     <% } %>
   </div>
-<% }); %>
 
-<div class="qris-card p-3" style="border-color:rgba(96,165,250,.2);background:rgba(96,165,250,.04)">
-  <p class="text-xs text-muted-2"><i class="fa-solid fa-circle-info mr-1" style="color:#60a5fa"></i>
-    <b>MATCH</b> = uang keluar sudah ada pasangan masuknya (normal). <b>PENDING</b> = baru keluar (≤3 mnt), pasangan mungkin menyusul. <b>UNMATCH</b> = sudah lewat 3 menit tapi belum ada uang masuk — <b>perlu dicek</b>. Biaya percepatan 1% menyusul saat ada contohnya.</p>
+  <div class="qris-card p-3 mt-4" style="border-color:rgba(96,165,250,.2);background:rgba(96,165,250,.04)">
+    <p class="text-xs text-muted-2"><i class="fa-solid fa-circle-info mr-1" style="color:#60a5fa"></i>
+      <b>MATCH</b> = uang keluar sudah ada pasangan masuk (normal). <b>PENDING</b> = baru keluar (≤3 mnt), pasangan mungkin menyusul. <b>UNMATCH</b> = lewat 3 menit belum ada uang masuk — <b>perlu dicek</b>.</p>
+  </div>
 </div>
+
+<script>
+  document.addEventListener('click', function (e) {
+    var dd = document.getElementById('rkDd');
+    if (dd && !dd.contains(e.target)) dd.classList.remove('open');
+  });
+</script>

@@ -104,7 +104,11 @@ export function mapMaderaFeedItem(accountId: string | number, item: MaderaFeedIt
     const transactionTime = parseMaderaHistoryDate(item.date);
     if (!transactionTime)
         return null;
-    const type = item.type === 'credit' || item.type === 'kredit' ? 'credit' : 'debit';
+    const _normType = String(item.type ?? '').trim().toLowerCase(); // MADERA_AUDIT_C #21: normalisasi case/spasi
+    const type: 'credit' | 'debit' = (_normType === 'credit' || _normType === 'kredit') ? 'credit' : 'debit';
+    if (_normType && !['credit', 'kredit', 'debit', 'debet'].includes(_normType)) {
+        logger.warn({ accountId, maderaType: item.type }, 'mapMaderaFeedItem: tipe Madera tak dikenal -> dianggap debit');
+    }
     const description = String(item.description || '').trim();
     const rawDataJson = JSON.stringify({
         source: 'madera_history',
@@ -143,10 +147,19 @@ export async function pullAndPersistMaderaHistory(account: MaderaAccount): Promi
         return { ok: false, newCount: 0, total: 0, message: (result && result.message) || 'fetch failed' };
     const items: MaderaFeedItem[] = Array.isArray(result.items) ? result.items : [];
     let newCount = 0;
+    // MADERA_AUDIT_C #17: baris Madera identik (akun+tanggal+tipe+nominal+desc sama) dlm 1 pull diberi
+    // ORDINAL per grup supaya N transfer kembar tersimpan N (bukan 1). Ordinal 0 pakai rumus LAMA
+    // (rawHash+dedup asli) -> baris existing TAK ter-insert ulang. Ordinal>=1 dapat kunci unik.
+    // Order-independent: baris identik fungible -> himpunan kunci hanya bergantung JUMLAH.
+    const _grpOrd = new Map();
     for (const item of items) {
         const mapped = mapMaderaFeedItem(account.id, item);
         if (!mapped)
             continue;
+        const _ord = _grpOrd.get(mapped.rawHash) ?? 0;
+        _grpOrd.set(mapped.rawHash, _ord + 1);
+        const _rowHash = _ord === 0 ? mapped.rawHash : mapped.rawHash + ':' + _ord;
+        const _dedupOverride = _ord === 0 ? undefined : 'mutv2-madera|' + mapped.rawHash + '|' + _ord;
         try {
             const stored = await storeMutationIfNew({
                 qrisAccountId: String(account.id),
@@ -159,8 +172,9 @@ export async function pullAndPersistMaderaHistory(account: MaderaAccount): Promi
                 rrn: null,
                 walletCategory: 'madera',
                 transactionTime: mapped.transactionTime,
-                rawHash: mapped.rawHash,
+                rawHash: _rowHash,
                 rawDataJson: mapped.rawDataJson,
+                dedupKeyOverride: _dedupOverride,
             });
             if (stored.created)
                 newCount += 1;

@@ -5,7 +5,9 @@ import { config } from './config';
 import { createSessionMiddleware } from './config/session';
 import { logger } from './config/logger';
 import { normalizeBasePath, withBasePath } from './core/base-path';
-import { isMasterUser, getMenuPermsForUser } from './shared/alias-access.service';
+import { isMasterUser, getMenuPermsForUser, getSiteScopeForUser } from './shared/alias-access.service';
+import { accountIdsForSite } from './shared/site.service';
+import { runWithScope } from './core/request-context';
 import { requireAuth } from './core/auth.middleware';
 import { authRouter } from './modules/auth/auth.router';
 import { dashboardRouter } from './modules/dashboard/dashboard.router';
@@ -108,6 +110,11 @@ export function createApp(): express.Application {
         logger.error({ err }, 'gagal hitung menuPerms');
       }
       res.locals.user = { ...sessUser, isMaster, menuPerms };
+      // Auto-logout backstop (server): sesi GESER 60 menit utk non-master, 8 jam utk master.
+      // rolling:true -> jendela geser; kalau tab ditutup lebih lama dari ini, sesi mati sendiri.
+      if (req.session.cookie) {
+        req.session.cookie.maxAge = isMaster ? 8 * 60 * 60 * 1000 : 60 * 60 * 1000;
+      }
     } else {
       res.locals.user = null;
     }
@@ -121,6 +128,17 @@ export function createApp(): express.Application {
     }
 
     next();
+  });
+
+  // SCOPE GLOBAL (RBAC): set konteks akun-site per-request -> Prisma $use auto-filter query alias-tenant.
+  // master / alias "semua site" -> null -> tanpa filter. Lihat src/config/database.ts.
+  app.use((req: Request, _res: Response, next: NextFunction) => {
+    let ids: string[] | null = null;
+    try {
+      const site = getSiteScopeForUser(req.session.user ?? null);
+      ids = site ? accountIdsForSite(site) : null;
+    } catch { ids = null; }
+    runWithScope({ scopeAccountIds: ids }, next);
   });
 
   mountRouter(app, '/', authRouter);

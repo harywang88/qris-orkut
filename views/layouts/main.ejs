@@ -24,7 +24,7 @@
   <link rel="stylesheet" href="<%= url('/vendor/tabulator_simple.min.css') %>" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" media="print" onload="this.media='all'" />
   <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" crossorigin="anonymous" /></noscript>
-  <link rel="stylesheet" href="<%= url('/css/app.css') %>?v=20260706-green5" />
+  <link rel="stylesheet" href="<%= url('/css/app.css') %>?v=20260711-sidebar-collapse2" />
   <!-- Tabulator & Chart.js SELF-HOST (dari harywang.online, bukan unpkg/jsdelivr) -> load cepat & tak blocking lama -->
   <script src="<%= url('/vendor/chart.umd.min.js') %>"></script>
   <script src="<%= url('/vendor/tabulator.min.js') %>"></script>
@@ -124,6 +124,28 @@
       document.getElementById('sidebarOverlay').classList.remove('is-open');
     }
 
+    // Desktop: ciutkan/besarkan sidebar (mode ikon). State disimpan agar persist antar halaman.
+    function applySidebarTitles(collapsed) {
+      // Saat ciut, pasang tooltip (title) berisi label menu supaya tetap terbaca saat hover ikon.
+      document.querySelectorAll('.qris-sidebar .qris-nav-link, .qris-sidebar .qris-nav-parent').forEach(function (link) {
+        var label = link.querySelector('span > span');
+        if (collapsed && label) link.setAttribute('title', label.textContent.trim());
+        else link.removeAttribute('title');
+      });
+    }
+    function toggleSidebarCollapse() {
+      var collapsed = document.body.classList.toggle('sidebar-collapsed');
+      try { localStorage.setItem('qris-sidebar-collapsed', collapsed ? '1' : '0'); } catch (e) {}
+      applySidebarTitles(collapsed);
+    }
+    // Terapkan state tersimpan saat halaman dimuat.
+    (function restoreSidebarCollapse() {
+      var collapsed = false;
+      try { collapsed = localStorage.getItem('qris-sidebar-collapsed') === '1'; } catch (e) {}
+      if (collapsed) document.body.classList.add('sidebar-collapsed');
+      document.addEventListener('DOMContentLoaded', function () { applySidebarTitles(collapsed); });
+    })();
+
     // Animate number counters
     function animateCounter(el) {
       const target = parseFloat(el.dataset.count);
@@ -148,6 +170,70 @@
       document.querySelectorAll('[data-count]').forEach(animateCounter);
     });
   </script>
+  <% if (user && !user.isMaster) { %>
+  <!-- Auto-logout: 60 menit tanpa aktivitas (kecuali master 'harywang'). Peringatan 60 dtk sebelum. -->
+  <script>
+    (function () {
+      var IDLE_MS = 60 * 60 * 1000;   // 60 menit tanpa aktivitas
+      var WARN_MS = 60 * 1000;        // munculkan peringatan 60 detik sebelum logout
+      var LOGOUT_URL = '<%= url('/logout') %>';
+      var idleTimer = null, warnTimer = null, tick = null, warning = false, deadline = 0, last = 0;
+
+      function doLogout() {
+        clearInterval(tick); clearTimeout(idleTimer); clearTimeout(warnTimer);
+        var f = document.createElement('form');
+        f.method = 'POST'; f.action = LOGOUT_URL;
+        document.body.appendChild(f); f.submit();
+      }
+      function overlay() {
+        var o = document.getElementById('idle-warn');
+        if (o) return o;
+        o = document.createElement('div');
+        o.id = 'idle-warn';
+        o.style.cssText = 'position:fixed;inset:0;z-index:99999;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);backdrop-filter:blur(2px)';
+        o.innerHTML = '<div style="background:var(--surface,#0f172a);color:var(--ink,#fff);border:1px solid var(--line,rgba(255,255,255,0.12));border-radius:16px;padding:24px 22px;max-width:340px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.5);font-family:Inter,system-ui,sans-serif">'
+          + '<div style="font-size:34px;margin-bottom:6px">⏳</div>'
+          + '<div style="font-size:16px;font-weight:800;margin-bottom:6px">Sesi akan berakhir</div>'
+          + '<div style="font-size:13px;opacity:0.8">Tidak ada aktivitas. Anda akan otomatis logout dalam</div>'
+          + '<div id="idle-count" style="font-size:30px;font-weight:800;color:#f87171;margin:6px 0 14px">60</div>'
+          + '<button id="idle-stay" type="button" style="width:100%;padding:11px;border:0;border-radius:10px;background:#22c55e;color:#04210f;font-weight:800;font-size:14px;cursor:pointer">Tetap Login</button>'
+          + '</div>';
+        document.body.appendChild(o);
+        o.querySelector('#idle-stay').addEventListener('click', function (e) { e.stopPropagation(); reset(); });
+        return o;
+      }
+      function showWarn() {
+        warning = true;
+        deadline = Date.now() + WARN_MS;
+        var o = overlay(); o.style.display = 'flex';
+        var cd = document.getElementById('idle-count');
+        function upd() {
+          var left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+          if (cd) cd.textContent = left;
+          if (left <= 0) { clearInterval(tick); doLogout(); }
+        }
+        upd(); clearInterval(tick); tick = setInterval(upd, 250);
+      }
+      function reset() {
+        warning = false;
+        var o = document.getElementById('idle-warn'); if (o) o.style.display = 'none';
+        clearInterval(tick); clearTimeout(idleTimer); clearTimeout(warnTimer);
+        warnTimer = setTimeout(showWarn, IDLE_MS - WARN_MS);
+        idleTimer = setTimeout(doLogout, IDLE_MS); // jaring pengaman kalau tab non-fokus
+      }
+      function onActivity() {
+        if (warning) return;               // saat modal muncul, hanya tombol "Tetap Login" yg reset
+        var now = Date.now();
+        if (now - last < 2000) return;     // throttle: cukup reset tiap 2 dtk (abaikan polling)
+        last = now; reset();
+      }
+      ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'].forEach(function (ev) {
+        window.addEventListener(ev, onActivity, { passive: true });
+      });
+      reset();
+    })();
+  </script>
+  <% } %>
   <%- typeof scripts !== 'undefined' ? scripts : '' %>
 </body>
 </html>

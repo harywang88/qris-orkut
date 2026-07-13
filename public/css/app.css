@@ -692,6 +692,37 @@ body.qris-auth-shell {
   top: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  transition: width 0.22s ease;
+}
+
+/* ── Sidebar collapsed (desktop): ciut jadi ikon saja ─────────────────── */
+body.sidebar-collapsed .qris-sidebar {
+  width: 68px;
+}
+/* Sembunyikan semua teks (label menu, judul brand, header seksi, chevron) */
+body.sidebar-collapsed .qris-sidebar .qris-nav-link > span > span,
+body.sidebar-collapsed .qris-sidebar .qris-nav-parent > span > span,
+body.sidebar-collapsed .qris-sidebar .qris-sidebar-logo .min-w-0,
+body.sidebar-collapsed .qris-sidebar .group-chevron,
+body.sidebar-collapsed .qris-sidebar p.px-3,
+body.sidebar-collapsed .qris-sidebar .qris-subnav {
+  display: none !important;
+}
+/* Ikon di tengah saat ciut */
+body.sidebar-collapsed .qris-sidebar .qris-nav-link,
+body.sidebar-collapsed .qris-sidebar .qris-nav-parent {
+  justify-content: center;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+body.sidebar-collapsed .qris-sidebar .qris-nav-link > span,
+body.sidebar-collapsed .qris-sidebar .qris-nav-parent > span {
+  gap: 0;
+}
+body.sidebar-collapsed .qris-sidebar .qris-sidebar-logo {
+  justify-content: center;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
 }
 
 .qris-sidebar-logo {
@@ -1771,6 +1802,16 @@ body.qris-auth-shell {
 .bg-card     { background: var(--card); }
 .bg-panel    { background: var(--panel); }
 .border-line { border-color: var(--line); }
+
+/* ── Tombol menu navbar: mobile (buka overlay) vs desktop (collapse) ──────
+   Konsisten dgn breakpoint sidebar (max-width:1023px = mobile). Tidak pakai
+   utility Tailwind lg:* karena tak semuanya ter-generate di CSS precompiled. */
+.qris-menu-btn-mobile { display: none; }   /* default (desktop): sembunyi */
+.qris-menu-btn-desktop { display: inline-flex; }   /* default (desktop): tampil */
+@media (max-width: 1023px) {
+  .qris-menu-btn-mobile { display: inline-flex; }  /* mobile: tampil */
+  .qris-menu-btn-desktop { display: none; }        /* mobile: sembunyi */
+}
 
 /* ── Mobile sidebar toggle ───────────────────────────────────────────── */
 @media (max-width: 1023px) {

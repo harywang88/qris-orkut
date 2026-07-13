@@ -20,7 +20,7 @@ import {
 import type { RawMutation } from '../../shared/gateways/gateway.interface';
 import { realGateway } from '../../shared/gateways/real-orkut.gateway';
 import { publishMutationUpdated, storeMutationIfNew } from '../../shared/mutation-ingest.service';
-import { fetchAndIngestReportQrisCredit } from '../../shared/orderkuota-report-python.service';
+import { fetchAndIngestReportQrisCredit, startReportLoginWatchdog } from '../../shared/orderkuota-report-python.service';
 import {
   mergeRawMutationWithAppDetail,
   readPresentedMutationRawId,
@@ -43,6 +43,9 @@ const DETAIL_BATCH_SIZE = 2;
 // (endpoint mutasi sensitif 469 hanya disentuh saat ADA bayar). Teruji 22/22 bayar ~2s, 0x469.
 const SALDO_ACTIVE_MS = 2_000;
 const SALDO_IDLE_MS = 15_000;
+// Optimasi A: walau saldo SAMA, tetap tulis lastBalanceSyncAt minimal tiap 30s (heartbeat) — agar
+// "terakhir dicek" & health (degraded >24 jam) tetap segar, tanpa nulis DB tiap 2 detik.
+const SALDO_HEARTBEAT_MS = 30_000;
 // qrisBalance terakhir yang DILIHAT proses ini per akun (deteksi perubahan saldo).
 const qrisBalanceSeen = new Map<string, number>();
 // System B utama: mainBalance terakhir yang dilihat (deteksi perubahan saldo utama → tarik mutasi utama).
@@ -50,6 +53,9 @@ const mainBalanceSeen = new Map<string, number>();
 // System B madera: poll saldo Madera 30s → saat berubah → tarik feed madera → DB (walletCategory='madera').
 const MADERA_SALDO_MS = 30_000;
 const maderaBalanceSeen = new Map<string, number>();
+const maderaLastPullAt = new Map<string, number>(); // MADERA_AUDIT_C #18
+const MADERA_HEARTBEAT_MS = 5 * 60 * 1000; // #18: tarik feed berkala saat idle utk tangkap pasangan net-nol
+const DORMANT_POLL_MS = 5 * 60 * 1000; // Akun NONAKTIF & tanpa QR terbuka: cek saldo tiap 5 menit (hemat CPU)
 // Fase 4: lane web report (report.orderkuota.com, host bebas-limit) tiap 15s utk akun app-api
 // yang punya link autologin. Sumber KEDUA di ATAS app-api; dedup by dedupKey (NORRN mutv2).
 // Kill-switch: WORKER_REPORT_LANE=on (default OFF).
@@ -70,6 +76,8 @@ type SchedulerState = {
 };
 
 const providerCooldownUntil = new Map<string, number>();
+// Optimasi A: kapan terakhir kita MENULIS saldo akun ke DB (utk heartbeat write-on-change).
+const lastSaldoWriteAt = new Map<string, number>();
 const detailRetryUntil = new Map<string, number>();
 const schedulerState = new Map<string, SchedulerState>();
 
@@ -125,24 +133,33 @@ async function refreshActiveAccounts(now: number): Promise<void> {
 }
 
 function getQrisLaneInterval(account: QrisAccount): number {
+  if (isDormant(account)) return DORMANT_POLL_MS;
   return activeAccountIds.has(account.id)
     ? secondsToMs(account.qrisActivePollSeconds, 15)
     : secondsToMs(account.qrisIdlePollSeconds, 30);
 }
 
+// Akun NONAKTIF & TAK punya QR terbuka = "dormant" -> cadence lambat (5 mnt). Akun aktif / nonaktif-QR-terbuka = normal.
+function isDormant(account: QrisAccount): boolean {
+  return account.status !== 'active' && !activeAccountIds.has(account.id);
+}
 function getSaldoLaneInterval(account: QrisAccount): number {
+  if (isDormant(account)) return DORMANT_POLL_MS;
   return activeAccountIds.has(account.id) ? SALDO_ACTIVE_MS : SALDO_IDLE_MS;
 }
 
 function getMaderaLaneInterval(_account: QrisAccount): number {
+  if (isDormant(_account)) return DORMANT_POLL_MS;
   return MADERA_SALDO_MS;
 }
 
 function getBalanceLaneInterval(account: QrisAccount): number {
+  if (isDormant(account)) return DORMANT_POLL_MS;
   return secondsToMs(account.balancePollSeconds, 30);
 }
 
 function getDetailLaneInterval(account: QrisAccount): number {
+  if (isDormant(account)) return DORMANT_POLL_MS;
   return secondsToMs(account.detailPollSeconds, 300);
 }
 
@@ -301,7 +318,7 @@ async function pullQrisMutationsOnce(account: QrisAccount): Promise<void> {
     );
   }
 
-  // Auto-off: begitu uang masuk QRIS hari ini (WIB) >= 29.9jt, nonaktifkan akun otomatis.
+  // Auto-off: begitu uang masuk QRIS hari ini (WIB) >= 29.6jt, nonaktifkan akun otomatis.
   await enforceQrisDailyAutoOff(account.id);
 }
 
@@ -316,17 +333,28 @@ async function runAppSaldoLane(account: QrisAccount, state: SchedulerState): Pro
     const newQris = summary.qrisBalance;
     const newMain = summary.mainBalance;
     const prev = qrisBalanceSeen.has(account.id) ? qrisBalanceSeen.get(account.id) : undefined;
+    const prevMainForWrite = mainBalanceSeen.has(account.id) ? mainBalanceSeen.get(account.id) : undefined;
 
-    await db.qrisAccount.update({
-      where: { id: account.id },
-      data: {
-        lastQrisBalance: newQris ?? account.lastQrisBalance,
-        lastMainBalance: newMain ?? account.lastMainBalance,
-        lastBalanceSyncAt: new Date(),
-        lastBalanceSyncStatus: 'synced',
-        lastBalanceSyncError: null,
-      },
-    });
+    // Optimasi A (10 Jul): TULIS saldo ke DB HANYA saat (a) saldo BERUBAH, (b) pulih dari error/469,
+    // atau (c) heartbeat 30s — BUKAN tiap 2 detik walau sama. Kurangi drastis rebutan koneksi tulis
+    // SQLite (connection_limit=1). Deteksi & tarik-mutasi (deposit) di bawah TIDAK diubah.
+    const _balChanged = (newQris !== null && newQris !== undefined && newQris !== prev)
+      || (newMain !== null && newMain !== undefined && newMain !== prevMainForWrite);
+    const _needClear = (!!account.lastBalanceSyncStatus && account.lastBalanceSyncStatus !== 'synced') || !!account.lastBalanceSyncError;
+    const _hbDue = (Date.now() - (lastSaldoWriteAt.get(account.id) ?? 0)) >= SALDO_HEARTBEAT_MS;
+    if (_balChanged || _needClear || _hbDue) {
+      await db.qrisAccount.update({
+        where: { id: account.id },
+        data: {
+          lastQrisBalance: newQris ?? account.lastQrisBalance,
+          lastMainBalance: newMain ?? account.lastMainBalance,
+          lastBalanceSyncAt: new Date(),
+          lastBalanceSyncStatus: 'synced',
+          lastBalanceSyncError: null,
+        },
+      });
+      lastSaldoWriteAt.set(account.id, Date.now());
+    }
 
     if (newQris !== null && newQris !== undefined) {
       const changed = prev !== undefined && newQris !== prev;
@@ -400,7 +428,12 @@ async function runAppMaderaLane(account: QrisAccount, state: SchedulerState): Pr
         data: { lastMaderaBalance: newMadera },
       });
 
-      if (changed || firstSeen) {
+      // MADERA_AUDIT_C #18: selain saat saldo berubah, tarik berkala (heartbeat) saat IDLE supaya
+      // pasangan masuk+keluar net-nol (saldo tak berubah) tetap tertangkap. Idempoten (dedup) &
+      // hanya memicu saat idle (>HEARTBEAT sejak pull terakhir) -> beban endpoint minimal.
+      const _lastMadPull = maderaLastPullAt.get(account.id) ?? 0;
+      if (changed || firstSeen || Date.now() - _lastMadPull > MADERA_HEARTBEAT_MS) {
+        maderaLastPullAt.set(account.id, Date.now());
         await pullAndPersistMaderaHistory(account as unknown as MaderaAccount);
       }
     }
@@ -616,9 +649,16 @@ async function schedulerTick(): Promise<void> {
   const now = Date.now();
   await refreshActiveAccounts(now);
 
+  // Opsi A (10 Jul): akun NONAKTIF yg masih punya QR terbuka (statusPay 'open' & belum expired) TETAP
+  // dipantau -> pembayaran QR yg terlanjur digenerate sebelum di-OFF tetap ditarik & dicocokkan.
+  // Begitu QR-nya dibayar/expired, akun keluar sendiri dari pantauan (tak boros kuota). Generate QR
+  // BARU tetap diblok di endpoint generate (status !== 'active').
+  // AKUN NONAKTIF (revisi 11 Jul): dulu hanya akun status='active' / punya QR-terbuka yg dipoll -> akun
+  // nonaktif dormant SALDONYA BASI & mutasi tak ditarik -> Grand Total tak match. Kini SEMUA akun
+  // ber-kredensial dipoll: aktif / nonaktif-QR-terbuka = cadence normal; nonaktif-dormant = tiap 5 mnt
+  // (isDormant, hemat CPU) -> saldo tetap fresh + tarik mutasi saat berubah + SSE ke layar.
   const accounts = await db.qrisAccount.findMany({
     where: {
-      status: 'active',
       OR: [
         { sessionTokenEncrypted: { not: null } },
         { cookiesEncrypted: { not: null } },
@@ -690,6 +730,8 @@ export function startOrkutFetchLoop(): void {
   );
 
   void schedulerTick().catch((err) => logger.error({ err }, 'Orkut scheduler: initial tick error'));
+
+  if (REPORT_LANE_ENABLED) startReportLoginWatchdog();
 
   masterTimer = setInterval(() => {
     void schedulerTick().catch((err) => logger.error({ err }, 'Orkut scheduler: tick error'));

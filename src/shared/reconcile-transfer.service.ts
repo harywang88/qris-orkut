@@ -11,6 +11,7 @@
  *         unmatch (belum ketemu, umur >3mnt — perlu dicek).
  */
 import { db } from '../config/database';
+import { resolveListCutoffMs } from './operational-cutoff.service';
 
 const MATCH_WINDOW_MS = 3 * 60 * 1000; // ±3 menit (Hop 1)
 const PENDING_GRACE_MS = 3 * 60 * 1000; // OUT lebih muda dari ini & belum match = pending
@@ -65,8 +66,10 @@ function summarize(rows: ReconRow[]): ReconSummary {
 
 export async function reconcileTransfers(
   fromDays = 7,
+  showAll = false,
 ): Promise<{ hop1: ReconRow[]; hop2: ReconRow[]; summary: { hop1: ReconSummary; hop2: ReconSummary } }> {
-  const since = new Date(Date.now() - fromDays * 86400000);
+  let since = new Date(Date.now() - fromDays * 86400000);
+  { const _cut = resolveListCutoffMs(showAll); if (_cut && _cut > since.getTime()) since = new Date(_cut); } // Mulai Operasional
   const now = Date.now();
 
   const accounts = await db.qrisAccount.findMany({ select: { id: true, code: true, merchantName: true } });

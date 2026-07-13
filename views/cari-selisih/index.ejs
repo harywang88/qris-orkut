@@ -1,0 +1,213 @@
+<%
+  function rp(n){ return 'Rp ' + (Number(n)||0).toLocaleString('id-ID'); }
+  var err = result && result.error;
+  var L = (result && result.ledger) || {};
+  var D = (result && result.deposit) || {};
+  var TR = (result && result.transfer) || { geser:[], nyata:[] };
+  var FE = (result && result.fee) || { special:[] };
+  var SA = (result && result.saldo) || {};
+  var depMatch = !!(D && D.match);
+  var trMatch = !!(TR && TR.match);
+  function grp(a){ return Array.isArray(a) ? a : []; }
+  function sum(a){ return grp(a).reduce(function(s,x){ return s + (Number(x.amount)||0); }, 0); }
+  function badge(ok, okText, noText){
+    var c = ok ? '#16a34a' : '#f59e0b';
+    return '<span style="background:'+c+'22;color:'+c+';padding:3px 10px;border-radius:999px;font-weight:700">'+(ok?okText:noText)+'</span>';
+  }
+%>
+
+<div class="qris-page-header flex flex-wrap items-start justify-between gap-4">
+  <div>
+    <h1 class="qris-page-title">Cari <span>Selisih</span></h1>
+    <p class="qris-section-sub mt-1">Cocokkan Deposit, Transfer, Fee &amp; Saldo ledger Nagox (QRIS KITA) dengan sistem kita</p>
+  </div>
+</div>
+
+<div class="qris-card p-4 mb-5">
+  <form method="GET" action="<%= url('/dashboard/cari-selisih') %>" class="flex flex-wrap gap-3 items-end">
+    <div class="flex gap-2">
+      <a href="<%= url('/dashboard/cari-selisih?tanggal=' + yesterday) %>" class="qris-btn qris-btn-sm <%= date===yesterday ? 'qris-btn-accent':'qris-btn-ghost' %>">Kemarin</a>
+      <a href="<%= url('/dashboard/cari-selisih?tanggal=' + today) %>" class="qris-btn qris-btn-sm <%= date===today ? 'qris-btn-accent':'qris-btn-ghost' %>">Hari Ini</a>
+    </div>
+    <div>
+      <label class="block text-[11px] uppercase tracking-wider text-muted/70 mb-1">Tanggal</label>
+      <input type="date" name="tanggal" value="<%= date %>" style="min-width:170px;padding:8px 10px;border-radius:8px;border:1px solid rgba(148,163,184,.3);background:transparent;color:inherit" />
+    </div>
+    <button type="submit" class="qris-btn qris-btn-sm qris-btn-accent">🔍 Cek</button>
+  </form>
+</div>
+
+<% if (err) { %>
+  <div class="qris-card p-4 mb-5" style="border:1px solid #f59e0b">
+    <p class="font-bold" style="color:#f59e0b">Gagal memuat rekonsiliasi</p>
+    <p class="text-sm mt-1 break-words"><%= err %></p>
+    <p class="text-xs text-muted/70 mt-2">Coba lagi sebentar (login Nagox / tarik ledger bisa lambat).</p>
+  </div>
+<% } else { %>
+
+<!-- Ringkasan ledger Nagox -->
+<div class="qris-card p-4 mb-5">
+  <h2 class="font-bold mb-3">Ledger Nagox — QRIS KITA · <%= date %></h2>
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div><p class="text-[11px] uppercase text-muted/70">Saldo Awal</p><p class="font-bold"><%= rp(L.saldoAwal) %></p></div>
+    <div><p class="text-[11px] uppercase text-muted/70">Total Masuk</p><p class="font-bold" style="color:#16a34a"><%= rp(L.totalMasuk) %></p></div>
+    <div><p class="text-[11px] uppercase text-muted/70">Total Keluar</p><p class="font-bold" style="color:#ef4444"><%= rp(L.totalKeluar) %></p></div>
+    <div><p class="text-[11px] uppercase text-muted/70">Saldo Akhir</p><p class="font-bold"><%= rp(L.saldoAkhir) %></p></div>
+  </div>
+</div>
+
+<!-- Tabel rekonsiliasi -->
+<div class="qris-card p-4 mb-5">
+  <h2 class="font-bold mb-3">Cocok / Tidak</h2>
+  <div style="overflow-x:auto">
+    <table class="w-full text-sm" style="border-collapse:collapse">
+      <thead>
+        <tr style="text-align:right;border-bottom:1px solid rgba(148,163,184,.25)">
+          <th style="text-align:left;padding:8px 6px"></th>
+          <th style="padding:8px 6px">Nagox</th>
+          <th style="padding:8px 6px">Sistem Kita</th>
+          <th style="padding:8px 6px">Selisih</th>
+          <th style="text-align:center;padding:8px 6px">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- DEPOSIT -->
+        <tr style="border-bottom:1px solid rgba(148,163,184,.15)">
+          <td style="text-align:left;padding:10px 6px"><b>Deposit masuk</b><br><span class="text-xs text-muted/60"><%= D.nagoxCnt %> vs <%= D.dbCnt %> transaksi<% if (grp(D.geser).length) { %> · <span style="color:#3b82f6"><%= grp(D.geser).length %> geser hari</span><% } %></span></td>
+          <td style="text-align:right;padding:10px 6px"><%= rp(D.nagoxSum) %></td>
+          <td style="text-align:right;padding:10px 6px"><%= rp(D.dbSum) %></td>
+          <td style="text-align:right;padding:10px 6px;font-weight:700;color:<%= depMatch ? '#16a34a':'#f59e0b' %>"><%= rp(D.selisih) %></td>
+          <td style="text-align:center;padding:10px 6px"><%- badge(depMatch,'COCOK','SELISIH') %></td>
+        </tr>
+        <!-- TRANSFER -->
+        <tr style="border-bottom:1px solid rgba(148,163,184,.15)">
+          <td style="text-align:left;padding:10px 6px"><b>Transfer ke bank</b><br><span class="text-xs text-muted/60"><%= TR.nagoxCnt %> vs <%= TR.dbCnt %> transfer<% if (grp(TR.geser).length) { %> · <span style="color:#3b82f6"><%= grp(TR.geser).length %> geser hari</span><% } %></span></td>
+          <td style="text-align:right;padding:10px 6px"><%= rp(TR.nagoxSum) %></td>
+          <td style="text-align:right;padding:10px 6px"><%= rp(TR.dbSum) %></td>
+          <td style="text-align:right;padding:10px 6px;font-weight:700;color:<%= trMatch ? '#16a34a':'#f59e0b' %>"><%= grp(TR.nyata).length ? rp(sum(TR.nyata)) : 'Rp 0' %></td>
+          <td style="text-align:center;padding:10px 6px"><%- badge(trMatch,'COCOK','SELISIH') %></td>
+        </tr>
+        <!-- FEE -->
+        <tr style="border-bottom:1px solid rgba(148,163,184,.15)">
+          <td style="text-align:left;padding:10px 6px"><b>Fee admin (2.500)</b><br><span class="text-xs text-muted/60"><%= FE.nagoxFeeCnt %> vs <%= FE.dbFee3Cnt %> transfer</span></td>
+          <td style="text-align:right;padding:10px 6px"><%= rp(FE.nagoxFeeSum) %></td>
+          <td style="text-align:right;padding:10px 6px"><%= rp(FE.dbFee3Sum) %></td>
+          <td style="text-align:right;padding:10px 6px" class="text-xs text-muted/60">ikut transfer</td>
+          <td style="text-align:center;padding:10px 6px"><span class="text-xs" style="color:#3b82f6">geser hari</span></td>
+        </tr>
+        <!-- SALDO -->
+        <tr>
+          <td style="text-align:left;padding:10px 6px"><b>Saldo (konsistensi Nagox)</b><br><span class="text-xs text-muted/60">Awal + Masuk − Keluar = Akhir</span></td>
+          <td style="text-align:right;padding:10px 6px"><%= rp(SA.hitung) %></td>
+          <td style="text-align:right;padding:10px 6px"><%= rp(SA.saldoAkhir) %></td>
+          <td style="text-align:right;padding:10px 6px">—</td>
+          <td style="text-align:center;padding:10px 6px"><%- badge(!!SA.equationOk,'SEIMBANG','TIMPANG') %></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="text-xs text-muted/60 mt-3">Transfer &amp; Fee bisa <b style="color:#3b82f6">geser ±1 hari</b> (tanggal settlement BI-Fast beda antara Nagox &amp; kita) — itu wajar, bukan uang hilang. Yang perlu dicek = <b style="color:#f59e0b">SELISIH nyata</b>. Fee QRIS &amp; Fee2 Utama 1% dipotong internal OrderKuota (tak ada di Nagox).</p>
+</div>
+
+<!-- Drill DEPOSIT -->
+<% if (!depMatch || grp(D.geser).length) { %>
+  <div class="qris-card p-4 mb-5">
+    <% if (!depMatch) { %>
+      <h2 class="font-bold mb-1">Rincian selisih deposit: <span style="color:#f59e0b"><%= rp(D.selisih) %></span></h2>
+      <p class="text-xs text-muted/70 mb-4">Cek tiap transaksi → pastikan <b>human error</b> (dobel booking) atau <b>system error</b> (bisa aku perbaiki).</p>
+      <% var dg = [
+        {key:'dobelNagox',title:'🔴 Dobel Nagox — bot kredit 2× (Nagox lebih, DB kita benar)',color:'#ef4444'},
+        {key:'hanyaNagox',title:'🟠 Hanya di Nagox — tak ada di DB kita',color:'#f59e0b'},
+        {key:'dobelDb',title:'🔵 Dobel DB — booking manual di atas QR asli',color:'#3b82f6'},
+        {key:'hanyaDb',title:'🟣 Hanya di DB — QRIS terima tapi Nagox tak punya',color:'#a855f7'}
+      ]; %>
+      <% dg.forEach(function(g){ var arr = grp(D[g.key]); if (!arr.length) return; %>
+        <div class="mb-4">
+          <p class="text-sm font-semibold mb-2" style="color:<%= g.color %>"><%= g.title %> — <%= arr.length %> tx, <%= rp(sum(arr)) %></p>
+          <div style="overflow-x:auto"><table class="w-full text-sm" style="border-collapse:collapse"><tbody>
+            <% arr.slice().sort(function(a,b){return b.amount-a.amount;}).forEach(function(x){ %>
+              <tr style="border-bottom:1px solid rgba(148,163,184,.12)">
+                <td style="padding:6px;font-weight:600"><%= x.user %></td>
+                <td style="padding:6px;text-align:right"><%= rp(x.amount) %></td>
+                <td style="padding:6px;text-align:right;color:#94a3b8" class="text-xs"><%= x.waktu ? ('@'+x.waktu) : (x.statusBot ? ('['+x.statusBot+']') : '') %></td>
+              </tr>
+            <% }); %>
+          </tbody></table></div>
+        </div>
+      <% }); %>
+    <% } %>
+    <% if (grp(D.geser).length) { %>
+      <details <%= depMatch ? 'open' : '' %>>
+        <summary class="text-sm font-semibold" style="color:#3b82f6;cursor:pointer">⏱️ Geser hari (uang pending diproses beda hari / lintas tengah malam) — <%= grp(D.geser).length %> tx, <%= rp(sum(D.geser)) %> (WAJAR, bukan uang hilang)</summary>
+        <div style="overflow-x:auto" class="mt-2"><table class="w-full text-sm" style="border-collapse:collapse"><tbody>
+          <% grp(D.geser).slice().sort(function(a,b){return b.amount-a.amount;}).forEach(function(x){ %>
+            <tr style="border-bottom:1px solid rgba(148,163,184,.1);color:#94a3b8">
+              <td style="padding:6px;font-weight:600"><%= x.user %></td>
+              <td style="padding:6px;text-align:right"><%= rp(x.amount) %></td>
+              <td style="padding:6px" class="text-xs"><%= x.side==='kita'?'DB kita':'Nagox' %> · <%= x.note %></td>
+            </tr>
+          <% }); %>
+        </tbody></table></div>
+      </details>
+    <% } %>
+  </div>
+<% } %>
+
+<!-- Drill TRANSFER -->
+<% if (grp(TR.nyata).length || grp(TR.geser).length) { %>
+  <div class="qris-card p-4 mb-5">
+    <h2 class="font-bold mb-3">Rincian transfer ke bank</h2>
+    <% if (grp(TR.nyata).length) { %>
+      <p class="text-sm font-semibold mb-2" style="color:#f59e0b">⚠️ SELISIH NYATA — <%= grp(TR.nyata).length %> transfer, <%= rp(sum(TR.nyata)) %> (perlu dicek!)</p>
+      <div style="overflow-x:auto" class="mb-4"><table class="w-full text-sm" style="border-collapse:collapse"><tbody>
+        <% grp(TR.nyata).slice().sort(function(a,b){return b.amount-a.amount;}).forEach(function(x){ %>
+          <tr style="border-bottom:1px solid rgba(148,163,184,.12)">
+            <td style="padding:6px;font-weight:600"><%= x.side==='kita'?'DB kita':'Nagox' %></td>
+            <td style="padding:6px"><%= x.bank %></td>
+            <td style="padding:6px;text-align:right"><%= rp(x.amount) %></td>
+            <td style="padding:6px;color:#f59e0b" class="text-xs"><%= x.note %></td>
+          </tr>
+        <% }); %>
+      </tbody></table></div>
+    <% } %>
+    <% if (grp(TR.geser).length) { %>
+      <details>
+        <summary class="text-sm font-semibold" style="color:#3b82f6;cursor:pointer">⏱️ Geser hari (settlement, wajar) — <%= grp(TR.geser).length %> transfer, <%= rp(sum(TR.geser)) %> (bukan uang hilang)</summary>
+        <div style="overflow-x:auto" class="mt-2"><table class="w-full text-sm" style="border-collapse:collapse"><tbody>
+          <% grp(TR.geser).slice().sort(function(a,b){return b.amount-a.amount;}).forEach(function(x){ %>
+            <tr style="border-bottom:1px solid rgba(148,163,184,.1);color:#94a3b8">
+              <td style="padding:6px"><%= x.side==='kita'?'DB kita':'Nagox' %></td>
+              <td style="padding:6px"><%= x.bank %></td>
+              <td style="padding:6px;text-align:right"><%= rp(x.amount) %></td>
+              <td style="padding:6px" class="text-xs"><%= x.note %></td>
+            </tr>
+          <% }); %>
+        </tbody></table></div>
+      </details>
+    <% } %>
+  </div>
+<% } %>
+
+<!-- Pengeluaran khusus Nagox -->
+<% if (grp(FE.special).length) { %>
+  <div class="qris-card p-4 mb-5" style="border:1px solid #a855f7">
+    <p class="font-bold mb-2" style="color:#a855f7">💡 Pengeluaran khusus di Nagox (bukan fee transfer biasa) — cek manual</p>
+    <div style="overflow-x:auto"><table class="w-full text-sm" style="border-collapse:collapse"><tbody>
+      <% grp(FE.special).forEach(function(x){ %>
+        <tr style="border-bottom:1px solid rgba(148,163,184,.12)">
+          <td style="padding:6px"><%= x.bank %></td>
+          <td style="padding:6px;text-align:right;font-weight:600"><%= rp(x.amount) %></td>
+          <td style="padding:6px;color:#94a3b8" class="text-xs">operator: <%= x.operator %> · @<%= x.waktu %></td>
+        </tr>
+      <% }); %>
+    </tbody></table></div>
+  </div>
+<% } %>
+
+<% if (depMatch && trMatch) { %>
+  <div class="qris-card p-4 mb-5" style="border:1px solid #16a34a">
+    <p class="font-bold" style="color:#16a34a">✅ Semua COCOK — deposit &amp; transfer tanggal ini beres (geser hari wajar diabaikan).</p>
+  </div>
+<% } %>
+
+<% } %>

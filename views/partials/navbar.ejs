@@ -1,8 +1,14 @@
 <header class="qris-navbar">
   <div class="flex items-center gap-3">
-    <!-- Mobile menu button -->
-    <button class="lg:hidden qris-icon-btn" onclick="openSidebar()">
+    <!-- Mobile menu button (hanya tampil di layar kecil) -->
+    <button class="qris-icon-btn qris-menu-btn-mobile" onclick="openSidebar()" title="Buka menu">
       <i class="fa-solid fa-bars text-xs"></i>
+    </button>
+
+    <!-- Desktop: collapse/expand sidebar (hanya tampil di layar besar) -->
+    <button class="qris-icon-btn qris-menu-btn-desktop" id="sidebarCollapseBtn" type="button"
+            onclick="toggleSidebarCollapse()" title="Kecilkan / besarkan menu">
+      <i class="fa-solid fa-bars-staggered text-xs"></i>
     </button>
 
     <!-- Breadcrumb -->

@@ -6,6 +6,8 @@ import { config } from '../config';
 import { logger } from '../config/logger';
 import { buildNote } from './note-builder';
 import { selectQrisAccount, NoEligibleAccountError } from './qris-account-selector';
+import { getSiteForClient } from './client-site.service';
+import { accountIdsForSite } from './site.service';
 import { findUniqueCode, createAmountLock, AccountFullError } from './amount-lock.service';
 import { mockGateway } from './gateways/mock-orkut.gateway';
 
@@ -85,8 +87,12 @@ export async function generateQr(
   // Steps 3–6 inside one atomic transaction
   const result = await (db.$transaction as (fn: (tx: TxClient) => Promise<GenerateQrOutput>, options?: { timeout?: number }) => Promise<GenerateQrOutput>)(
     async (tx) => {
-      // 3a: Select account (updates lastAssignedAt)
-      const account = await selectQrisAccount(tx);
+      // 3a: Select account -- SCOPED ke SITE milik website (client). Cegah deposit website nyasar ke akun site lain.
+      const _siteId = getSiteForClient(clientId);
+      if (!_siteId) { logger.warn({ clientId }, 'generateQr: website belum dipetakan ke site -> ditolak'); throw new NoEligibleAccountError(); }
+      const _siteAccIds = accountIdsForSite(_siteId);
+      if (_siteAccIds.length === 0) { logger.warn({ clientId, siteId: _siteId }, 'generateQr: site website belum punya akun QRIS -> ditolak'); throw new NoEligibleAccountError(); }
+      const account = await selectQrisAccount(tx, _siteAccIds);
 
       // 3b: Find unique code (read-only — no DB write yet)
       const { uniqueCode, finalAmount, base } = await findUniqueCode(

@@ -1,5 +1,9 @@
 import { db } from '../../config/database';
 import { encrypt, decrypt } from '../../core/encryption';
+import { siteIdForAccount } from '../../shared/site.service';
+
+// Ditolak saat mengaktifkan akun yang belum di-assign ke Site (gerbang aman merchant baru).
+export class AccountActivationError extends Error {}
 
 export function normalizeCookiePairs(raw: string): string {
   const seen = new Set<string>();
@@ -161,7 +165,7 @@ export async function createQrisAccount(data: {
       merchantName: data.merchantName,
       orkutAccountIndex: data.orkutAccountIndex ?? null,
       dailyLimit: data.dailyLimit ?? 30_000_000,
-      status: 'active',
+      status: 'inactive', // FLOW AMAN: akun baru lahir NONAKTIF (parkir) -> aktif manual setelah di-assign Site
       healthStatus: 'healthy',
       lastAssignedAt: new Date(),
       qrisPayload: data.qrisPayload || null,
@@ -248,6 +252,10 @@ export async function updateQrisAccount(
 export async function toggleAccountStatus(id: string): Promise<string> {
   const account = await db.qrisAccount.findUniqueOrThrow({ where: { id } });
   const newStatus = account.status === 'active' ? 'inactive' : 'active';
+  // GERBANG AMAN: akun hanya boleh AKTIF bila sudah di-assign ke Site (cegah akun belum-siap ikut generate/round-robin).
+  if (newStatus === 'active' && !siteIdForAccount(id)) {
+    throw new AccountActivationError('Akun harus di-assign ke Site dulu sebelum diaktifkan.');
+  }
   await db.qrisAccount.update({ where: { id }, data: { status: newStatus } });
   return newStatus;
 }

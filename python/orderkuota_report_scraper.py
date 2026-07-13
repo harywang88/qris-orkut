@@ -346,7 +346,11 @@ def parse_report_table_rows(table: list[list[TableCell]], wallet: str) -> list[d
             continue
 
         is_credit = jumlah > 0
-        amount = jumlah if is_credit else nominal
+        # BRUTO (nominal) utk kredit: samakan dgn app-api (amount=bruto; biaya layanan/potongan
+        # dipisah). Dulu pakai 'jumlah' (neto stlh potongan) -> amount beda dari app-api ->
+        # dedupKey/rawHash gagal cocok -> baris report jadi yatim (tak match transaksi finalAmount
+        # bruto) -> nyangkut Uang Pending palsu. Bruto -> dedup nempel ke baris app-api, tak dobel.
+        amount = (nominal or jumlah) if is_credit else nominal
         if amount <= 0:
             continue
 

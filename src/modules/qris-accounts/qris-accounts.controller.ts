@@ -7,6 +7,7 @@ import {
   updateQrisAccount,
   deleteQrisAccount,
   toggleAccountStatus,
+  AccountActivationError,
   setHealthStatus,
   resetDailyUsage,
 } from './qris-accounts.service';
@@ -205,6 +206,7 @@ export async function handleToggleStatus(req: Request, res: Response): Promise<v
     void logAction(req, { category: 'account', action: 'account_toggle', severity: 'important', summary: (newStatus === 'active' ? 'Mengaktifkan' : 'Menonaktifkan') + ' akun QRIS', targetType: 'QrisAccount', targetId: req.params.id, detail: { status: newStatus } });
     res.json({ success: true, status: newStatus });
   } catch (err) {
+    if (err instanceof AccountActivationError) { res.status(400).json({ success: false, error: err.message }); return; }
     logger.error({ err }, 'handleToggleStatus error');
     res.status(500).json({ success: false, error: 'Gagal mengubah status' });
   }

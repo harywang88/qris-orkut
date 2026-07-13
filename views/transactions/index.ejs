@@ -26,6 +26,20 @@
     white-space: nowrap;
   }
   .tx-record-info b { color: var(--ink); }
+  /* Pager server (navigasi ?page=N) + sembunyikan pager bawaan Tabulator (redundant "1 of 1") */
+  #transactions-table .tabulator-footer { display: none !important; }
+  .tx-pager { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; margin-top:14px; padding-top:12px; border-top:1px solid var(--line); }
+  .tx-pager-info { font-size:12px; color:var(--muted); }
+  .tx-pager-info b { color: var(--ink); }
+  .tx-pager-nav { display:flex; gap:6px; flex-wrap:wrap; }
+  .tx-pager-left { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .tx-pager-info-lbl { font-size:11.5px; color:var(--muted); font-weight:600; }
+  .tx-pager-ps { height:32px; border-radius:9px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--ink); font-size:12.5px; font-weight:700; padding:0 8px; cursor:pointer; }
+  .tx-pg { min-width:34px; height:34px; padding:0 10px; display:inline-flex; align-items:center; justify-content:center; border-radius:9px; border:1px solid var(--line); background:rgba(255,255,255,.04); color:var(--ink); font-size:12.5px; font-weight:700; text-decoration:none; transition:.15s; }
+  .tx-pg:hover { border-color:rgba(99,179,237,.5); background:rgba(99,179,237,.12); }
+  .tx-pg.active { background:linear-gradient(135deg,#63b3ed,#3b82f6); border-color:transparent; color:#04121f; }
+  .tx-pg.disabled { opacity:.4; pointer-events:none; }
+  .tx-pg-dots { align-self:center; padding:0 4px; color:var(--muted); }
 
   /* ── Filter bar (horizontal) ───────────────────── */
   .tx-filter-bar {
@@ -422,9 +436,13 @@
     white-space: nowrap;   /* note 1 baris (issuer di bawah) -> total 2 baris, bukan 3 */
   }
   .tx-cell-issuer {
-    font-size: 9px;
+    font-size: 11px;
     font-weight: 700;
     color: #f59e0b;
+  }
+  .tx-cell-sender {
+    font-weight: 600;
+    color: #94a3b8;
   }
   .tx-actions-wrap {
     display: flex;
@@ -432,6 +450,78 @@
     justify-content: center;
     gap: 4px;
   }
+  /* -- Kolom ringkas 1-baris (History Generate QR): detail sekunder pindah ke tooltip hover -- */
+  .tx-cell-1line {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    white-space: nowrap !important;   /* kalahkan .tabulator-cell{white-space:normal} agar tetap 1 baris */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+    cursor: default;
+    word-break: normal !important;
+  }
+  .tx-cell-1line > * { flex: 0 0 auto; min-width: 0; }
+  .tx-cell-1line .tx-cell-user,
+  .tx-cell-1line .tx-cell-account { overflow: hidden; text-overflow: ellipsis; }
+  .tx-cell-site-tag {
+    font-size: 9px;
+    font-weight: 800;
+    color: #fda4af;
+    letter-spacing: 0.03em;
+    padding: 1px 5px;
+    border-radius: 6px;
+    background: rgba(253, 164, 175, 0.12);
+  }
+  .tx-cell-time-sub {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+  .tx-exp-inline {
+    font-size: 9px;
+    font-weight: 800;
+    color: #fbbf24;
+    background: rgba(251, 191, 36, 0.12);
+    padding: 1px 5px;
+    border-radius: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .tx-cell-status1 { justify-content: center; }
+  /* Status 1-baris padat: [PAID] jam · [BOT] jam */
+  .tx-status-time {
+    font-size: 10px;
+    font-weight: 800;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+  .tx-status-time-paid { color: #86efac; }
+  .tx-status-time-bot  { color: #86efac; }
+  .tx-status-sep { color: var(--muted); font-weight: 700; opacity: 0.6; }
+  .tx-bot-icon { font-size: 14px; line-height: 1; flex: 0 0 auto; cursor: help; }
+  /* Ref/Issuer: bank & pengirim boleh menyusut, ref tetap utuh */
+  .tx-cell-1line .tx-cell-issuer,
+  .tx-cell-1line .tx-cell-sender { overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 0 1 auto; }
+  .tx-cell-1line .tx-cell-rrn { flex: 0 0 auto; }
+  /* Tag site jangan terlalu kecil; user tetap prioritas tampil */
+  .tx-cell-1line .tx-cell-site-tag { flex: 0 0 auto; }
+  .tx-cell-1line .tx-cell-user { font-weight: 800; }
+  .tx-bot-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: currentColor;
+    flex: 0 0 auto;
+  }
+  /* Titik bot memakai warna pill bot (ambil color dari kelas qris-pill-*) */
+  .tx-bot-dot.qris-pill-paid    { color: #22c55e; }
+  .tx-bot-dot.qris-pill-warn    { color: #f59e0b; }
+  .tx-bot-dot.qris-pill-danger  { color: #ef4444; }
+  .tx-bot-dot.qris-pill-review  { color: #f97316; }
+  .tx-bot-dot.qris-pill-muted   { color: #94a3b8; }
 
   @media (max-width: 768px) {
     .tx-toolbar { padding: 10px 14px; }
@@ -480,11 +570,11 @@
         <div class="tx-filter-group">
           <span class="tx-filter-label">Periode</span>
           <div class="tx-period-pills">
-            <button type="submit" name="period" value="today" class="tx-period-pill <%= currentPeriod === 'today' ? 'active' : '' %>">Hari Ini</button>
-            <button type="submit" name="period" value="yesterday" class="tx-period-pill <%= currentPeriod === 'yesterday' ? 'active' : '' %>">Kemarin</button>
-            <button type="submit" name="period" value="7d" class="tx-period-pill <%= currentPeriod === '7d' ? 'active' : '' %>">7 Hari</button>
-            <button type="submit" name="period" value="30d" class="tx-period-pill <%= currentPeriod === '30d' ? 'active' : '' %>">30 Hari</button>
-            <button type="submit" name="period" value="all" class="tx-period-pill <%= currentPeriod === 'all' ? 'active' : '' %>">Semua</button>
+            <button type="submit" name="period" value="today" onclick="document.getElementById('txPeriodHidden').disabled=true" class="tx-period-pill <%= currentPeriod === 'today' ? 'active' : '' %>">Hari Ini</button>
+            <button type="submit" name="period" value="yesterday" onclick="document.getElementById('txPeriodHidden').disabled=true" class="tx-period-pill <%= currentPeriod === 'yesterday' ? 'active' : '' %>">Kemarin</button>
+            <button type="submit" name="period" value="7d" onclick="document.getElementById('txPeriodHidden').disabled=true" class="tx-period-pill <%= currentPeriod === '7d' ? 'active' : '' %>">7 Hari</button>
+            <button type="submit" name="period" value="30d" onclick="document.getElementById('txPeriodHidden').disabled=true" class="tx-period-pill <%= currentPeriod === '30d' ? 'active' : '' %>">30 Hari</button>
+            <button type="submit" name="period" value="all" onclick="document.getElementById('txPeriodHidden').disabled=true" class="tx-period-pill <%= currentPeriod === 'all' ? 'active' : '' %>">Semua</button>
           </div>
         </div>
 
@@ -493,20 +583,20 @@
         <!-- Custom range -->
         <div class="tx-filter-group">
           <span class="tx-filter-label">Dari</span>
-          <input type="hidden" name="period" value="custom" disabled />
-          <input type="date" name="from" value="<%= query.from || '' %>" class="tx-filter-input" style="width:130px" />
+          <input type="hidden" name="period" id="txPeriodHidden" value="<%= currentPeriod %>" />
+          <input type="date" name="from" value="<%= query.from || '' %>" onchange="var h=document.getElementById('txPeriodHidden');h.disabled=false;h.value='custom';" class="tx-filter-input" style="width:130px" />
         </div>
         <div class="tx-filter-group">
           <span class="tx-filter-label">Sampai</span>
-          <input type="date" name="to" value="<%= query.to || '' %>" class="tx-filter-input" style="width:130px" />
+          <input type="date" name="to" value="<%= query.to || '' %>" onchange="var h=document.getElementById('txPeriodHidden');h.disabled=false;h.value='custom';" class="tx-filter-input" style="width:130px" />
         </div>
       </div>
 
       <!-- ── Advanced filters row ────────────────── -->
       <div class="tx-filter-bar">
         <div class="tx-filter-group grow">
-          <span class="tx-filter-label">User / Order / Ref</span>
-          <input type="text" name="keyword" value="<%= query.keyword || '' %>" class="tx-filter-input" placeholder="Username, ref, note..." />
+          <span class="tx-filter-label">User / Order / Ref / Nominal</span>
+          <input type="text" name="keyword" id="txKeywordInput" value="<%= query.keyword || '' %>" class="tx-filter-input" placeholder="Username, ref, note, nominal..." autocomplete="off" oninput="var f=this.form;clearTimeout(window.__txKwDeb);window.__txKwDeb=setTimeout(function(){f.submit();},700);" />
         </div>
         <% if (!(typeof paidOnly !== 'undefined' && paidOnly)) { %>
         <div class="tx-filter-group">
@@ -519,17 +609,6 @@
           </select>
         </div>
         <% } %>
-        <div class="tx-filter-group">
-          <span class="tx-filter-label">Auto Deposit</span>
-          <select name="statusBot" class="tx-filter-input" style="width:140px">
-            <option value="">Semua</option>
-            <option value="pending" <%= query.statusBot === 'pending' ? 'selected' : '' %>>Pending</option>
-            <option value="deposit_queued" <%= query.statusBot === 'deposit_queued' ? 'selected' : '' %>>Queued</option>
-            <option value="deposit_success" <%= query.statusBot === 'deposit_success' ? 'selected' : '' %>>Success</option>
-            <option value="deposit_failed" <%= query.statusBot === 'deposit_failed' ? 'selected' : '' %>>Failed</option>
-            <option value="manual_review" <%= query.statusBot === 'manual_review' ? 'selected' : '' %>>Review</option>
-          </select>
-        </div>
         <div class="tx-filter-group">
           <span class="tx-filter-label">QRIS Account</span>
           <select name="accountCode" id="txFilterAccount" class="tx-filter-input" style="width:160px">
@@ -550,9 +629,16 @@
           </select>
         </div>
         <div class="tx-filter-group">
-          <span class="tx-filter-label">Nominal</span>
-          <input type="text" name="nominal" value="<%= query.nominal || '' %>" inputmode="numeric" class="tx-filter-input" placeholder="mis. 10.001" style="width:120px" oninput="this.value=this.value.replace(/[^0-9.,]/g,'')" />
+          <span class="tx-filter-label">BOT</span>
+          <select name="statusBot" class="tx-filter-input" style="width:130px" onchange="this.form.submit()">
+            <option value="">Semua</option>
+            <option value="deposit_success" <%= query.statusBot === 'deposit_success' ? 'selected' : '' %>>Berhasil</option>
+            <option value="proses" <%= query.statusBot === 'proses' ? 'selected' : '' %>>Proses</option>
+            <option value="deposit_failed" <%= query.statusBot === 'deposit_failed' ? 'selected' : '' %>>Gagal</option>
+            <option value="manual_review" <%= query.statusBot === 'manual_review' ? 'selected' : '' %>>Review</option>
+          </select>
         </div>
+        <input type="hidden" name="pageSize" value="<%= (typeof pageSize!=='undefined'?pageSize:50) %>" />
         <button type="submit" class="tx-filter-btn tx-filter-btn-primary" style="height:34px">
           <i class="fa-solid fa-magnifying-glass" style="font-size:11px"></i> Filter
         </button>
@@ -618,6 +704,7 @@
           <div class="tx-stat-label">Nominal</div>
           <div class="tx-stat-value" style="font-size:14px">Rp <%= totalPaidText %></div>
           <div class="tx-stat-sub">Fee Rp <%= totalFeeText %></div>
+          <% if (typeof pendingCarryProcessed !== 'undefined' && pendingCarryProcessed) { %><div class="tx-stat-sub" style="color:#93c5fd" title="Uang pending kemarin yg diproses hari ini — di luar omset">&#8617; pending kemarin: Rp <%= pendingCarryProcessed.toLocaleString('id-ID') %></div><% } %>
         </div>
       </div>
     </div>
@@ -632,6 +719,35 @@
     <% } else { %>
       <div id="transactions-table"></div>
     <% } %>
+    <%
+      var _pbBase = url((typeof paidOnly !== 'undefined' && paidOnly) ? '/dashboard/transactions' : '/dashboard/history');
+      var _pbFields = { period: currentPeriod, from: (query.from||''), to: (query.to||''), keyword: (query.keyword||''), statusPay: (query.statusPay||''), statusBot: (query.statusBot||''), accountCode: (query.accountCode||''), clientId: (query.clientId||''), site: (query.site||''), all: (query.all||'') };
+      var _pbUrl = function(pn, ps){ var qs=[]; Object.keys(_pbFields).forEach(function(k){ var v=_pbFields[k]; if(v!==''&&v!=null) qs.push(k+'='+encodeURIComponent(v)); }); qs.push('pageSize='+(ps||(typeof pageSize!=='undefined'?pageSize:50))); qs.push('page='+pn); return _pbBase+'?'+qs.join('&'); };
+      var _tp = (typeof totalPages!=='undefined') ? totalPages : 1;
+      var _lo=Math.max(1,page-2), _hi=Math.min(_tp,page+2), _plist=[];
+      if(_lo>1){ _plist.push(1); if(_lo>2)_plist.push('...'); }
+      for(var _i=_lo;_i<=_hi;_i++)_plist.push(_i);
+      if(_hi<_tp){ if(_hi<_tp-1)_plist.push('...'); _plist.push(_tp); }
+    %>
+    <div class="tx-pager">
+      <div class="tx-pager-left">
+        <span class="tx-pager-info-lbl">Baris/Halaman</span>
+        <select class="tx-pager-ps" onchange="location.href=this.value">
+          <% [50,100,200,500].forEach(function(_ps){ %>
+            <option value="<%= _pbUrl(1, _ps) %>" <%= (typeof pageSize!=='undefined'?Number(pageSize):50)===_ps ? 'selected' : '' %>><%= _ps %></option>
+          <% }) %>
+        </select>
+        <% if (_tp > 1) { %><span class="tx-pager-info">Hal <b><%= page %></b>/<%= _tp %> &middot; <b><%= total.toLocaleString('id-ID') %></b> data</span><% } %>
+      </div>
+      <% if (_tp > 1) { %>
+      <div class="tx-pager-nav">
+        <a href="<%= _pbUrl(Math.max(1,page-1)) %>" class="tx-pg <%= page<=1?'disabled':'' %>" title="Sebelumnya">&lsaquo;</a>
+        <% _plist.forEach(function(pn){ if(pn==='...'){ %><span class="tx-pg-dots">&hellip;</span><% } else { %><a href="<%= _pbUrl(pn) %>" class="tx-pg <%= pn===page?'active':'' %>"><%= pn %></a><% } }); %>
+        <a href="<%= _pbUrl(Math.min(_tp,page+1)) %>" class="tx-pg <%= page>=_tp?'disabled':'' %>" title="Berikutnya">&rsaquo;</a>
+      </div>
+      <% } %>
+    </div>
+    <script>(function(){var k=document.getElementById('txKeywordInput'); if(k&&k.value){ try{k.focus();k.setSelectionRange(k.value.length,k.value.length);}catch(e){} }})();</script>
   </section>
 </section>
 
@@ -692,6 +808,7 @@ const tableData = <%- JSON.stringify(transactions.map((tx) => {
     createdAt: tx.createdAt,
     note: tx.note,
     issuerName: tx.issuerName || fallbackMutation?.issuerName || null,
+    senderName: (function(){ try { var r = JSON.parse((fallbackMutation && fallbackMutation.rawDataJson) || '{}'); var d = r.sender_name || r.senderName; if (d && String(d).trim()) return String(d).trim(); var k = String(r.keterangan || r.description || r.buyer_ref || ''); var pp = k.split('/').map(function(x){return x.trim();}).filter(Boolean); return pp.length>1 ? pp.slice(1).join(' / ') : null; } catch(e){ return null; } })(),
     rrn: tx.rrn || fallbackMutation?.rrn || null,
     receiptUrl: tx.receiptUrl,
     qrImageBase64: tx.qrImageBase64,
@@ -809,11 +926,13 @@ function refreshExpiryCountdowns() {
 }
 
 <% var _po = (typeof paidOnly !== 'undefined' && paidOnly); %>
+// Escape untuk dipakai di atribut title="" (tooltip hover) — cegah rusak/XSS.
+const attrEsc = (v) => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 const txTable = new Tabulator('#transactions-table', {
   data: tableData,
-  layout: 'fitDataStretch',
+  layout: 'fitColumns',
   pagination: true,
-  paginationSize: 50,
+  paginationSize: <%= (typeof pageSize !== 'undefined' ? Number(pageSize) : 50) %>,
   height: '660px',
   initialSort: [{ column: 'createdAt', dir: 'desc' }],
   renderComplete: refreshExpiryCountdowns,
@@ -840,139 +959,155 @@ const txTable = new Tabulator('#transactions-table', {
   columns: [
     { title: '#', formatter: 'rownum', hozAlign: 'center', width: 46, headerSort: false, resizable: false },
     {
-      title: 'Site',
-      field: 'panelCode',
-      width: 92,
-      formatter: (cell) => `<span class="tx-cell-site">${resolveSiteLabel(cell.getData())}</span>`,
-    },
-    {
       title: 'User',
       field: 'userIdExt',
-      minWidth: 96,
-      width: 118,
-      formatter: (cell) => `<span class="tx-cell-user">${cell.getValue() || '-'}</span>`,
+      minWidth: 170,
+      widthGrow: 2,
+      formatter: (cell) => {
+        const row = cell.getData();
+        const site = resolveSiteLabel(row);
+        const user = cell.getValue() || '-';
+        // 1 baris: tag site + username, keduanya tampil penuh. Ringkasan di tooltip.
+        const tip = attrEsc(`Site: ${site} · User: ${user}`);
+        return `<div class="tx-cell-1line" title="${tip}"><span class="tx-cell-site-tag">${attrEsc(site)}</span> <span class="tx-cell-user">${attrEsc(user)}</span></div>`;
+      },
     },
     {
       title: 'Akun QRIS',
       field: 'accountCode',
-      minWidth: 126,
-      width: 150,
+      minWidth: 110,
+      widthGrow: 1,
       formatter: (cell) => {
         const row = cell.getData();
-        return `<div class="tx-cell-stack"><span class="tx-cell-account">${cell.getValue()}</span><span class="tx-cell-merchant">${row.merchantName}</span></div>`;
+        // 1 baris: kode akun. Nama merchant di tooltip hover.
+        const tip = attrEsc(`Akun: ${cell.getValue()} · Merchant: ${row.merchantName || '-'}`);
+        return `<div class="tx-cell-1line tx-cell-status1" title="${tip}"><span class="tx-cell-account">${attrEsc(cell.getValue())}</span></div>`;
       },
     },
     <% if (_po) { %>
     {
-      title: 'PAID',
+      title: 'Dibayar',
       field: 'paidAt',
-      minWidth: 152,
-      width: 168,
-      formatter: (cell) => `<span class="tx-cell-created" style="color:#86efac;font-weight:800">${cell.getValue() ? dateFmt(cell.getValue()) : '-'}</span>`,
+      minWidth: 150,
+      widthGrow: 1,
+      formatter: (cell) => {
+        // 1 baris: tanggal + jam dibayar LENGKAP dengan detik.
+        const v = cell.getValue();
+        const tip = attrEsc(`Dibayar: ${v ? dateFmt(v) : '-'}`);
+        const dv = v ? new Date(v) : null;
+        const p2 = (n) => String(n).padStart(2, '0');
+        const shortDate = dv
+          ? `${p2(dv.getDate())}/${p2(dv.getMonth() + 1)} <span class="tx-cell-time-sub" style="color:#86efac">${p2(dv.getHours())}:${p2(dv.getMinutes())}:${p2(dv.getSeconds())}</span>`
+          : '-';
+        return `<div class="tx-cell-1line tx-cell-created" style="color:#86efac;font-weight:800" title="${tip}">${shortDate}</div>`;
+      },
     },
     <% } else { %>
     {
       title: 'Dibuat',
       field: 'createdAt',
-      minWidth: 132,
-      width: 140,
-      formatter: (cell) => dateFmt2(cell.getValue()),
-    },
-    {
-      title: 'Expires',
-      field: 'expiresAt',
-      minWidth: 102,
-      width: 112,
+      minWidth: 128,
+      widthGrow: 1,
       formatter: (cell) => {
         const row = cell.getData();
-        return `<div class="tx-cell-stack"><div class="tx-cell-expires">${timeFmt(cell.getValue())}</div>${renderExpiryCountdown(cell.getValue(), row.statusPay, row.qrId)}</div>`;
+        // 1 baris: tanggal + jam LENGKAP dengan detik. Detail expires di tooltip hover.
+        // Untuk transaksi 'open', countdown sisa waktu tampil inline kecil (tetap 1 baris).
+        const tip = attrEsc(`Dibuat: ${dateFmt(cell.getValue())} · Expires: ${dateFmt(row.expiresAt)}`);
+        const dv = cell.getValue() ? new Date(cell.getValue()) : null;
+        const p2 = (n) => String(n).padStart(2, '0');
+        const shortDate = dv
+          ? `${p2(dv.getDate())}/${p2(dv.getMonth() + 1)} <span class="tx-cell-time-sub">${p2(dv.getHours())}:${p2(dv.getMinutes())}:${p2(dv.getSeconds())}</span>`
+          : '-';
+        const countdown = row.statusPay === 'open'
+          ? ` <span class="tx-exp-countdown tx-exp-inline" data-exp="${attrEsc(row.expiresAt)}" data-qrid="${attrEsc(row.qrId)}">12:00</span>`
+          : '';
+        return `<div class="tx-cell-1line tx-cell-created" title="${tip}">${shortDate}${countdown}</div>`;
       },
     },
     <% } %>
     {
       title: 'Amount',
       field: 'finalAmount',
-      minWidth: 110,
-      width: 134,
+      minWidth: 120,
+      widthGrow: 1,
       formatter: (cell) => {
         const row = cell.getData();
         <% if (!_po) { %>
         const _amtStyle = ` style="color:${amountColorFor(row)}"`;
         <% } else { %>
-        const _amtStyle = '';
+        const _amtStyle = ' style="color:#86efac"';
         <% } %>
         const _meta = parseMetadata(row.metadataJson);
         const _base = Number(_meta.roundedBase);
-        const _reqTxt = (_base && _base !== row.requestedAmount)
-          ? `Req ${fmt(row.requestedAmount)} <span style="color:#fbbf24;font-weight:800">&rarr; ${fmt(_base)}</span>`
+        // 1 baris: nominal final. Nominal request (Req) di tooltip hover.
+        const _reqPlain = (_base && _base !== row.requestedAmount)
+          ? `Req ${fmt(row.requestedAmount)} → ${fmt(_base)}`
           : `Req ${fmt(row.requestedAmount)}`;
-        return `<div class="tx-cell-stack"><div class="tx-cell-amount"${_amtStyle}>${fmt(cell.getValue())}</div><div class="tx-cell-amount-sub">${_reqTxt}</div></div>`;
+        const tip = attrEsc(`Final: ${fmt(cell.getValue())} · ${_reqPlain}`);
+        return `<div class="tx-cell-1line" style="justify-content:flex-end" title="${tip}"><span class="tx-cell-amount"${_amtStyle}>${fmt(cell.getValue())}</span></div>`;
       },
     },
     {
-      title: 'Ref / RRN',
+      title: <%- _po ? "'Ref / Issuer'" : "'Issuer'" %>,
       field: 'rrn',
-      minWidth: 122,
-      width: 134,
-      formatter: (cell) => `<span class="tx-cell-rrn">${cell.getValue() || '-'}</span>`,
-    },
-    {
-      title: 'Note / Issuer',
-      field: 'note',
-      minWidth: 300,
-      width: 360,
+      <% if (_po) { %>minWidth: 210, widthGrow: 2,<% } else { %>minWidth: 130, widthGrow: 1,<% } %>
       formatter: (cell) => {
         const row = cell.getData();
-        return `<div class="tx-cell-stack"><div class="tx-cell-note">${cell.getValue() || '-'}</div><div class="tx-cell-issuer">${row.issuerName || '-'}</div></div>`;
+        const ref = cell.getValue() || '-';
+        const iss = row.issuerName || '-';
+        const sn = row.senderName ? String(row.senderName).trim() : '';
+        // Tooltip selalu memuat Ref lengkap (untuk kedua mode).
+        const tip = attrEsc(`Ref: ${ref} · Issuer: ${iss}${sn ? ' · Pengirim: ' + sn : ''}`);
+        const bankHtml = iss !== '-' ? `<span class="tx-cell-issuer">${attrEsc(iss)}</span>` : '';
+        const senderHtml = sn ? ` <span class="tx-cell-sender">· ${attrEsc(sn)}</span>` : '';
+        <% if (_po) { %>
+        // Transaction: Ref No · Bank · Pengirim
+        return `<div class="tx-cell-1line" title="${tip}"><span class="tx-cell-rrn">${attrEsc(ref)}</span> ${bankHtml}${senderHtml}</div>`;
+        <% } else { %>
+        // History: Ref pindah ke hover — tabel cukup Bank · Pengirim (kolom lebih kecil).
+        const body = (bankHtml || senderHtml) ? `${bankHtml}${senderHtml}` : `<span class="tx-cell-rrn">${attrEsc(ref)}</span>`;
+        return `<div class="tx-cell-1line" title="${tip}">${body}</div>`;
+        <% } %>
       },
     },
     <% if (!_po) { %>
     {
       title: 'Status',
       field: 'statusPay',
-      width: 88,
-      formatter: (cell) => {
-        const val = cell.getValue();
-        const label = statusLabelMap[val] || String(val || '-').toUpperCase();
-        const pill = `<span class="${payBadge[val] || 'qris-pill qris-pill-muted'}">${label}</span>`;
-        if (val === 'paid') {
-          const row = cell.getData();
-          const t = row.paidAt ? timeFmt(row.paidAt).replace(/:/g, '.') : '';
-          if (t) {
-            return `<div class="tx-cell-stack" style="align-items:center;gap:2px">${pill}<div style="font-size:10px;font-weight:800;color:#86efac;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${t}</div></div>`;
-          }
-        }
-        return pill;
-      },
-    },
-    {
-      title: 'Bot',
-      field: 'statusBot',
-      width: 96,
+      minWidth: 150,
+      widthGrow: 1,
       hozAlign: 'center',
       formatter: (cell) => {
-        const val = cell.getValue();
-        if (!val) return `<span class="qris-pill qris-pill-muted">-</span>`;
-        // Label ringkas: berhasil / gagal / proses / review sesuai statusBot.
-        const label = {
-          pending: 'PROSES',
-          deposit_queued: 'PROSES',
-          deposit_success: 'BERHASIL',
-          deposit_failed: 'GAGAL',
-          manual_review: 'REVIEW',
-          manual_booked: 'BOOKED',
-        }[val] || String(val).replaceAll('_', ' ').toUpperCase();
-        const pill = `<span class="${botBadge[val] || 'qris-pill qris-pill-muted'}">${label}</span>`;
-        // Kalau sudah selesai diproses bot, tampilkan JAM PROSES BOT (botProcessedAt),
-        // bukan paidAt — keduanya beda beberapa detik (bot memproses setelah paid).
-        if (val === 'deposit_success') {
-          const row = cell.getData();
-          const t = row.botProcessedAt ? timeFmt(new Date(row.botProcessedAt).getTime() + 1000).replace(/:/g, '.') : '';
-          if (t) {
-            return `<div class="tx-cell-stack" style="align-items:center;gap:2px">${pill}<div style="font-size:10px;font-weight:800;color:#86efac;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace">${t}</div></div>`;
-          }
+        const row = cell.getData();
+        const payVal = cell.getValue();
+        const payText = statusLabelMap[payVal] || String(payVal || '-').toUpperCase();
+        // -- Bot: pakai IKON berwarna (bukan kata) supaya hemat kolom. Nama status di hover. --
+        const botVal = row.statusBot;
+        const botMeta = {
+          pending:         { icon: 'fa-hourglass-half',      color: '#f59e0b', label: 'PROSES' },
+          deposit_queued:  { icon: 'fa-hourglass-half',      color: '#f59e0b', label: 'PROSES' },
+          deposit_success: { icon: 'fa-circle-check',        color: '#22c55e', label: 'BERHASIL' },
+          deposit_failed:  { icon: 'fa-circle-xmark',        color: '#ef4444', label: 'GAGAL' },
+          manual_review:   { icon: 'fa-triangle-exclamation',color: '#f97316', label: 'REVIEW' },
+          manual_booked:   { icon: 'fa-bookmark',            color: '#8b5cf6', label: 'BOOKED' },
+        }[botVal] || (botVal ? { icon: 'fa-circle', color: '#94a3b8', label: String(botVal).replaceAll('_', ' ').toUpperCase() } : null);
+        // -- Jam-jam (dengan detik) --
+        const payTime = (payVal === 'paid' && row.paidAt) ? timeFmt(row.paidAt) : '';
+        const botTime = (botVal === 'deposit_success' && row.botProcessedAt) ? timeFmt(new Date(row.botProcessedAt).getTime() + 1000) : '';
+        // -- Tooltip: tetap sebut nama status bot lengkap --
+        const tipParts = [`Bayar: ${payText}${payTime ? ' (' + payTime + ')' : ''}`];
+        if (botMeta) tipParts.push(`Bot: ${botMeta.label}${botTime ? ' (' + botTime + ')' : ''}`);
+        const tip = attrEsc(tipParts.join(' · '));
+        // -- 1 baris: [PAID] jam · ✔(ikon bot) jam --
+        const payPill = `<span class="${payBadge[payVal] || 'qris-pill qris-pill-muted'}">${payText}</span>`;
+        const payTimeHtml = payTime ? `<span class="tx-status-time tx-status-time-paid">${payTime}</span>` : '';
+        let botHtml = '';
+        if (botMeta) {
+          const botIcon = `<i class="fa-solid ${botMeta.icon} tx-bot-icon" style="color:${botMeta.color}" title="Bot: ${attrEsc(botMeta.label)}"></i>`;
+          const botTimeHtml = botTime ? `<span class="tx-status-time tx-status-time-bot">${botTime}</span>` : '';
+          botHtml = `<span class="tx-status-sep">·</span>${botIcon}${botTimeHtml}`;
         }
-        return pill;
+        return `<div class="tx-cell-1line tx-cell-status1" title="${tip}">${payPill}${payTimeHtml}${botHtml}</div>`;
       },
     },
     <% } %>
@@ -1003,6 +1138,9 @@ const txTable = new Tabulator('#transactions-table', {
         ];
         if (row.statusPay === 'paid' && ['deposit_failed', 'manual_review'].includes(row.statusBot)) {
           buttons.push(`<button type="button" onclick="retryDeposit('${row.qrId}', this)" class="tx-act-btn tx-act-accent">Retry</button>`);
+        }
+        if (row.statusPay === 'paid' && row.statusBot === 'manual_review') {
+          buttons.push(`<button type="button" onclick="manualCredit('${row.qrId}', this)" class="tx-act-btn tx-act-green">Kredit Manual</button>`);
         }
         if (isDev && row.statusPay === 'open') {
           buttons.push(`<button type="button" onclick="simulatePay('${row.qrId}', this)" class="tx-act-btn tx-act-green">Sim</button>`);
@@ -1087,7 +1225,13 @@ let transactionRealtimeTimer = null;
 let snapshotInFlight = false;
 
 function getOpenRows() {
-  return tableData.filter((row) => row.statusPay === 'open');
+  // Poll baris 'open' (menunggu bayar) DAN baris 'paid' yang bot-nya belum final
+  // (pending/queued) supaya status BERHASIL + jam proses bot muncul live tanpa reload.
+  return tableData.filter((row) =>
+    row.statusPay === 'open' ||
+    (row.statusPay === 'paid' && (!row.statusBot || row.statusBot === 'pending' || row.statusBot === 'deposit_queued')) ||
+    (row.statusPay === 'paid' && !row.rrn && row.createdAt && (Date.now() - new Date(row.createdAt).getTime() < 300000)),
+  );
 }
 
 function updateRealtimeStats() {
@@ -1143,14 +1287,18 @@ async function refreshTransactionSnapshot() {
       const nextStatusBot = row.statusBot || target.statusBot;
       const nextRrn = row.rrn || target.rrn || null;
       const nextIssuer = row.issuerName || target.issuerName || null;
+      const nextSender = row.senderName || target.senderName || null;
       const nextPaidAt = row.paidAt || target.paidAt || null;
+      const nextBotProcessedAt = row.botProcessedAt || target.botProcessedAt || null;
 
       const changed =
         target.statusPay !== nextStatusPay ||
         target.statusBot !== nextStatusBot ||
         (target.rrn || null) !== nextRrn ||
         (target.issuerName || null) !== nextIssuer ||
-        String(target.paidAt || '') !== String(nextPaidAt || '');
+        (target.senderName || null) !== nextSender ||
+        String(target.paidAt || '') !== String(nextPaidAt || '') ||
+        String(target.botProcessedAt || '') !== String(nextBotProcessedAt || '');
 
       if (!changed) continue;
 
@@ -1158,15 +1306,20 @@ async function refreshTransactionSnapshot() {
       target.statusBot = nextStatusBot;
       target.rrn = nextRrn;
       target.issuerName = nextIssuer;
+      target.senderName = nextSender;
       target.paidAt = nextPaidAt;
+      target.botProcessedAt = nextBotProcessedAt;
 
       changedRows.push({
+        id: target.id,
         qrId: target.qrId,
         statusPay: target.statusPay,
         statusBot: target.statusBot,
         rrn: target.rrn,
         issuerName: target.issuerName,
+        senderName: target.senderName,
         paidAt: target.paidAt,
+        botProcessedAt: target.botProcessedAt,
       });
     }
 
@@ -1234,7 +1387,7 @@ function flashNewRows(qrIds) {
 
 transactionRealtimeTimer = setInterval(() => {
   void runRealtimeSyncTick();
-}, 2500);
+}, 3000);
 
 void runRealtimeSyncTick();
 
@@ -1357,22 +1510,34 @@ function closeStatusModal() {
 }
 
 async function retryDeposit(qrId, button) {
-  if (!confirm('Retry auto deposit untuk transaksi ini?')) return;
+  if (!confirm('YAKIN retry?\n\nBot akan mencoba mengkreditkan member SEKARANG.')) return;
   button.disabled = true;
-  button.textContent = 'Processing...';
-
-  const response = await fetch(apiUrl(`/api/v1/qris/${qrId}/retry-deposit`), { method: 'POST' });
-  const json = await response.json().catch(() => ({ success: false, error: 'Unknown error' }));
-
-  if (json.success) {
-    alert('Deposit dijadwalkan ulang.');
+  button.textContent = '...';
+  try {
+    const response = await fetch(apiUrl(`/dashboard/api/transactions/${qrId}/retry`), { method: 'POST', headers: { 'Accept': 'application/json' } });
+    const json = await response.json().catch(() => ({ ok: false, message: 'Respons tidak valid' }));
+    if (json.ok) { alert('\u2705 ' + (json.message || 'Deposit BERHASIL.')); }
+    else { alert('\u26a0\ufe0f ' + (json.message || 'Masih gagal, status REVIEW.')); }
     window.location.reload();
-    return;
+  } catch (e) {
+    alert('\u274c ' + e.message);
+    button.disabled = false;
+    button.textContent = 'Retry';
   }
+}
 
-  alert(`Gagal: ${json.error}`);
-  button.disabled = false;
-  button.textContent = 'Retry';
+async function manualCredit(qrId, button) {
+  if (!confirm('YAKIN kredit manual?\n\nTandai transaksi ini BERHASIL. Pakai HANYA jika Anda SUDAH mengkreditkan member di panel. Bot tidak akan mengkredit lagi.')) return;
+  button.disabled = true;
+  button.textContent = '...';
+  try {
+    const response = await fetch(apiUrl(`/dashboard/api/transactions/${qrId}/manual-credit`), { method: 'POST', headers: { 'Accept': 'application/json' } });
+    const json = await response.json().catch(() => ({ ok: false, message: 'Respons tidak valid' }));
+    if (json.ok) { alert('\u2705 ' + (json.message || 'Ditandai BERHASIL.')); window.location.reload(); return; }
+    alert('\u274c ' + (json.message || 'Gagal')); button.disabled = false; button.textContent = 'Kredit Manual';
+  } catch (e) {
+    alert('\u274c ' + e.message); button.disabled = false; button.textContent = 'Kredit Manual';
+  }
 }
 
 async function simulatePay(qrId, button) {
@@ -1489,7 +1654,7 @@ async function checkStatusAll() {
   }
   function startPolling(){
     if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(function(){ pollStatus(true); }, 2000);
+    pollTimer = setInterval(function(){ pollStatus(true); }, 3000);
     pollStatus(true);
   }
   async function clickAll(){

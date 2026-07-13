@@ -104,6 +104,7 @@ export const MENU_DEFS: MenuDef[] = [
   { key: 'merchant-qr', label: 'Merchant QR', icon: '🏪', path: '/merchant-qr', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Kelola' }] },
   { key: 'clients', label: 'API Client', icon: '🔑', path: '/clients', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Kelola' }] },
   { key: 'reports', label: 'Laporan', icon: '📈', path: '/reports', subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'cari-selisih', label: 'Cari Selisih', icon: '🔍', path: '/dashboard/cari-selisih', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'login-logs', label: 'Login Logs', icon: '📜', path: '/dashboard/login-logs', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'admin-log', label: 'Admin Log', icon: '🛡️', path: '/admin-log', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'postgres', label: 'PostgreSQL', icon: '🗄️', path: '/dashboard/postgres-monitor', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }] },

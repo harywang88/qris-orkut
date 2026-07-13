@@ -282,6 +282,20 @@
     text-align: center;
     gap: 4px;
   }
+  .setl-refresh-btn { width:26px; height:26px; border-radius:50%; border:1px solid rgba(94,234,212,.28); background:linear-gradient(135deg,rgba(94,234,212,.16),rgba(59,130,246,.10)); color:#5eead4; display:inline-flex; align-items:center; justify-content:center; cursor:pointer; transition:transform .18s, box-shadow .18s, background .25s, border-color .25s; font-size:11px; flex:none; padding:0; }
+  .setl-refresh-btn:hover { transform:scale(1.12) rotate(-18deg); box-shadow:0 0 14px rgba(94,234,212,.45); border-color:rgba(94,234,212,.6); }
+  .setl-refresh-btn:active { transform:scale(.92); }
+  .setl-refresh-btn.spinning { pointer-events:none; }
+  .setl-refresh-btn.spinning i { animation:setlSpin .7s linear infinite; }
+  .setl-refresh-btn.done { background:linear-gradient(135deg,rgba(52,211,153,.35),rgba(52,211,153,.16)); color:#6ee7b7; border-color:rgba(52,211,153,.6); box-shadow:0 0 16px rgba(52,211,153,.5); }
+  @keyframes setlSpin { to { transform:rotate(360deg); } }
+  .setl-fresh { display:inline-flex; align-items:center; gap:5px; font-size:10px; color:var(--muted); white-space:nowrap; transition:color .3s; }
+  .setl-fresh-dot { width:6px; height:6px; border-radius:50%; background:#34d399; flex:none; animation:setlPulse 1.8s infinite; transition:background .3s; }
+  .setl-fresh.mid .setl-fresh-dot { background:#fbbf24; animation-duration:2.4s; }
+  .setl-fresh.mid { color:#d4a24a; }
+  .setl-fresh.live .setl-fresh-txt { color:#6ee7b7; font-weight:700; }
+  .setl-fresh.stale .setl-fresh-dot { background:#94a3b8; animation:none; box-shadow:none; }
+  @keyframes setlPulse { 0%{box-shadow:0 0 0 0 rgba(52,211,153,.55)} 70%{box-shadow:0 0 0 5px rgba(52,211,153,0)} 100%{box-shadow:0 0 0 0 rgba(52,211,153,0)} }
   .setl-card-acct-num {
     font-size: 9px;
     font-weight: 800;
@@ -545,6 +559,30 @@
     transition: transform .18s ease;
     font-size: 11px;
   }
+  /* Light mode: pemilih bank (input + dropdown) ikut tema terang, jangan gelap */
+  html.light .setl-bank-input-wrap {
+    border-color: var(--line);
+    background: var(--card);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 8px 20px rgba(15,23,42,0.08);
+  }
+  html.light .setl-bank-input-wrap:focus-within {
+    border-color: rgba(37,99,235,0.5);
+    box-shadow: 0 0 0 3px rgba(59,130,246,0.12), 0 10px 24px rgba(15,23,42,0.12);
+  }
+  html.light .setl-bank-toggle { border-color: var(--line); background: rgba(15,23,42,0.03); }
+  html.light .setl-bank-dropdown {
+    border-color: var(--line);
+    background: var(--card);
+    box-shadow: 0 20px 44px rgba(15,23,42,0.14), inset 0 1px 0 rgba(255,255,255,0.6);
+  }
+  html.light .setl-bank-dropdown-head { border-bottom-color: var(--line); }
+  html.light .setl-bank-dropdown-title { color: var(--ink-2, #374151); }
+  html.light .setl-bank-option { color: var(--ink, #111827); }
+  html.light .setl-bank-option:hover,
+  html.light .setl-bank-option.active { background: rgba(37,99,235,0.10); color: #1d4ed8; }
+  html.light .setl-bank-option-pinned { color: #2563eb; }
+  html.light .setl-bank-sep { border-bottom-color: var(--line); }
+
   .setl-bank-dropdown {
     position: absolute;
     top: calc(100% + 10px);
@@ -1106,6 +1144,11 @@
   .setl-hist-pager button:hover:not(:disabled) { background:rgba(59,130,246,.14); border-color:rgba(96,165,250,.35); }
   .setl-hist-pager button:disabled { opacity:.4; cursor:not-allowed; }
   .setl-hist-pageinfo { font-size:12px; font-weight:700; color:var(--muted,#94a3b8); }
+  .setl-hist-pagenums { display:inline-flex; gap:4px; flex-wrap:wrap; align-items:center; } /* HIST_PAGER */
+  .setl-hist-pager .setl-hist-num { min-width:34px; padding:7px 10px; }
+  .setl-hist-pager .setl-hist-num.active { background:rgba(59,130,246,.30); border-color:rgba(96,165,250,.65); color:#fff; }
+  .setl-hist-ellip { color:var(--muted,#94a3b8); padding:0 2px; font-weight:700; }
+  #hist-pagesize { min-width:92px; }
   .setl-hist-dl { width:30px; height:30px; border-radius:9px; border:1px solid var(--line,rgba(148,163,184,.2)); background:rgba(59,130,246,.08); color:#93c5fd; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:12px; transition:background .16s, color .16s, border-color .16s, transform .16s; }
   .setl-hist-dl:hover { background:rgba(59,130,246,.2); color:#fff; border-color:rgba(96,165,250,.4); transform:translateY(-1px); }
   .setl-hist-dl:active { transform:none; }
@@ -1125,6 +1168,33 @@
       <p class="qris-section-sub mt-1">Transfer saldo QRIS → Utama → Madera → Bank</p>
     </div>
     <div class="flex items-center gap-3">
+      <style>
+        @keyframes nagoxPulse { 0%{box-shadow:0 0 0 0 rgba(20,184,166,.55)} 70%{box-shadow:0 0 0 7px rgba(20,184,166,0)} 100%{box-shadow:0 0 0 0 rgba(20,184,166,0)} }
+        @keyframes nagoxSheen { 0%{transform:translateX(-120%)} 60%,100%{transform:translateX(220%)} }
+        #nagox-badge::after{ content:'';position:absolute;top:0;left:0;width:35%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.14),transparent);animation:nagoxSheen 3.4s ease-in-out infinite;pointer-events:none }
+      </style>
+      <div id="nagox-badge" title="Status koneksi Nagox (sinkron saldo bank tiap 10 detik)" style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;border-radius:9px;border:1px solid rgba(20,184,166,.35);background:linear-gradient(135deg,rgba(13,148,136,.18),rgba(20,184,166,.05));font-size:11.5px;font-weight:800;color:var(--ink);letter-spacing:.02em;position:relative;overflow:hidden">
+        <span id="nagox-dot" style="width:9px;height:9px;border-radius:50%;background:#9ca3af;flex:none"></span>
+        <span style="opacity:.8">Nagox</span>
+        <span id="nagox-state" style="color:#9ca3af">memeriksa…</span>
+      </div>
+      <script>
+      (function(){
+        var url = '<%= url('/dashboard/api/nagox/status') %>';
+        function paint(ok, txt){
+          var dot=document.getElementById('nagox-dot'), st=document.getElementById('nagox-state');
+          if(!dot||!st) return;
+          if(ok){ dot.style.background='#14b8a6'; dot.style.animation='nagoxPulse 1.6s infinite'; st.textContent='Terhubung · standby'; st.style.color='#14b8a6'; }
+          else { dot.style.background='#ef4444'; dot.style.animation='none'; st.textContent=txt||'Terputus'; st.style.color='#f87171'; }
+        }
+        function tick(){
+          fetch(url,{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
+            paint(d&&d.connected, (d&&d.loggedIn)?'Sinkron tertunda':'Terputus');
+          }).catch(function(){ paint(false,'Terputus'); });
+        }
+        tick(); setInterval(tick, 8000);
+      })();
+      </script>
       <style>#setl-site-filter option{background:#141a26;color:#e6ebf5}#setl-site-filter option:checked,#setl-site-filter option:hover{background:#243043;color:#fff}</style>
       <select id="setl-site-filter" onchange="filterSettlementBySite()"
               style="height:34px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.14);color:var(--ink);border-radius:9px;padding:0 12px;font-size:12.5px;font-weight:700;cursor:pointer">
@@ -1243,7 +1313,7 @@ function filterSettlementBySite(){
       const used   = acct.usedToday         ?? 0;
       const limit  = acct.dailyLimit        ?? 30000000;
       const pct    = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-      const CAP     = 29900000;
+      const CAP     = 29600000;
       const reached = used >= CAP;
       const ok     = statusOk(acct);
     %>
@@ -1296,7 +1366,7 @@ function filterSettlementBySite(){
         <div class="setl-src-note"><i class="fa-solid fa-lock" style="font-size:8px"></i> Saldo live dari server OrderKuota &middot; Madera dari panel Nobu</div>
       </div>
 
-      <!-- Limit Harian (batas OrderKuota 30jt/hari; auto-OFF di 29,9jt) -->
+      <!-- Limit Harian (batas OrderKuota 30jt/hari; auto-OFF di 29,6jt) -->
       <div class="setl-limit-wrap">
         <div class="setl-limit-header">
           <span class="setl-limit-label">Limit Harian (Diterima)<%= reached ? ' — TERCAPAI' : '' %></span>
@@ -1422,8 +1492,9 @@ function filterSettlementBySite(){
 
       <!-- Card Footer -->
       <div class="setl-card-footer">
-        <span style="font-size:10px;color:var(--muted)">
-          Sync: <span data-sync-time="<%= acct.id %>"><%= syncLabel(acct) %></span>
+        <span style="display:inline-flex;align-items:center;gap:8px">
+          <button type="button" class="setl-refresh-btn" title="Perbarui saldo langsung dari OrderKuota" onclick="event.stopPropagation(); settlRefreshBtn(this, '<%= acct.id %>')"><i class="fa-solid fa-arrows-rotate"></i></button>
+          <span class="setl-fresh live"><i class="setl-fresh-dot"></i><span class="setl-fresh-txt" data-sync-time="<%= acct.id %>" data-sync-at="<%= acct.lastBalanceSyncAt ? new Date(acct.lastBalanceSyncAt).toISOString() : '' %>">baru saja</span></span>
         </span>
         <a href="<%= url('/dashboard/mutations/qris') %>" class="setl-card-footer-link">
           <i class="fa-solid fa-list-ul" style="font-size:9px"></i> Riwayat
@@ -1607,6 +1678,19 @@ function filterSettlementBySite(){
         <option value="done">Done</option>
         <option value="failed">Failed</option>
       </select>
+      <select id="hist-from-wallet" class="setl-hist-filter" onchange="applyHistFilter()" title="Filter wallet asal (Dari)">
+        <option value="">Dari: semua</option>
+        <option value="qris">Dari: QRIS</option>
+        <option value="utama">Dari: Utama</option>
+        <option value="madera">Dari: Madera</option>
+      </select>
+      <select id="hist-to-wallet" class="setl-hist-filter" onchange="applyHistFilter()" title="Filter wallet tujuan (Ke)">
+        <option value="">Ke: semua</option>
+        <option value="utama">Ke: Utama</option>
+        <option value="madera">Ke: Madera</option>
+        <option value="bank">Ke: Bank</option>
+      </select>
+      <input id="hist-search" type="text" class="setl-hist-filter" placeholder="Cari akun / nominal..." oninput="applyHistFilter()" style="min-width:180px">
     </div>
   </div>
   <div class="overflow-x-auto">
@@ -1614,12 +1698,14 @@ function filterSettlementBySite(){
       <thead>
         <tr>
           <th>Waktu</th>
+          <th>Akun QRIS</th>
           <th>Dari</th>
           <th>Ke</th>
           <th class="text-right">Nominal</th>
           <th class="text-right hidden md:table-cell">Biaya</th>
           <th class="text-right hidden md:table-cell">Total</th>
           <th class="text-center">Status</th>
+          <th class="text-center">Nagox</th>
           <th class="hidden lg:table-cell">Ref</th>
           <th class="hidden lg:table-cell">Keterangan</th>
           <th class="text-center">Aksi</th>
@@ -1627,7 +1713,7 @@ function filterSettlementBySite(){
       </thead>
       <tbody id="hist-tbody">
         <% if (settlements.length === 0) { %>
-          <tr><td colspan="10">
+          <tr><td colspan="12">
             <div class="qris-empty py-10">
               <i class="fa-solid fa-money-bill-transfer qris-empty-icon"></i>
               <p class="qris-empty-title">Belum ada transfer</p>
@@ -1654,14 +1740,34 @@ function filterSettlementBySite(){
             keterangan = cleanNote;
           }
         %>
-          <tr data-status="<%= s.status %>" data-ts="<%= new Date(s.createdAt).getTime() %>">
+          <tr data-status="<%= s.status %>" data-ts="<%= new Date(s.createdAt).getTime() %>" data-from="<%= s.fromWallet %>" data-to="<%= s.toWallet %>" data-merchant="<%= (s.merchantName || '').toLowerCase() %>" data-amount="<%= s.amount %>">
             <td class="text-xs text-muted whitespace-nowrap"><%= timeStr %></td>
+            <td class="text-xs text-ink font-semibold whitespace-nowrap"><%= s.merchantName || '\u2014' %></td>
             <td><span class="qris-pill qris-pill-open uppercase" style="font-size:10px"><%= flowFrom %></span></td>
             <td><span class="qris-pill qris-pill-violet uppercase" style="font-size:10px"><%= flowTo %></span></td>
             <td class="text-right font-semibold text-ink text-sm">Rp <%= s.amount.toLocaleString('id-ID') %></td>
             <td class="text-right font-semibold text-orange-300 text-sm hidden md:table-cell"><%= feeAmount !== null ? `Rp ${feeAmount.toLocaleString('id-ID')}` : '—' %></td>
             <td class="text-right font-semibold text-emerald-300 text-sm hidden md:table-cell">Rp <%= totalAmount.toLocaleString('id-ID') %></td>
             <td class="text-center"><span class="qris-pill <%= pillClass %>"><%= s.status %></span></td>
+            <td class="text-center">
+              <% if (isMaderaBank && s.status === 'done') { %>
+                <% if (s.nagoxStatus === 'ok') { %>
+                  <span class="qris-pill qris-pill-paid" title="Berhasil tercatat di DB Nagox">done &#9989;</span>
+                <% } else if (s.nagoxStatus === 'fail') { %>
+                  <span class="qris-pill qris-pill-danger" title="<%= (s.nagoxMessage || 'Gagal catat Nagox') %>">done &#10060;</span>
+                <% } else if (s.nagoxStatus === 'pending') { %>
+                  <span class="qris-pill qris-pill-open" title="Sedang diproses...">&#8987; Proses</span>
+                <% } else if (s.nagoxStatus === 'unknown') { %>
+                  <span class="qris-pill qris-pill-warn" title="<%= (s.nagoxMessage || 'Status tidak pasti - cek manual di Nagox lalu ulang bila perlu') %>">&#9888; Cek Manual</span>
+                <% } else if (s.nagoxStatus === 'rejected') { %>
+                  <span class="qris-pill qris-pill-muted" title="Ditolak CS (lokal, tidak dicatat)">Ditolak</span>
+                <% } else { %>
+                  <span class="qris-pill qris-pill-warn" title="Belum dicatat ke Nagox">Menunggu</span>
+                <% } %>
+              <% } else { %>
+                <span class="text-muted">&mdash;</span>
+              <% } %>
+            </td>
             <td class="text-xs text-muted hidden lg:table-cell font-mono" style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
               <%= s.referenceNo || '—' %>
             </td>
@@ -1695,10 +1801,20 @@ function filterSettlementBySite(){
                   <i class="fa-solid fa-lock"></i>
                 </button>
               <% } %>
+              <% if (isMaderaBank && s.status === 'done' && s.nagoxStatus !== 'ok' && s.nagoxStatus !== 'pending') { %>
+                <button type="button" class="setl-hist-dl setl-nagox-approve" title="Approve - catat transfer ke DB Nagox" onclick="nagoxApprove('<%= s.id %>', this)" style="color:#22c55e">
+                  <i class="fa-solid fa-check"></i>
+                </button>
+                <% if (s.nagoxStatus !== 'rejected') { %>
+                <button type="button" class="setl-hist-dl setl-nagox-reject" title="Reject (lokal, tidak dicatat ke Nagox)" onclick="nagoxReject('<%= s.id %>', this)" style="color:#ef4444">
+                  <i class="fa-solid fa-xmark"></i>
+                </button>
+                <% } %>
+              <% } %>
             </td>
           </tr>
         <% }); %>
-        <tr id="hist-empty-filter" hidden><td colspan="10">
+        <tr id="hist-empty-filter" hidden><td colspan="12">
           <div class="qris-empty py-10">
             <i class="fa-solid fa-filter-circle-xmark qris-empty-icon"></i>
             <p class="qris-empty-title">Tidak ada transfer pada filter ini</p>
@@ -1708,9 +1824,15 @@ function filterSettlementBySite(){
     </table>
   </div>
   <div class="setl-hist-pager" id="hist-pager" style="display:none">
-    <button type="button" id="hist-prev" onclick="histPage(-1)"><i class="fa-solid fa-chevron-left" style="font-size:10px"></i> Sebelumnya</button>
+    <select id="hist-pagesize" class="setl-hist-filter" onchange="setHistPageSize(this.value)" title="Baris per halaman">
+      <option value="50" selected>50 / hal</option>
+      <option value="100">100 / hal</option>
+      <option value="200">200 / hal</option>
+    </select>
+    <button type="button" id="hist-prev" onclick="histPage(-1)" title="Sebelumnya"><i class="fa-solid fa-chevron-left" style="font-size:10px"></i></button>
+    <span class="setl-hist-pagenums" id="hist-pagenums"></span>
+    <button type="button" id="hist-next" onclick="histPage(1)" title="Berikutnya"><i class="fa-solid fa-chevron-right" style="font-size:10px"></i></button>
     <span class="setl-hist-pageinfo" id="hist-pageinfo">Hal 1</span>
-    <button type="button" id="hist-next" onclick="histPage(1)">Berikutnya <i class="fa-solid fa-chevron-right" style="font-size:10px"></i></button>
   </div>
 </div>
 
@@ -1721,6 +1843,22 @@ function filterSettlementBySite(){
   const retryPinUrl = '<%= url('/dashboard/settlement/retry-pin') %>';
   const bankListUrl = '<%= url('/dashboard/settlement/banks') %>';
   const savedBanksUrl = '<%= url('/dashboard/api/settlement/saved-banks') %>';
+  const NAGOX_APPROVE_URL = '<%= url('/dashboard/api/settlement/nagox-approve') %>';
+  const NAGOX_REJECT_URL = '<%= url('/dashboard/api/settlement/nagox-reject') %>';
+  window.nagoxAct = function (id, url, confirmMsg, btn) {
+    if (!confirm(confirmMsg)) return;
+    var oh = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>'; }
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) { alert('✅ ' + (d.message || 'Berhasil')); location.reload(); }
+        else { alert('❌ Gagal: ' + ((d && d.message) || 'tidak diketahui')); location.reload(); }
+      })
+      .catch(function () { alert('Koneksi error, coba lagi.'); if (btn) { btn.disabled = false; btn.innerHTML = oh; } });
+  };
+  window.nagoxApprove = function (id, btn) { window.nagoxAct(id, NAGOX_APPROVE_URL, 'Approve & catat transfer ini ke DB Nagox?', btn); };
+  window.nagoxReject = function (id, btn) { window.nagoxAct(id, NAGOX_REJECT_URL, 'Reject pencatatan? (lokal saja, tidak dicatat ke Nagox)', btn); };
   function _sbEsc(v){ return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   window.pickSavedBank = function(id, bankName, bankCode, noRek){
     try{
@@ -1735,13 +1873,15 @@ function filterSettlementBySite(){
       var id=box.getAttribute('data-saved-banks');
       fetch(savedBanksUrl+'?qrisAccountId='+encodeURIComponent(id),{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
         var banks=(d&&d.banks)||[]; if(!banks.length){ box.innerHTML=''; return; }
-        var chips=banks.map(function(b){
-          return '<button type="button" class="setl-saved-chip" data-sb-id="'+_sbEsc(id)+'" data-sb-name="'+_sbEsc(b.bankName)+'" data-sb-code="'+_sbEsc(b.bankCode)+'" data-sb-no="'+_sbEsc(b.noRekening)+'" style="display:inline-flex;flex-direction:column;align-items:flex-start;gap:1px;padding:6px 10px;border-radius:10px;border:1px solid var(--line,rgba(255,255,255,.12));background:rgba(13,148,136,.09);cursor:pointer;transition:transform .15s,filter .15s"><span style="font-size:11px;font-weight:800;color:var(--ink)">'+_sbEsc(b.bankName)+'</span><span style="font-size:10px;color:var(--muted);font-family:ui-monospace,monospace">'+_sbEsc(b.noRekening)+' · '+_sbEsc(String(b.namaRekening||'').slice(0,16))+'</span></button>';
+        function _sbNum(n){ n=Math.round(Number(n)||0); var x=String(n),o='',c=0; for(var k=x.length-1;k>=0;k--){ o=x[k]+o; if(++c%3===0&&k>0) o=','+o; } return o; }
+        var opts=banks.map(function(b,i){
+          var saldo=(b.nagoxSaldo!=null)?_sbNum(b.nagoxSaldo):(b.nagoxSaldoText?String(b.nagoxSaldoText).replace(/[^0-9,]/g,''):'');
+          if(!saldo) saldo='—';
+          return '<option value="'+i+'" style="background:var(--card,#181b22);color:var(--ink,#f1ece4)">'+_sbEsc(String(b.bankName||'').replace(/^Bank /i,''))+' - '+_sbEsc(String(b.namaRekening||'').toUpperCase())+' - '+_sbEsc(saldo)+'</option>';
         }).join('');
-        box.innerHTML='<div style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px"><i class="fa-solid fa-bookmark" style="font-size:9px;color:#0d9488"></i> Rekening Tersimpan (klik untuk pilih)</div><div style="display:flex;flex-wrap:wrap;gap:6px">'+chips+'</div>';
-        box.querySelectorAll('.setl-saved-chip').forEach(function(btn){
-          btn.addEventListener('click',function(){ window.pickSavedBank(btn.getAttribute('data-sb-id'), btn.getAttribute('data-sb-name'), btn.getAttribute('data-sb-code'), btn.getAttribute('data-sb-no')); });
-        });
+        box.innerHTML='<div style="font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:6px"><i class="fa-solid fa-bookmark" style="font-size:9px;color:#0d9488"></i> Rekening Tersimpan (pilih dari daftar)</div><select class="setl-saved-select" style="width:100%;max-width:100%;box-sizing:border-box;padding:9px 12px;border-radius:10px;border:1px solid var(--line,rgba(148,163,184,.2));background:var(--card,#181b22);color:var(--ink,#f1ece4);font-size:12.5px;font-weight:700;cursor:pointer;font-family:ui-monospace,monospace"><option value="" style="background:var(--card,#181b22);color:var(--ink,#f1ece4)">— pilih rekening tersimpan —</option>'+opts+'</select>';
+        var sel=box.querySelector('.setl-saved-select');
+        if(sel){ sel.addEventListener('change',function(){ var b=banks[this.value]; if(!b) return; window.pickSavedBank(id, b.bankName, b.bankCode, b.noRekening); }); }
       }).catch(function(){});
     });
   }
@@ -2178,12 +2318,7 @@ function filterSettlementBySite(){
 
     const syncEl = document.querySelector(`[data-sync-time="${accountId}"]`);
     if (syncEl && account.lastBalanceSyncAt) {
-      syncEl.textContent = new Date(account.lastBalanceSyncAt).toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        timeZone: 'Asia/Jakarta',
-      });
+      syncEl.dataset.syncAt = account.lastBalanceSyncAt;
     }
 
     const ownerBox = getOwnerBox(accountId);
@@ -2242,6 +2377,23 @@ function filterSettlementBySite(){
   }
 
   window.refreshSettlementAccount = refreshSettlementAccount;
+  // Tombol refresh premium: spin saat tarik app-api, flash 'done', reset label ke 'baru saja'.
+  window.settlRefreshBtn = function(btn, id){
+    if (btn.classList.contains('spinning')) return;
+    btn.classList.add('spinning');
+    var done = function(){
+      btn.classList.remove('spinning'); btn.classList.add('done');
+      setTimeout(function(){ btn.classList.remove('done'); }, 900);
+      var el = document.querySelector('[data-sync-time="'+id+'"]'); if (el) el.dataset.syncAt = new Date().toISOString();
+    };
+    try { Promise.resolve(refreshSettlementAccount(id)).then(done, done); } catch(e){ done(); }
+  };
+  // Ticker 1 detik: render 'X dtk lalu' relatif + warna dot (live/mid/stale).
+  (function initFreshTicker(){
+    function rel(iso){ if(!iso) return {t:'belum sinkron',c:'stale'}; var ms=Date.now()-new Date(iso).getTime(); if(isNaN(ms)) return {t:'\u2014',c:'stale'}; var sc=Math.max(0,Math.round(ms/1000)); if(sc<3) return {t:'baru saja',c:'live'}; if(sc<60) return {t:sc+' dtk lalu',c:(sc<20?'live':'mid')}; if(sc<3600){var m=Math.floor(sc/60);return {t:m+' mnt lalu',c:'stale'};} if(sc<86400){var hh=Math.floor(sc/3600);return {t:hh+' jam lalu',c:'stale'};} var dd=Math.floor(sc/86400); return {t:dd+' hari lalu',c:'stale'}; }
+    function tick(){ document.querySelectorAll('.setl-fresh-txt[data-sync-time]').forEach(function(el){ var r=rel(el.dataset.syncAt); el.textContent=r.t; var pill=el.closest('.setl-fresh'); if(pill){ pill.classList.remove('live','mid','stale'); pill.classList.add(r.c); } }); }
+    tick(); setInterval(tick, 1000);
+  })();
 
   // ── Toggle On/Off Akun QRIS (reuse endpoint Pengaturan Akun) ──
   const MQR_BASE = '<%- url('/merchant-qr') %>';
@@ -3508,7 +3660,7 @@ function filterSettlementBySite(){
   loadProofsList();
 
   // ── History filter (tanggal + status) + pagination (maks 100/hal) ─────────
-  const HIST_PAGE_SIZE = 100;
+  let histPageSize = 50; // HIST_PAGER: baris/hal dipilih 50(default)/100/200
   let histRange = 'all', histPageNum = 1, histMatched = [];
   function histRows() { return [...document.querySelectorAll('#hist-tbody tr[data-status]')]; }
   function histInRange(ts) {
@@ -3527,19 +3679,32 @@ function filterSettlementBySite(){
   function applyHistFilter() {
     const sel = document.getElementById('hist-filter');
     const status = (sel && sel.value) || '';
+    const fromEl = document.getElementById('hist-from-wallet'); const fromW = (fromEl && fromEl.value) || '';
+    const toEl = document.getElementById('hist-to-wallet'); const toW = (toEl && toEl.value) || '';
+    const searchEl = document.getElementById('hist-search'); const q = ((searchEl && searchEl.value) || '').trim().toLowerCase();
+    const qDigits = q.replace(/[^0-9]/g, ''); // nominal: angka bebas titik/koma
     histMatched = histRows().filter((r) => {
       const ts = Number(r.dataset.ts || '0');
-      return histInRange(ts) && (!status || r.dataset.status === status);
+      if (!histInRange(ts)) return false;
+      if (status && r.dataset.status !== status) return false;
+      if (fromW && r.dataset.from !== fromW) return false;
+      if (toW && r.dataset.to !== toW) return false;
+      if (q) {
+        const merch = r.dataset.merchant || '';
+        const amt = r.dataset.amount || '';
+        if (!(merch.indexOf(q) !== -1 || (qDigits && amt.indexOf(qDigits) !== -1))) return false;
+      }
+      return true;
     });
     histPageNum = 1;
     renderHistPage();
   }
   function renderHistPage() {
     const total = histMatched.length;
-    const pages = Math.max(1, Math.ceil(total / HIST_PAGE_SIZE));
+    const pages = Math.max(1, Math.ceil(total / histPageSize));
     if (histPageNum > pages) histPageNum = pages;
     if (histPageNum < 1) histPageNum = 1;
-    const start = (histPageNum - 1) * HIST_PAGE_SIZE, end = start + HIST_PAGE_SIZE;
+    const start = (histPageNum - 1) * histPageSize, end = start + histPageSize;
     histRows().forEach((r) => { r.style.display = 'none'; });
     histMatched.forEach((r, i) => { r.style.display = (i >= start && i < end) ? '' : 'none'; });
     const countEl = document.getElementById('hist-count'); if (countEl) countEl.textContent = '(' + total + ' request)';
@@ -3548,9 +3713,28 @@ function filterSettlementBySite(){
     const prev = document.getElementById('hist-prev'), next = document.getElementById('hist-next');
     if (prev) prev.disabled = histPageNum <= 1;
     if (next) next.disabled = histPageNum >= pages;
-    const pager = document.getElementById('hist-pager'); if (pager) pager.style.display = total > HIST_PAGE_SIZE ? '' : 'none';
+    const nums = document.getElementById('hist-pagenums');
+    if (nums) {
+      let html = '';
+      if (pages > 1) {
+        const win = [];
+        const add = (n) => { if (n >= 1 && n <= pages && !win.includes(n)) win.push(n); };
+        add(1); add(2); for (let k = histPageNum - 1; k <= histPageNum + 1; k++) add(k); add(pages - 1); add(pages);
+        win.sort((a, b) => a - b);
+        let last = 0;
+        win.forEach((n) => {
+          if (n - last > 1) html += '<span class="setl-hist-ellip">\u2026</span>';
+          html += '<button type="button" class="setl-hist-num' + (n === histPageNum ? ' active' : '') + '" onclick="histGoPage(' + n + ')">' + n + '</button>';
+          last = n;
+        });
+      }
+      nums.innerHTML = html;
+    }
+    const pager = document.getElementById('hist-pager'); if (pager) pager.style.display = total > 0 ? '' : 'none';
   }
   function histPage(dir) { histPageNum += dir; renderHistPage(); }
+  function histGoPage(n) { histPageNum = Number(n) || 1; renderHistPage(); }
+  function setHistPageSize(v) { histPageSize = Number(v) || 50; histPageNum = 1; renderHistPage(); }
   function setHistRange(range, btn) {
     histRange = range;
     document.querySelectorAll('.setl-hist-datebtn').forEach((b) => b.classList.remove('active'));
@@ -3561,6 +3745,8 @@ function filterSettlementBySite(){
   }
   window.applyHistFilter = applyHistFilter;
   window.histPage = histPage;
+  window.histGoPage = histGoPage;
+  window.setHistPageSize = setHistPageSize;
   window.setHistRange = setHistRange;
   const histFilterSel = document.getElementById('hist-filter');
   if (histFilterSel) histFilterSel.addEventListener('change', applyHistFilter);
@@ -3635,7 +3821,7 @@ function filterSettlementBySite(){
       animateBal('[data-field="qris"][data-id="'+a.id+'"]', a.lastQrisBalance != null ? a.lastQrisBalance : 0);
       animateBal('[data-field="utama"][data-id="'+a.id+'"]', a.lastMainBalance != null ? a.lastMainBalance : 0);
       var se = document.querySelector('[data-sync-time="'+a.id+'"]');
-      if (se && a.lastBalanceSyncAt) se.textContent = new Date(a.lastBalanceSyncAt).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit', second:'2-digit', timeZone:'Asia/Jakarta' });
+      if (se && a.lastBalanceSyncAt) se.dataset.syncAt = a.lastBalanceSyncAt;
     }
     async function poll(){
       if (document.hidden) return;
@@ -3650,7 +3836,7 @@ function filterSettlementBySite(){
       } catch(_){}
     }
     poll();
-    setInterval(poll, 2000);
+    setInterval(poll, 3000);
     document.addEventListener('visibilitychange', function(){ if (!document.hidden){ tickN = 0; poll(); } });
   })();
 
@@ -3714,7 +3900,7 @@ function filterSettlementBySite(){
       } catch(_){}
     }
     poll();
-    setInterval(poll, 2500);
+    setInterval(poll, 3000);
     // Preview manual dari console: __previewPaid('ayam', 50001)
     window.__previewPaid = function(u, amt){ var c = document.querySelector('.setl-card'); if (c) popPaid(c.id.replace('card-',''), u || 'ayam', amt || 50001); };
   })();

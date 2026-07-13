@@ -44,15 +44,83 @@ export async function autologinReportCookie(autologinUrl: string): Promise<{ coo
   }
 }
 
+// Cache cookie ci_session (server set Max-Age 7200 = 2 jam) supaya TIDAK login-ulang tiap request
+// -> mencegah burst 429 dari Cloudflare report.orderkuota.com (akar masalah "OUT semua").
+type ReportCookie = { cookie: string; userAgent: string };
+const reportCookieCache = new Map<string, { c: ReportCookie; exp: number }>();
+const reportBackoff = new Map<string, number>(); // key -> waktu (ms) berhenti coba setelah gagal/429
+const REPORT_COOKIE_TTL_MS = 100 * 60 * 1000; // 100 menit (< 2 jam server)
+const REPORT_BACKOFF_MS = 5 * 60 * 1000;       // diam 5 menit setelah gagal (anti-hammer saat 429)
+// Serialkan autologin: hanya 1 autologin jalan pada satu waktu + jeda kecil -> anti-burst.
+let reportAutologinChain: Promise<unknown> = Promise.resolve();
+function serializeAutologin(url: string): Promise<ReportCookie | null> {
+  const task = async (): Promise<ReportCookie | null> => {
+    const r = await autologinReportCookie(url);
+    await new Promise((res) => setTimeout(res, 700));
+    return r;
+  };
+  const next = reportAutologinChain.then(task, task);
+  reportAutologinChain = next.catch(() => undefined);
+  return next;
+}
+
 async function autologinCookieForAccount(
   webReportUrlEncrypted?: string | null,
 ): Promise<{ cookie: string; userAgent: string } | null> {
   if (!webReportUrlEncrypted) return null;
-  try {
-    return await autologinReportCookie(decrypt(webReportUrlEncrypted));
-  } catch {
-    return null;
-  }
+  const key = webReportUrlEncrypted;
+  const now = Date.now();
+  const cached = reportCookieCache.get(key);
+  if (cached && cached.exp > now) return cached.c;            // cookie masih segar -> 0 request
+  const bo = reportBackoff.get(key);
+  if (bo && bo > now) return cached ? cached.c : null;        // lagi backoff -> jangan hammer, pakai cookie lama bila ada
+  let url: string;
+  try { url = decrypt(webReportUrlEncrypted); } catch { return null; }
+  const auto = await serializeAutologin(url);
+  if (!auto) { reportBackoff.set(key, now + REPORT_BACKOFF_MS); return cached ? cached.c : null; }
+  reportCookieCache.set(key, { c: auto, exp: Date.now() + REPORT_COOKIE_TTL_MS });
+  reportBackoff.delete(key);
+  return auto;
+}
+
+// Watchdog: tiap 60 dtk, akun yang cookie-nya hilang/mau-habis -> AUTO login pakai link permanen.
+// Aman dari 429: cookie segar dilewati (0 request) + serialize + backoff (reuse infra di atas).
+const REPORT_WATCHDOG_MS = 60 * 1000;
+const REPORT_REFRESH_MARGIN_MS = 10 * 60 * 1000; // login-ulang bila sisa < 10 menit
+async function ensureReportCookieFresh(enc: string): Promise<'skip' | 'ok' | 'fail'> {
+  const now = Date.now();
+  const cached = reportCookieCache.get(enc);
+  const bo = reportBackoff.get(enc);
+  if (bo && bo > now) return 'skip';
+  if (cached && cached.exp > now + REPORT_REFRESH_MARGIN_MS) return 'skip';
+  let url: string;
+  try { url = decrypt(enc); } catch { return 'fail'; }
+  const auto = await serializeAutologin(url);
+  if (!auto) { reportBackoff.set(enc, now + REPORT_BACKOFF_MS); return 'fail'; }
+  reportCookieCache.set(enc, { c: auto, exp: Date.now() + REPORT_COOKIE_TTL_MS });
+  reportBackoff.delete(enc);
+  return 'ok';
+}
+let reportWatchdogTimer: ReturnType<typeof setInterval> | null = null;
+export function startReportLoginWatchdog(): void {
+  if (reportWatchdogTimer) return;
+  const tick = async (): Promise<void> => {
+    try {
+      const accounts = await db.qrisAccount.findMany({
+        where: { status: 'active', webReportUrlEncrypted: { not: null } },
+        select: { webReportUrlEncrypted: true },
+      });
+      let relogin = 0;
+      for (const a of accounts) {
+        if (!a.webReportUrlEncrypted) continue;
+        if ((await ensureReportCookieFresh(a.webReportUrlEncrypted)) === 'ok') relogin++;
+      }
+      if (relogin) logger.info({ relogin }, 'reportLoginWatchdog: auto re-login web report');
+    } catch (err) { logger.warn({ err }, 'reportLoginWatchdog error'); }
+  };
+  reportWatchdogTimer = setInterval(() => { void tick(); }, REPORT_WATCHDOG_MS);
+  setTimeout(() => { void tick(); }, 8000);
+  logger.info('reportLoginWatchdog started (auto re-login web report tiap 60s)');
 }
 
 
@@ -348,29 +416,9 @@ export async function syncMerchantMutationsFromReportIfStale(
 /** Cek status login Web Report: none (belum ada link) | active | expired. */
 export async function checkWebReportLogin(webReportUrlEncrypted?: string | null): Promise<'none' | 'active' | 'expired'> {
   if (!webReportUrlEncrypted) return 'none';
-  let url: string;
-  try { url = decrypt(webReportUrlEncrypted); } catch { return 'expired'; }
-  const auto = await autologinReportCookie(url);
-  if (!auto) return 'expired';
-  try {
-    const res = await fetch(WEB_REPORT_BASE + '/', {
-      headers: {
-        'User-Agent': auto.userAgent,
-        Cookie: auto.cookie,
-        Referer: WEB_REPORT_BASE + '/transaksi',
-        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(15000),
-    });
-    if (res.status >= 300 && res.status < 400) {
-      const loc = res.headers.get('location') || '';
-      return /auth\/login/i.test(loc) ? 'expired' : 'active';
-    }
-    return res.status === 200 ? 'active' : 'expired';
-  } catch {
-    return 'expired';
-  }
+  // Pakai cookie tercache (login-ulang hanya bila kadaluarsa) -> status tanpa hammer report.orderkuota.
+  const auto = await autologinCookieForAccount(webReportUrlEncrypted);
+  return auto ? 'active' : 'expired';
 }
 
 

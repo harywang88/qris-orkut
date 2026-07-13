@@ -135,7 +135,7 @@
         </div>
         <span class="mn-card-num"><%= idx + 1 %></span>
         <div class="mn-card-name"><%= acct.merchantName %></div>
-        <div class="mn-card-code"><%= acct.code %></div>
+        <div class="mn-card-code"><%= acct.code %><% if (acct.status && acct.status !== 'active') { %> <span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:6px;background:rgba(248,113,113,.15);color:#f87171;font-size:8px;font-weight:800;letter-spacing:.05em;">NONAKTIF</span><% } %></div>
         <div class="mn-card-bal">Saldo Madera<br><b><%= fmtRpMn(acct.lastMaderaBalance) %></b></div>
         <div class="mn-card-open"><i class="fa-solid fa-arrow-up-right-from-square"></i> Buka Mutasi Nobu (tab baru)</div>
         <button type="button" class="mn-card-quick" onclick="event.stopPropagation(); openMaderaHist('<%= acct.id %>', this.closest('.mn-card'))">

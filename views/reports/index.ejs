@@ -136,11 +136,18 @@
 <div class="qris-table-wrap">
   <div class="flex items-center justify-between px-5 py-4 border-b border-line">
     <h3 class="text-sm font-bold text-ink">Rincian Per Site</h3>
-    <% if (selectedSite) { %>
-      <a href="<%= reportsBase + '?' + dateQS %>" class="text-[11px] text-muted-2 hover:underline" style="color:#93c5fd">
-        <i class="fa-solid fa-layer-group text-[10px]"></i> Lihat Semua Site
-      </a>
-    <% } %>
+    <div class="flex items-center gap-3">
+      <% if (selectedSite) { %>
+        <a href="<%= reportsBase + '?' + dateQS %>" class="text-[11px] text-muted-2 hover:underline" style="color:#93c5fd">
+          <i class="fa-solid fa-layer-group text-[10px]"></i> Lihat Semua Site
+        </a>
+      <% } %>
+      <% if (isMaster && typeof isSingleDay !== 'undefined' && isSingleDay) { %>
+        <button type="button" onclick="openMaderaKoreksi()" class="qris-btn qris-btn-sm qris-btn-ghost" style="border-color:rgba(240,171,252,.4);color:#f0abfc" title="Koreksi Pencairan & Biaya Transfer Madera untuk tanggal ini (perbaiki salah-label tanggal OrderKuota)">
+          <i class="fa-solid fa-wrench text-[10px]"></i> Koreksi Madera
+        </button>
+      <% } %>
+    </div>
   </div>
   <% if (overall.total === 0) { %>
     <div class="qris-empty">
@@ -161,11 +168,13 @@
             <th class="text-right">Expired</th>
             <th class="text-right">Dep OK</th>
             <th class="text-right">Saldo Awal</th>
+            <th class="text-right" title="Modal masuk akun baru (saldo saat ditambah) — injeksi modal, bukan omset">Modal</th>
             <th class="text-right">Nominal</th>
+            <th class="text-right" title="Uang pending (belum diproses)">Pending</th>
             <th class="text-right" title="QRIS Biaya Layanan (0.3% OrderKuota)">Fee</th>
             <th class="text-right" title="Utama Biaya QRIS 1% (Percepatan Pencairan)">FEE 2</th>
             <th class="text-right" title="Madera Biaya Transfer BI-Fast">FEE 3</th>
-            <th class="text-right">Net</th>
+            <th class="text-right" title="Madera Bunga Tabungan (bunga bank)">Bunga</th>
             <th class="text-right" title="Total pencairan Madera BI-Fast ke bank">Pencairan</th>
             <th class="text-right">Saldo Akhir</th>
             <th class="text-right">Status</th>
@@ -182,15 +191,37 @@
               <td class="text-right font-mono" style="color:#86efac"><%= row.paid %></td>
               <td class="text-right font-mono text-muted"><%= row.expired %></td>
               <td class="text-right font-mono" style="color:#86efac"><%= row.depositSuccess %></td>
-              <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= (row.saldoAwal || 0).toLocaleString('id-ID') %></td>
-              <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= row.totalPaid.toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= (row.saldoAwal || 0).toLocaleString('id-ID') %><% if (row.saldoAwalManual) { %> <span title="jangkar/baseline" style="color:#38bdf8;font-size:10px">&#128279;</span><% } %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#67e8f9"><% if (row.modalMasuk) { %>Rp <%= (row.modalMasuk || 0).toLocaleString('id-ID') %><% } else { %><span style="color:var(--muted)">-</span><% } %></td>
+              <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= row.totalPaid.toLocaleString('id-ID') %><% if (row.pendingCarryProcessed) { %><br><span style="font-size:9px;color:#93c5fd;font-weight:600" title="Uang pending kemarin yg diproses hari ini — sudah dihitung kemarin, di luar omset">&#8617; pending kemarin: <%= row.pendingCarryProcessed.toLocaleString('id-ID') %></span><% } %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#93c5fd">Rp <%= (row.pending || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap text-muted">Rp <%= row.totalFee.toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#fbbf24">Rp <%= (row.fee2 || 0).toLocaleString('id-ID') %></td>
-              <td class="text-right font-mono whitespace-nowrap" style="color:#fca5a5">Rp <%= (row.fee3 || 0).toLocaleString('id-ID') %></td>
-              <td class="text-right font-mono whitespace-nowrap font-semibold" style="color:#86efac">Rp <%= row.netAmount.toLocaleString('id-ID') %></td>
-              <td class="text-right font-mono whitespace-nowrap" style="color:#f0abfc">Rp <%= (row.pencairan || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#fca5a5">Rp <%= (row.fee3 || 0).toLocaleString('id-ID') %><% if (row.fee3Manual) { %> <span title="koreksi manual" style="color:#f0abfc;font-size:10px">&#9998;</span><% } %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#34d399">Rp <%= (row.bunga || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#f0abfc">Rp <%= (row.pencairan || 0).toLocaleString('id-ID') %><% if (row.pencairanManual) { %> <span title="koreksi manual" style="color:#f0abfc;font-size:10px">&#9998;</span><% } %></td>
               <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= (row.saldoAkhir || 0).toLocaleString('id-ID') %></td>
               <td class="text-center font-mono"><% if (row.status === 'match') { %><span style="color:#86efac;font-weight:800">● MATCH</span><% } else { %><span style="color:#fca5a5;font-weight:800">● UNMATCH</span><% } %></td>
+            </tr>
+          <% }); %>
+          <% (typeof newAccountRows !== 'undefined' ? newAccountRows : []).forEach(function(nr){ %>
+            <tr style="background:rgba(103,232,249,0.06)">
+              <td class="font-medium text-ink"><span style="display:inline-block;font-size:9px;font-weight:800;color:#06121a;background:#67e8f9;border-radius:4px;padding:1px 5px;margin-right:5px">BARU</span><%= nr.accountName %><span class="text-[10px] text-muted-2 font-normal"> · modal masuk</span></td>
+              <td class="text-right font-mono text-muted">-</td>
+              <td class="text-right font-mono text-muted">-</td>
+              <td class="text-right font-mono text-muted">-</td>
+              <td class="text-right font-mono text-muted">-</td>
+              <td class="text-right font-mono whitespace-nowrap text-muted">Rp 0</td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#67e8f9;font-weight:700">Rp <%= (nr.modalMasuk || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= (nr.totalPaid || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#93c5fd">Rp <%= (nr.pending || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap text-muted">Rp <%= (nr.totalFee || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#fbbf24">Rp <%= (nr.fee2 || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#fca5a5">Rp <%= (nr.fee3 || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#34d399">Rp <%= (nr.bunga || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#f0abfc">Rp <%= (nr.pencairan || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= (nr.saldoAkhir || 0).toLocaleString('id-ID') %></td>
+              <td class="text-center font-mono"><span style="color:#86efac;font-weight:800">● MATCH</span></td>
             </tr>
           <% }); %>
         </tbody>
@@ -201,14 +232,16 @@
             <td class="text-right font-mono font-bold" style="color:#86efac"><%= overall.paid %></td>
             <td class="text-right font-mono font-bold text-muted"><%= overall.expired %></td>
             <td class="text-right font-mono font-bold" style="color:#86efac"><%= overall.depositSuccess %></td>
-            <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= (overall.saldoAwal || 0).toLocaleString('id-ID') %></td>
-            <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= overall.totalPaid.toLocaleString('id-ID') %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= (overall.saldoAwal || 0).toLocaleString('id-ID') %><% if (overall.saldoAwalManual) { %> <span title="Saldo awal manual (jangkar)" style="color:#38bdf8;font-size:10px">&#128279;</span><% } %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#67e8f9"><% if (overall.modalMasuk) { %>Rp <%= (overall.modalMasuk || 0).toLocaleString('id-ID') %><% } else { %><span style="color:var(--muted)">-</span><% } %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= overall.totalPaid.toLocaleString('id-ID') %><% if (overall.pendingCarryProcessed) { %><br><span style="font-size:9px;color:#93c5fd;font-weight:600" title="Uang pending kemarin yg diproses hari ini — di luar omset">&#8617; pending kemarin: <%= overall.pendingCarryProcessed.toLocaleString('id-ID') %></span><% } %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#93c5fd">Rp <%= (overall.pending || 0).toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap text-muted">Rp <%= overall.totalFee.toLocaleString('id-ID') %></td>
             <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#fbbf24">Rp <%= (overall.fee2 || 0).toLocaleString('id-ID') %></td>
-            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#fca5a5">Rp <%= (overall.fee3 || 0).toLocaleString('id-ID') %></td>
-            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#86efac">Rp <%= overall.netAmount.toLocaleString('id-ID') %></td>
-            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#f0abfc">Rp <%= (overall.pencairan || 0).toLocaleString('id-ID') %></td>
-            <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= (overall.saldoAkhir || 0).toLocaleString('id-ID') %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#fca5a5">Rp <%= (overall.fee3 || 0).toLocaleString('id-ID') %><% if (overall.fee3Manual) { %> <span title="koreksi manual" style="color:#f0abfc;font-size:10px">&#9998;</span><% } %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#34d399">Rp <%= (overall.bunga || 0).toLocaleString('id-ID') %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap" style="color:#f0abfc">Rp <%= (overall.pencairan || 0).toLocaleString('id-ID') %><% if (overall.pencairanManual) { %> <span title="koreksi manual" style="color:#f0abfc;font-size:10px">&#9998;</span><% } %></td>
+            <td class="text-right font-mono font-bold whitespace-nowrap text-ink">Rp <%= (overall.saldoAkhir || 0).toLocaleString('id-ID') %><% if (overall.saldoAkhirManual) { %> <span title="Saldo akhir dari jangkar hari berikutnya" style="color:#38bdf8;font-size:10px">&#128279;</span><% } %></td>
             <td class="text-center font-mono font-bold"><% if (overall.status === 'match') { %><span style="color:#86efac">● MATCH</span><% } else { %><span style="color:#fca5a5">● UNMATCH</span><% } %></td>
           </tr>
         </tfoot>
@@ -216,6 +249,85 @@
     </div>
   <% } %>
 </div>
+
+<!-- Modal Koreksi Madera -->
+<div id="mkModal" class="mk-overlay" style="display:none">
+  <div class="mk-box qris-card">
+    <div class="flex items-center justify-between mb-3">
+      <h3 class="text-sm font-bold text-ink"><i class="fa-solid fa-wrench" style="color:#f0abfc"></i> Koreksi Madera</h3>
+      <button type="button" onclick="closeMaderaKoreksi()" style="background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:#9a9085">&times;</button>
+    </div>
+    <p class="text-[11px] text-muted-2 mb-3" style="line-height:1.5">Perbaiki <b>Pencairan</b> &amp; <b>Biaya Transfer (FEE 3)</b> jika OrderKuota salah-label tanggal transfer dini hari. <b>Kosongkan</b> input = kembali <b>otomatis</b>.</p>
+    <div class="mb-3">
+      <label class="qris-label">Tanggal (WIB)</label>
+      <div class="qris-input" style="opacity:.85"><i class="fa-solid fa-calendar-day text-[10px]" style="color:#93c5fd"></i> <span id="mkDateLabel"></span></div>
+      <input type="hidden" id="mkDate" />
+    </div>
+    <div class="mb-3">
+      <label class="qris-label">Baris / Scope</label>
+      <select id="mkScope" class="qris-input" onchange="mkFill()"></select>
+    </div>
+    <div class="mb-3">
+      <label class="qris-label" style="color:#f0abfc">Pencairan (Rp)</label>
+      <input type="text" inputmode="numeric" autocomplete="off" id="mkPencairan" class="qris-input" placeholder="otomatis" oninput="mkFmt(this)" />
+    </div>
+    <div class="mb-4">
+      <label class="qris-label" style="color:#fca5a5">Biaya Transfer / FEE 3 (Rp)</label>
+      <input type="text" inputmode="numeric" autocomplete="off" id="mkFee3" class="qris-input" placeholder="otomatis" oninput="mkFmt(this)" />
+    </div>
+    <div id="mkMsg" class="text-[11px] mb-2" style="display:none"></div>
+    <div class="flex gap-2 justify-end">
+      <button type="button" onclick="closeMaderaKoreksi()" class="qris-btn qris-btn-sm qris-btn-ghost">Batal</button>
+      <button type="button" id="mkSave" onclick="saveMaderaKoreksi()" class="qris-btn qris-btn-sm qris-btn-accent"><i class="fa-solid fa-floppy-disk text-[10px]"></i> Simpan</button>
+    </div>
+  </div>
+</div>
+<style>
+  .mk-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(3px);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px}
+  .mk-box{width:100%;max-width:430px;padding:20px;max-height:90vh;overflow:auto}
+</style>
+<script>
+(function(){
+  window.__mkScopes = <%- JSON.stringify(
+    [{ scope:'overall', label:'Semua Site (Overall)', pencairan:(overall&&overall.pencairan)||0, fee3:(overall&&overall.fee3)||0, pManual:!!(overall&&overall.pencairanManual), fManual:!!(overall&&overall.fee3Manual) }]
+    .concat((typeof siteBreakdown!=='undefined'?siteBreakdown:[]).map(function(r){ return { scope:'site:'+r.siteKey, label:r.siteName, pencairan:(r.pencairan||0), fee3:(r.fee3||0), pManual:!!r.pencairanManual, fManual:!!r.fee3Manual }; }))
+  ) %>;
+  window.__mkDate = '<%= anchorAwalDate %>';
+})();
+function mkRp(n){ n=String(n==null?'':n).replace(/[^0-9]/g,''); return n?Number(n).toLocaleString('id-ID'):''; }
+function mkFmt(el){ el.value=mkRp(el.value); }
+function mkNum(v){ v=String(v||'').replace(/[^0-9]/g,''); return v===''?null:Number(v); }
+function mkCur(){ var sc=document.getElementById('mkScope').value; return (window.__mkScopes||[]).find(function(s){return s.scope===sc;}); }
+function mkFill(){
+  var s=mkCur(); if(!s) return;
+  var p=document.getElementById('mkPencairan'), f=document.getElementById('mkFee3');
+  p.value = s.pManual ? mkRp(s.pencairan) : '';
+  p.placeholder = s.pManual ? 'koreksi aktif' : ('otomatis: ' + mkRp(s.pencairan));
+  f.value = s.fManual ? mkRp(s.fee3) : '';
+  f.placeholder = s.fManual ? 'koreksi aktif' : ('otomatis: ' + mkRp(s.fee3));
+}
+function openMaderaKoreksi(){
+  var sel=document.getElementById('mkScope'); sel.innerHTML='';
+  (window.__mkScopes||[]).forEach(function(s){ var o=document.createElement('option'); o.value=s.scope; o.textContent=s.label + ((s.pManual||s.fManual)?'  ✎':''); sel.appendChild(o); });
+  document.getElementById('mkDate').value=window.__mkDate;
+  document.getElementById('mkDateLabel').textContent=window.__mkDate;
+  document.getElementById('mkMsg').style.display='none';
+  mkFill();
+  document.getElementById('mkModal').style.display='flex';
+}
+function closeMaderaKoreksi(){ document.getElementById('mkModal').style.display='none'; }
+async function saveMaderaKoreksi(){
+  var btn=document.getElementById('mkSave'); var msg=document.getElementById('mkMsg');
+  var body={ scope:document.getElementById('mkScope').value, wibDate:document.getElementById('mkDate').value, pencairan:mkNum(document.getElementById('mkPencairan').value), fee3:mkNum(document.getElementById('mkFee3').value) };
+  btn.disabled=true; var old=btn.innerHTML; btn.innerHTML='...';
+  try{
+    var res=await fetch(<%- JSON.stringify(url('/reports/madera-correction')) %>, { method:'POST', headers:{ 'Content-Type':'application/json','Accept':'application/json' }, body:JSON.stringify(body) });
+    var j=await res.json().catch(function(){ return {ok:false,message:'Respons tidak valid'}; });
+    if(j.ok){ btn.innerHTML='✅ Tersimpan'; setTimeout(function(){ window.location.reload(); },400); return; }
+    msg.style.display='block'; msg.style.color='#fca5a5'; msg.textContent='⚠️ '+(j.message||'Gagal simpan'); btn.disabled=false; btn.innerHTML=old;
+  }catch(e){ msg.style.display='block'; msg.style.color='#fca5a5'; msg.textContent='❌ '+e.message; btn.disabled=false; btn.innerHTML=old; }
+}
+</script>
 
 <script>
 (function () {

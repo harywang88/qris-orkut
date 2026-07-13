@@ -183,6 +183,15 @@
     </a>
     <% } %>
 
+    <% if (can('cari-selisih')) { %>
+    <a href="<%= url('/dashboard/cari-selisih') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-magnifying-glass qris-nav-icon"></i>
+        <span>Cari Selisih</span>
+      </span>
+    </a>
+    <% } %>
+
     <% if (can('admin-log') || can('login-logs') || can('postgres') || can('settings') || isMaster || !isAlias) { %>
     <p class="px-3 pb-2.5 pt-4 text-[9px] font-bold uppercase tracking-[0.3em] text-muted/60">Sistem</p>
     <% } %>

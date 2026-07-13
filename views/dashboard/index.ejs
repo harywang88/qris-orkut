@@ -100,10 +100,10 @@
 </div>
 
 <!-- ── Chart + Account Status ─────────────────────────────────────────── -->
-<div class="grid grid-cols-1 xl:grid-cols-3 gap-5 mb-6">
+<div class="grid grid-cols-1 gap-5 mb-6">
 
   <!-- 7-day chart -->
-  <div class="xl:col-span-2 qris-card p-5">
+  <div class="qris-card p-5">
     <div class="flex items-center justify-between mb-5">
       <div>
         <h2 class="text-sm font-bold text-ink">Volume Transaksi</h2>
@@ -122,9 +122,52 @@
   <div class="qris-card p-5">
     <div class="flex items-center justify-between mb-4">
       <h2 class="text-sm font-bold text-ink">Status Akun QRIS</h2>
-      <span class="text-xs text-muted"><%= qrisAccounts.length %> akun</span>
+      <div class="flex items-center gap-2">
+        <% if (typeof dashSiteFilter !== 'undefined' && dashSiteFilter && dashSites && dashSites.length > 1) { %>
+        <select id="dash-site-filter" onchange="dashFilterSite()" style="font-size:11px;padding:4px 9px;border-radius:8px;background:var(--card-hi);border:1px solid var(--line);color:var(--ink);max-width:160px">
+          <option value="">Semua Site</option>
+          <% dashSites.forEach(function(s){ %><option value="<%= s.id %>"><%= s.name %></option><% }); %>
+        </select>
+        <% } %>
+        <span class="text-xs text-muted"><%= qrisAccounts.length %> akun</span>
+      </div>
     </div>
-    <div class="space-y-3 overflow-y-auto max-h-[260px] pr-1">
+<style>
+  .setl-tog-input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
+  .setl-tog-track { width:38px; height:21px; border-radius:999px; position:relative; display:block; transition:background .2s; flex-shrink:0; }
+  .setl-tog-thumb { position:absolute; top:2px; width:17px; height:17px; background:#fff; border-radius:50%; transition:left .2s; box-shadow:0 1px 3px rgba(0,0,0,.4); }
+</style>
+<script>
+(function(){
+  var MQR_BASE = '<%- url('/merchant-qr') %>';
+  function applyDashToggle(id, active){
+    var track=document.getElementById('dash-tog-track-'+id);
+    var thumb=document.getElementById('dash-tog-thumb-'+id);
+    var cb=document.querySelector('.dash-acc-toggle[data-account-id="'+id+'"]');
+    if(cb) cb.checked=active;
+    if(track) track.style.background=active?'#34d399':'#374151';
+    if(thumb) thumb.style.left=active?'19px':'2px';
+  }
+  window.toggleDashAccount=async function(id,checked){
+    applyDashToggle(id,checked);
+    try{
+      var resp=await fetch(MQR_BASE+'/'+id+'/toggle-status',{method:'POST',headers:{'Content-Type':'application/json'}});
+      var data=await resp.json().catch(function(){return null;});
+      if(!resp.ok||!data||!data.success) throw new Error((data&&data.error)||'Gagal');
+      applyDashToggle(id, data.status==='active');
+      try{ localStorage.setItem('qris:acct-status-sync', JSON.stringify({id:id,status:data.status,ts:Date.now()})); }catch(e){}
+    }catch(e){
+      applyDashToggle(id,!checked);
+      alert('Gagal mengubah status akun QRIS.');
+    }
+  };
+  window.addEventListener('storage', function(ev){
+    if(ev.key!=='qris:acct-status-sync'||!ev.newValue) return;
+    try{ var m=JSON.parse(ev.newValue); if(m&&m.id) applyDashToggle(m.id, m.status==='active'); }catch(e){}
+  });
+})();
+</script>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
       <% qrisAccounts.forEach(acc => { %>
         <%
           const hPill = {
@@ -135,13 +178,21 @@
           const usedPct = acc.dailyLimit > 0 ? Math.min(100, Math.round(acc.usedToday / acc.dailyLimit * 100)) : 0;
           const barClass = usedPct >= 90 ? 'qris-progress-bar-red' : usedPct >= 70 ? 'qris-progress-bar-amber' : 'qris-progress-bar-blue';
         %>
-        <div class="rounded-2xl border border-line bg-card-hi p-3">
-          <div class="flex items-center justify-between mb-2">
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="font-bold text-sm text-ink font-mono"><%= acc.code %></span>
-              <span class="text-xs text-muted truncate hidden sm:block"><%= acc.merchantName %></span>
+        <div class="rounded-2xl border border-line bg-card-hi p-3 dash-qris-card" data-site="<%= acc.siteId || '' %>">
+          <div class="flex justify-center mb-2">
+            <span class="qris-pill qris-pill-muted" style="font-size:10px;gap:4px" title="Site akun ini"><i class="fa-solid fa-layer-group" style="font-size:9px"></i> <%= acc.siteName || 'Tanpa site' %></span>
+          </div>
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <span class="font-bold text-sm text-ink truncate min-w-0" title="<%= acc.code %>"><%= acc.merchantName || acc.code %></span>
+            <div class="flex items-center gap-2 flex-shrink-0">
+              <span class="qris-pill <%= hPill %>"><%= acc.healthStatus %></span>
+              <label style="display:inline-flex;align-items:center;cursor:pointer" title="Aktif/Nonaktif akun QRIS">
+                <input type="checkbox" class="setl-tog-input dash-acc-toggle" data-account-id="<%= acc.id %>" <%= acc.status === 'active' ? 'checked' : '' %> onchange="toggleDashAccount('<%= acc.id %>', this.checked)">
+                <span class="setl-tog-track" id="dash-tog-track-<%= acc.id %>" style="background:<%= acc.status === 'active' ? '#34d399' : '#374151' %>">
+                  <span class="setl-tog-thumb" id="dash-tog-thumb-<%= acc.id %>" style="left:<%= acc.status === 'active' ? '19px' : '2px' %>"></span>
+                </span>
+              </label>
             </div>
-            <span class="qris-pill <%= hPill %>"><%= acc.healthStatus %></span>
           </div>
           <% if (acc.dailyLimit > 0) { %>
             <div class="qris-progress mb-1.5">
@@ -163,6 +214,7 @@
         </div>
       <% } %>
     </div>
+    <script>window.dashFilterSite=function(){var el=document.getElementById('dash-site-filter');var v=el?el.value:'';document.querySelectorAll('.dash-qris-card').forEach(function(c){c.style.display=(!v||c.getAttribute('data-site')===v)?'':'none';});};</script>
   </div>
 
 </div>

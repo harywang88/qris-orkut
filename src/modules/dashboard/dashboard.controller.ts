@@ -45,10 +45,15 @@ import {
   readPresentedMutationRawId,
 } from '../../shared/orkut-app-detail.service';
 import { publishMutationUpdated, storeMutationIfNew, canonicalMutationHash } from '../../shared/mutation-ingest.service';
+import { crossDayPendingBooking } from '../../shared/pending-money.service';
 import { listOutboxEventsSince, parseOutboxPayload } from '../../shared/outbox.service';
 import { generateDashboardQrTransaction } from '../../shared/dashboard-generate-qr.service';
+import { attemptDeposit, manualCreditDeposit } from '../../shared/deposit.service';
 import { readWebgameSites, writeWebgameSites } from '../../shared/webgame-sites.service';
 import { listBanks, listBanksForScope, getBankById, createBank, updateBank, deleteBank } from '../../shared/site-bank.service';
+import { readNagoxTransfers, getNagoxTransfer, setNagoxTransfer, callNagoxTransfer } from '../../shared/nagox-transfer.service';
+import type { NagoxTfStatus } from '../../shared/nagox-transfer.service';
+import { resolveListCutoffDate, isShowAll } from '../../shared/operational-cutoff.service';
 import { mapMaderaFeedItem } from '../../shared/madera-history.service';
 import {
   getSiteScopeForUser,
@@ -121,7 +126,10 @@ function normalizeTransactionPeriod(value: unknown): 'today' | 'yesterday' | '7d
 }
 
 function getTransactionDateRange(query: Request['query']) {
-  const period = normalizeTransactionPeriod(query.period);
+  let period = normalizeTransactionPeriod(query.period);
+  // Safety: kalau tanggal custom (from/to) diisi tapi 'period' tak dikirim (mis. via tombol Filter),
+  // perlakukan sebagai custom -> tanggal tak diabaikan (cegah bug filter tanggal custom).
+  if (!query.period && (query.from || query.to)) period = 'custom';
   const now = new Date();
 
   if (period === 'today') {
@@ -360,19 +368,25 @@ function markQrisDetailEnrichmentAttempt(accountId: string, rawId: string): void
   qrisDetailEnrichAttempts.set(`${accountId}:${rawId}`, Date.now());
 }
 
+const _WIB_DATE_FMT = new Intl.DateTimeFormat('id-ID', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'Asia/Bangkok' });
+const _WIB_TIME_FMT = new Intl.DateTimeFormat('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' });
 function formatMutationTimestamp(value: Date): string {
-  return value.toLocaleDateString('id-ID', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    timeZone: 'Asia/Bangkok',
-  }) + ' ' + value.toLocaleTimeString('id-ID', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    timeZone: 'Asia/Bangkok',
-  });
+  // OPTIMASI: formatter Intl di-cache (dibuat 1x), bukan toLocale* yg bikin formatter baru tiap panggil
+  // (bergantian date/time = cache-thrash V8 → ~5 detik utk 5000 baris). Output IDENTIK dgn versi lama.
+  return _WIB_DATE_FMT.format(value) + ' ' + _WIB_TIME_FMT.format(value);
+}
+// Nama pengirim dari mutasi bayar: keterangan 'NOBU / NAMA' -> ambil ekor sesudah '/'.
+function extractSenderName(rawDataJson: string | null | undefined): string | null {
+  if (!rawDataJson) return null;
+  try {
+    const raw = JSON.parse(rawDataJson) as Record<string, unknown>;
+    const direct = (raw.sender_name ?? raw.senderName) as string | undefined;
+    if (direct && String(direct).trim()) return String(direct).trim();
+    const ket = String((raw.keterangan ?? raw.description ?? raw.buyer_ref ?? '') as string);
+    const parts = ket.split('/').map((p) => p.trim()).filter(Boolean);
+    if (parts.length > 1) return parts.slice(1).join(' / ');
+    return null;
+  } catch { return null; }
 }
 
 type MaderaInferenceAccount = {
@@ -875,7 +889,12 @@ function parseMutationPresentation(
   };
 }
 
-async function getQrisBalanceSummary() {
+// Cache ringkasan saldo: dipanggil tiap response /api/mutations (poll 10 dtk), padahal
+// hanya berubah saat worker sync. TTL pendek -> hemat 1 query per poll tanpa terasa basi.
+const QRIS_BALANCE_SUMMARY_TTL_MS = 5000;
+let qrisBalanceSummaryCache: { at: number; value: Awaited<ReturnType<typeof computeQrisBalanceSummary>> } | null = null;
+
+async function computeQrisBalanceSummary() {
   const db = dbRead; // pintu-baca: hindari antre di belakang tulisan
   const accounts = await db.qrisAccount.findMany({
     where: { status: 'active' },
@@ -889,6 +908,16 @@ async function getQrisBalanceSummary() {
 
   const summary = summarizeOrkutAccountBalances(accounts);
   return summary.syncedAccounts > 0 ? summary : null;
+}
+
+async function getQrisBalanceSummary() {
+  const now = Date.now();
+  if (qrisBalanceSummaryCache && now - qrisBalanceSummaryCache.at < QRIS_BALANCE_SUMMARY_TTL_MS) {
+    return qrisBalanceSummaryCache.value;
+  }
+  const value = await computeQrisBalanceSummary();
+  qrisBalanceSummaryCache = { at: now, value };
+  return value;
 }
 
 async function renderMutationsPage(req: Request, res: Response, source: MutationSource): Promise<void> {
@@ -926,6 +955,12 @@ export async function showDashboard(req: Request, res: Response): Promise<void> 
     const todayStart = startOfDay(today);
     const todayEnd = endOfDay(today);
 
+    // RBAC SITE SCOPE (fix bug isolasi 12 Jul): alias-tenant HANYA lihat datanya sendiri.
+    // master / alias "semua site" -> _scopeIds null -> tanpa filter (lihat semua).
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    const _txScope: Prisma.TransactionWhereInput = _scopeIds ? { qrisAccountId: { in: _scopeIds } } : {};
+    const _accScope: Prisma.QrisAccountWhereInput = _scopeIds ? { id: { in: _scopeIds } } : {};
+
     const [
       totalToday,
       paidToday,
@@ -935,19 +970,19 @@ export async function showDashboard(req: Request, res: Response): Promise<void> 
       manualReview,
       queueLag,
     ] = await Promise.all([
-      db.transaction.count({ where: { createdAt: { gte: todayStart, lte: todayEnd } } }),
+      db.transaction.count({ where: { createdAt: { gte: todayStart, lte: todayEnd }, ..._txScope } }),
       db.transaction.count({
-        where: { statusPay: 'paid', paidAt: { gte: todayStart, lte: todayEnd } },
+        where: { statusPay: 'paid', paidAt: { gte: todayStart, lte: todayEnd }, ..._txScope },
       }),
-      db.qrisAccount.count({ where: { status: 'active' } }),
+      db.qrisAccount.count({ where: { status: 'active', ..._accScope } }),
       db.client.count({ where: { status: 'active' } }),
-      db.transaction.count({ where: { statusBot: 'deposit_failed' } }),
-      db.transaction.count({ where: { statusBot: 'manual_review' } }),
-      db.transaction.count({ where: { statusPay: 'paid', statusBot: 'deposit_queued' } }),
+      db.transaction.count({ where: { statusBot: 'deposit_failed', ..._txScope } }),
+      db.transaction.count({ where: { statusBot: 'manual_review', ..._txScope } }),
+      db.transaction.count({ where: { statusPay: 'paid', statusBot: 'deposit_queued', ..._txScope } }),
     ]);
 
     const paidAggregate = await db.transaction.aggregate({
-      where: { statusPay: 'paid', paidAt: { gte: todayStart, lte: todayEnd } },
+      where: { statusPay: 'paid', paidAt: { gte: todayStart, lte: todayEnd }, ..._txScope },
       _sum: { finalAmount: true },
     });
     const paidAmountToday = paidAggregate._sum.finalAmount ?? 0;
@@ -958,7 +993,7 @@ export async function showDashboard(req: Request, res: Response): Promise<void> 
     sevenDaysAgo.setHours(0, 0, 0, 0);
 
     const recentTx = await db.transaction.findMany({
-      where: { createdAt: { gte: sevenDaysAgo } },
+      where: { createdAt: { gte: sevenDaysAgo }, ..._txScope },
       select: { createdAt: true, finalAmount: true, statusPay: true },
       orderBy: { createdAt: 'asc' },
     });
@@ -982,6 +1017,7 @@ export async function showDashboard(req: Request, res: Response): Promise<void> 
 
     const recentTransactionsRaw = await db.transaction.findMany({
       take: 10,
+      where: _scopeIds ? { qrisAccountId: { in: _scopeIds } } : undefined,
       orderBy: { createdAt: 'desc' },
       include: {
         client: { select: { name: true, panelCode: true } },
@@ -991,14 +1027,22 @@ export async function showDashboard(req: Request, res: Response): Promise<void> 
     const _resolveSite = buildResolver();
     const recentTransactions = recentTransactionsRaw.map((tx) => Object.assign({}, tx, { siteName: _resolveSite(tx.qrisAccountId).siteName }));
 
-    const qrisAccountsRaw = await db.qrisAccount.findMany({ orderBy: { code: 'asc' } });
+    const qrisAccountsRaw = await db.qrisAccount.findMany({ where: _accScope, orderBy: { code: 'asc' } });
     // Limit Harian = total PAID hari ini (WIB) per akun (bukan reserve saat generate); auto-reset ganti hari.
     // Kesehatan = LIVE (computeLiveHealth), bukan snapshot basi -> normal jadi "healthy", bukan "degraded".
     const WIB_MS = 7 * 60 * 60 * 1000;
     const todayWibStart = new Date(Math.floor((Date.now() + WIB_MS) / 86400000) * 86400000 - WIB_MS);
     // Status Akun QRIS = SEMUA uang masuk QRIS hari ini (WIB) = paid + pending (mutasi kredit).
     const paidTodayMap = await qrisReceivedTodayMap();
-    const qrisAccounts = qrisAccountsRaw.map((a) => Object.assign({}, a, { usedToday: paidTodayMap[a.id] || 0, healthStatus: computeLiveHealth(a) }));
+    const _dashResolve = buildResolver();
+    const qrisAccounts = qrisAccountsRaw.map((a) => { const _si = _dashResolve(a.id); return Object.assign({}, a, { usedToday: paidTodayMap[a.id] || 0, healthStatus: computeLiveHealth(a), siteName: _si.siteName, siteId: _si.siteId }); });
+    // URUT KARTU: aktif & belum limit (atas) -> nonaktif belum limit -> sudah limit >=29,6jt (bawah).
+    const _LIMIT_CAP = 29600000;
+    const _rankLimit = (a: { usedToday?: number | null; status?: string | null }) => ((Number(a.usedToday) || 0) >= _LIMIT_CAP ? 2 : (a.status === 'active' ? 0 : 1));
+    qrisAccounts.sort((x, y) => _rankLimit(x) - _rankLimit(y));
+    const _dashScopeSite = getSiteScopeForUser(req.session.user as AccessUser | undefined);
+    const dashSites = _dashScopeSite ? listSites().filter((s) => s.id === _dashScopeSite) : listSites();
+    const dashSiteFilter = !_dashScopeSite; // filter site hanya utk master / alias-semua-site
 
     res.render('dashboard/index', {
       title: 'Dashboard',
@@ -1020,6 +1064,8 @@ export async function showDashboard(req: Request, res: Response): Promise<void> 
       },
       recentTransactions,
       qrisAccounts,
+      dashSites,
+      dashSiteFilter,
     });
   } catch (err) {
     logger.error({ err }, 'showDashboard error');
@@ -1037,7 +1083,9 @@ export async function showTransactions(
   opts: { paidOnly?: boolean; title?: string } = {},
 ): Promise<void> {
   const page = Math.max(1, parseInt(req.query.page as string) || 1);
-  const limit = 50;
+  const _allowedPS = [50, 100, 200, 500];
+  const _reqPS = parseInt(req.query.pageSize as string, 10);
+  const limit = _allowedPS.includes(_reqPS) ? _reqPS : 50;
   const offset = (page - 1) * limit;
   const paidOnly = !!(opts && opts.paidOnly); // menu Transaction = dikunci paid
   try {
@@ -1053,7 +1101,8 @@ export async function showTransactions(
 
     if (clientId) where.clientId = clientId;
     if (statusPay) where.statusPay = statusPay;
-    if (statusBot) where.statusBot = statusBot;
+    if (statusBot === 'proses') where.statusBot = { in: ['pending', 'deposit_queued'] };
+    else if (statusBot) where.statusBot = statusBot;
     if (accountCode) {
       where.qrisAccount = { code: accountCode };
     }
@@ -1067,18 +1116,21 @@ export async function showTransactions(
       where.finalAmount = nominal;
     }
     if (keyword) {
-      where.OR = [
-        { qrId: { contains: keyword } },
-        { userIdExt: { contains: keyword } },
-        { externalReference: { contains: keyword } },
-        { note: { contains: keyword } },
-        { issuerName: { contains: keyword } },
-        { rrn: { contains: keyword } },
-        { qrisAccount: { merchantName: { contains: keyword } } },
-        { qrisAccount: { code: { contains: keyword } } },
-        { client: { name: { contains: keyword } } },
-        { client: { panelCode: { contains: keyword } } },
+      const _kwOr: Record<string, unknown>[] = [
+        { qrId: { contains: keyword, mode: 'insensitive' } },
+        { userIdExt: { contains: keyword, mode: 'insensitive' } },
+        { externalReference: { contains: keyword, mode: 'insensitive' } },
+        { note: { contains: keyword, mode: 'insensitive' } },
+        { issuerName: { contains: keyword, mode: 'insensitive' } },
+        { rrn: { contains: keyword, mode: 'insensitive' } },
+        { qrisAccount: { merchantName: { contains: keyword, mode: 'insensitive' } } },
+        { qrisAccount: { code: { contains: keyword, mode: 'insensitive' } } },
+        { client: { name: { contains: keyword, mode: 'insensitive' } } },
+        { client: { panelCode: { contains: keyword, mode: 'insensitive' } } },
       ];
+      const _kwDigits = keyword.replace(/[^0-9]/g, '');
+      if (_kwDigits.length >= 3 && Number(_kwDigits) > 0) _kwOr.push({ finalAmount: Number(_kwDigits) });
+      where.OR = _kwOr;
     }
     // Filter Site (dari sites.json via akun->site) + scope alias-tenant (Fase 6: showTransactions dulu belum discope).
     const site = typeof req.query.site === 'string' ? req.query.site.trim() : '';
@@ -1101,6 +1153,18 @@ export async function showTransactions(
     // History Generate QR (bukan paidOnly) = mesin QR yang di-generate. Booking Uang Pending
     // TIDAK punya QR generate → sembunyikan di sini (tetap muncul di menu Transaction).
     if (!paidOnly && !statusBot) where.statusBot = { not: 'manual_booked' };
+    // Sembunyikan transaksi bertanda hidden (uang nyasar site yg sudah dibereskan) kecuali Tampilkan Semua (?all=1).
+    if (!isShowAll(req)) where.NOT = { metadataJson: { contains: '"hidden":true' } };
+
+    // Mulai Operasional: sembunyikan transaksi SEBELUM cutoff (kecuali Tampilkan Semua / date-from lebih tua).
+    {
+      const _cut = resolveListCutoffDate(isShowAll(req));
+      if (_cut) {
+        const _tf = (where.createdAt as Record<string, Date>) || {};
+        if (!_tf.gte || _tf.gte < _cut) _tf.gte = _cut;
+        where.createdAt = _tf;
+      }
+    }
 
     const [transactionsRaw, total] = await Promise.all([
       db.transaction.findMany({
@@ -1117,6 +1181,7 @@ export async function showTransactions(
               issuerName: true,
               transactionTime: true,
               createdAt: true,
+              rawDataJson: true,
             },
             orderBy: [{ transactionTime: 'desc' }, { createdAt: 'desc' }],
             take: 3,
@@ -1158,7 +1223,7 @@ export async function showTransactions(
 
     const [clients, qrisAccounts, paidAgg, statusPayAgg, statusBotAgg] = await Promise.all([
       db.client.findMany({ select: { id: true, name: true }, orderBy: { name: 'asc' } }),
-      db.qrisAccount.findMany({ select: { id: true, code: true, merchantName: true }, orderBy: { code: 'asc' } }),
+      db.qrisAccount.findMany({ where: scopeIds ? { id: { in: scopeIds } } : undefined, select: { id: true, code: true, merchantName: true }, orderBy: { code: 'asc' } }),
       db.transaction.aggregate({ where, _sum: { finalAmount: true, feeAmount: true } }),
       db.transaction.groupBy({
         by: ['statusPay'],
@@ -1171,7 +1236,9 @@ export async function showTransactions(
         _count: { _all: true },
       }),
     ]);
-    const totalPaid = paidAgg._sum.finalAmount ?? 0;
+    const _pbRowsTx = await db.transaction.findMany({ where: { ...where, metadataJson: { contains: 'pending_booking' } }, select: { finalAmount: true, paidAt: true, metadataJson: true } });
+    const _crossDayTx = crossDayPendingBooking(_pbRowsTx).total; // PENDING_CARRY: keluarkan pending lintas-hari dari omset
+    const totalPaid = (paidAgg._sum.finalAmount ?? 0) - _crossDayTx;
     const totalFee = paidAgg._sum.feeAmount ?? 0;
     const statusPayMap = statusPayAgg.reduce<Record<string, number>>((acc, row) => {
       acc[row.statusPay] = row._count._all;
@@ -1198,10 +1265,12 @@ export async function showTransactions(
       total,
       page,
       totalPages: Math.ceil(total / limit),
+      pageSize: limit,
       clients,
       qrisAccounts: qrisAccountsWithSite,
       sites,
       totalPaid,
+      pendingCarryProcessed: _crossDayTx,
       totalFee,
       query: {
         ...req.query,
@@ -1239,8 +1308,10 @@ export async function getTransactionsSnapshotApi(req: Request, res: Response): P
       res.json({ ok: true, transactions: [] });
       return;
     }
+    // snapshot scope: alias-tenant tak boleh baca tx akun site lain via qrId (IDOR).
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
     const transactions = await db.transaction.findMany({
-      where: { qrId: { in: qrIds } },
+      where: _scopeIds ? { qrId: { in: qrIds }, qrisAccountId: { in: _scopeIds } } : { qrId: { in: qrIds } },
       select: {
         qrId: true,
         qrisAccountId: true,
@@ -1250,13 +1321,21 @@ export async function getTransactionsSnapshotApi(req: Request, res: Response): P
         issuerName: true,
         paidAt: true,
         createdAt: true,
+        updatedAt: true,
         expiresAt: true,
+        depositAttempts: {
+          where: { status: 'success' },
+          select: { createdAt: true },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
         mutations: {
           select: {
             rrn: true,
             issuerName: true,
             transactionTime: true,
             createdAt: true,
+            rawDataJson: true,
           },
           orderBy: [{ transactionTime: 'desc' }, { createdAt: 'desc' }],
           take: 3,
@@ -1285,7 +1364,9 @@ export async function getTransactionsSnapshotApi(req: Request, res: Response): P
         statusBot: tx.statusBot,
         rrn: nextRrn,
         issuerName: nextIssuer,
+        senderName: extractSenderName(fallbackMutation?.rawDataJson),
         paidAt: nextPaidAt,
+        botProcessedAt: tx.depositAttempts?.[0]?.createdAt || (tx.statusBot === 'deposit_success' ? tx.updatedAt : null),
         createdAt: tx.createdAt,
         expiresAt: tx.expiresAt,
       };
@@ -1311,7 +1392,7 @@ export async function getLatestTransactionsApi(req: Request, res: Response): Pro
         client: { select: { name: true, panelCode: true } },
         qrisAccount: { select: { id: true, code: true, merchantName: true } },
         mutations: {
-          select: { rrn: true, issuerName: true, transactionTime: true, createdAt: true },
+          select: { rrn: true, issuerName: true, transactionTime: true, createdAt: true, rawDataJson: true },
           orderBy: [{ transactionTime: 'desc' }, { createdAt: 'desc' }],
           take: 3,
         },
@@ -1346,6 +1427,7 @@ export async function getLatestTransactionsApi(req: Request, res: Response): Pro
         createdAt: tx.createdAt,
         note: tx.note,
         issuerName: tx.issuerName || fb?.issuerName || null,
+        senderName: extractSenderName(fb?.rawDataJson),
         rrn: tx.rrn || fb?.rrn || null,
         receiptUrl: tx.receiptUrl,
         qrImageBase64: tx.qrImageBase64,
@@ -1374,12 +1456,13 @@ export async function showMutations(req: Request, res: Response): Promise<void> 
 export async function showMutationsQris(req: Request, res: Response): Promise<void> {
   try {
     const accounts = await db.qrisAccount.findMany({
-      where: { status: 'active' },
+      where: {},
       orderBy: { code: 'asc' },
       select: {
         id: true,
         code: true,
         merchantName: true,
+        status: true,
         orkutAccountIndex: true,
         lastMainBalance: true,
         lastQrisBalance: true,
@@ -1417,6 +1500,7 @@ function formatOutboxSseEvent(event: OutboxEvent) {
 
 export async function streamMutationsSse(req: Request, res: Response): Promise<void> {
   const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : undefined;
+  const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined); // RBAC: alias hanya terima event live site-nya
   let cursor = new Date(Date.now() - 5000);
   let lastEventId = '';
   res.setHeader('Content-Type', 'text/event-stream');
@@ -1438,10 +1522,12 @@ export async function streamMutationsSse(req: Request, res: Response): Promise<v
   }, 15000);
   const watcher = setInterval(async () => {
     try {
-      const events = await listOutboxEventsSince(cursor, lastEventId, accountId);
+      const rawEvents = await listOutboxEventsSince(cursor, lastEventId, accountId);
+      if (rawEvents.length === 0) return;
+      cursor = rawEvents[rawEvents.length - 1].createdAt;
+      lastEventId = rawEvents[rawEvents.length - 1].id;
+      const events = _scopeIds ? rawEvents.filter((e) => e.qrisAccountId != null && _scopeIds.includes(e.qrisAccountId)) : rawEvents;
       if (events.length === 0) return;
-      cursor = events[events.length - 1].createdAt;
-      lastEventId = events[events.length - 1].id;
       send('mutation.delta', {
         count: events.length,
         latestAt: cursor.toISOString(),
@@ -1462,10 +1548,10 @@ export async function streamMutationsSse(req: Request, res: Response): Promise<v
 export async function showMutationsUtama(req: Request, res: Response): Promise<void> {
   try {
     const accounts = await db.qrisAccount.findMany({
-      where: { status: 'active', sessionTokenEncrypted: { not: null } },
+      where: { sessionTokenEncrypted: { not: null } },
       orderBy: { code: 'asc' },
       select: {
-        id: true, code: true, merchantName: true, orkutAccountIndex: true,
+        id: true, code: true, merchantName: true, status: true, orkutAccountIndex: true,
         lastMainBalance: true, lastQrisBalance: true,
         lastBalanceSyncStatus: true, healthStatus: true,
       },
@@ -1479,6 +1565,8 @@ export async function showMutationsUtama(req: Request, res: Response): Promise<v
       title: 'Saldo Utama',
       accounts: accountsWithSite,
       sites,
+      // SSE push: tabel di-refresh HANYA saat worker menandai mutasi baru (via OutboxEvent) -> buang poll boros.
+      streamUrl: withBasePath('/dashboard/api/mutations/stream', config.APP_BASE_PATH),
       walletBucket: 'utama',
       walletRefresh: 'utama',
       walletField: 'lastMainBalance',
@@ -1501,10 +1589,10 @@ export async function showMutationsMadera(req: Request, res: Response): Promise<
       logger.warn({ err }, 'showMutationsMadera: unable to reconcile processing madera transfers');
     });
     const accounts = await db.qrisAccount.findMany({
-      where: { status: 'active' },
+      where: {},
       orderBy: { code: 'asc' },
       select: {
-        id: true, code: true, merchantName: true, orkutAccountIndex: true,
+        id: true, code: true, merchantName: true, status: true, orkutAccountIndex: true,
         lastMaderaBalance: true, lastQrisBalance: true,
         lastBalanceSyncStatus: true, healthStatus: true,
       },
@@ -1539,9 +1627,11 @@ export async function showMutationsMadera(req: Request, res: Response): Promise<
 export async function showMaderaNobuHistory(req: Request, res: Response): Promise<void> {
   try {
     const accountsRaw = await db.qrisAccount.findMany({
-      where: { status: 'active' },
+      // History Transaksi Nobu: tampilkan SEMUA akun (termasuk NONAKTIF) agar kartunya tetap
+      // muncul & transaksinya bisa dicek (samakan dgn menu Saldo Madera yang where:{}).
+      where: {},
       orderBy: { code: 'asc' },
-      select: { id: true, code: true, merchantName: true, lastMaderaBalance: true, healthStatus: true },
+      select: { id: true, code: true, merchantName: true, status: true, lastMaderaBalance: true, healthStatus: true },
     });
     const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
     const _scoped = _scopeIds ? accountsRaw.filter((a) => _scopeIds.includes(a.id)) : accountsRaw;
@@ -1622,6 +1712,7 @@ export async function getMaderaNobuWebviewApi(req: Request, res: Response): Prom
       res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' });
       return;
     }
+    if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; } // RBAC di luar scope (mutasi2)
     const result = await (appGateway as any).fetchMaderaHistoryWebviewUrl(account);
     res.json(result);
   } catch (err) {
@@ -1637,6 +1728,7 @@ export async function getMaderaNobuHistoryApi(req: Request, res: Response): Prom
       res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' });
       return;
     }
+    if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; } // RBAC di luar scope (mutasi2)
     const result = await (appGateway as any).fetchMaderaTransactionHistory(account);
     res.json(result);
   } catch (err) {
@@ -1736,13 +1828,24 @@ async function buildMaderaRealRowsForAccount(
   account: { id: string; code: string; merchantName: string; orkutAccountIndex: number | null; lastMaderaBalance: number | null },
   source: MutationSource,
   limit: number,
+  gte?: Date | null, // MADERA_AUDIT_B #11/#15/#28: batas bawah (cutoff/dateFrom WIB); batas atas difilter di client
 ) {
   const db = dbRead; // pintu-baca
   const rows = await db.mutation.findMany({
-    where: { qrisAccountId: account.id, walletCategory: 'madera' },
-    orderBy: { transactionTime: 'desc' },
+    where: { qrisAccountId: account.id, walletCategory: 'madera', ...(gte ? { transactionTime: { gte } } : {}) },
+    orderBy: [{ transactionTime: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
     take: limit,
   });
+  return presentMaderaRows(account, rows, source);
+}
+
+// Sama seperti buildMaderaRealRowsForAccount tapi baris madera sudah di-fetch (dipakai jalur
+// "Semua Akun" yang mengambil semua baris dalam 1 query lalu dikelompokkan per akun -> hindari N+1).
+function presentMaderaRows(
+  account: { id: string; code: string; merchantName: string; orkutAccountIndex: number | null; lastMaderaBalance: number | null },
+  rows: Awaited<ReturnType<typeof dbRead.mutation.findMany>>,
+  source: MutationSource,
+) {
   let running = typeof account.lastMaderaBalance === 'number' ? account.lastMaderaBalance : 0;
   const __accSiteName = siteNameForAccount(account.id);
   return rows.map((m) => {
@@ -1793,10 +1896,70 @@ async function buildMaderaRealRowsForAccount(
   });
 }
 
+// Ringkasan periode Mutasi (Masuk/Keluar/Biaya Layanan) atas SELURUH baris periode.
+// Kartu di view dulu dihitung dari baris ter-fetch (dibatasi `limit`) -> undercount parah saat
+// hari ramai (mis. 3.157 mutasi -> hanya ~500 terbaru terhitung -> Biaya Layanan salah kecil).
+// Di sini dihitung server-side atas semua baris periode (where sama), di-CACHE 30s supaya tak
+// berat tiap poll (10s). fee = Biaya Layanan QRIS (0,3%) hanya utk baris kategori qris.
+const _mutSummaryCache = new Map<string, { ts: number; data: { masuk: number; keluar: number; fee: number; count: number } }>();
+const MUT_SUMMARY_TTL_MS = 30_000;
+function _svcFeeQrisRow(rawDataJson: string, amount: number): number {
+  const raw = parseRawMutationPayload(rawDataJson) as Record<string, unknown>;
+  const pick = (v: unknown): number => {
+    if (v == null) return 0;
+    if (typeof v === 'number' && Number.isFinite(v)) return Math.abs(Math.round(v));
+    let t = String(v).trim().replace(/rp/gi, '').replace(/\s+/g, '').replace(/[^0-9,.-]/g, '');
+    if (!t) return 0;
+    t = t.replace(/\./g, '').replace(/,/g, '.');
+    const n = Number(t);
+    return Number.isFinite(n) ? Math.abs(Math.round(n)) : 0;
+  };
+  const direct = pick(raw.fee_user ?? raw.feeUser ?? raw.fee ?? raw.admin ?? raw.biaya_layanan ?? raw.biayaLayanan);
+  if (direct > 0) return direct;
+  const nett = pick(raw.amount_nett ?? raw.amountNett);
+  if (nett > 0 && amount > nett) return Math.max(0, Math.round(amount - nett));
+  return 0;
+}
+async function computeMutationPeriodSummary(where: Record<string, unknown>, bucket: string): Promise<{ masuk: number; keluar: number; fee: number; count: number }> {
+  const key = bucket + '|' + JSON.stringify(where);
+  const cached = _mutSummaryCache.get(key);
+  if (cached && Date.now() - cached.ts < MUT_SUMMARY_TTL_MS) return cached.data;
+  const rows = await dbRead.mutation.findMany({
+    where,
+    select: { amount: true, type: true, rawDataJson: true, walletCategory: true, issuerName: true, rrn: true, transactionTime: true },
+  });
+  let masuk = 0, keluar = 0, fee = 0, count = 0;
+  for (const m of rows) {
+    const category = readMutationCategory(m.rawDataJson, m.walletCategory);
+    if (bucket !== 'all' && category !== bucket) continue;
+    if (category === 'utama' && isUtamaShadowMutation(m.rawDataJson)) continue;
+    const parsedRaw = parseRawMutationPayload(m.rawDataJson) as { description?: string; keterangan?: string };
+    const description = parsedRaw.description ?? parsedRaw.keterangan ?? '';
+    const presentation = parseMutationPresentation(m.rawDataJson, {
+      type: m.type, issuerName: m.issuerName, rrn: m.rrn, description, transactionTime: m.transactionTime, matched: false,
+    });
+    const sc = String(presentation.statusCode || (m.type === 'credit' ? 'IN' : 'OUT')).toUpperCase();
+    if (sc === 'IN') masuk += m.amount; else keluar += m.amount;
+    if (category === 'qris') fee += _svcFeeQrisRow(m.rawDataJson, m.amount);
+    count += 1;
+  }
+  const data = { masuk, keluar, fee, count };
+  _mutSummaryCache.set(key, { ts: Date.now(), data });
+  return data;
+}
+
 export async function getMutationsJson(req: Request, res: Response): Promise<void> {
   const db = dbRead; // pintu-baca: menu mutasi murni baca -> tak antre di belakang tulisan
+  // Timing sementara: ukur durasi server-side per response supaya penyebab lambat menu Mutasi terlihat.
+  const __t0 = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - __t0;
+    if (ms >= 150) {
+      logger.info({ ms, source: req.query.source ?? null, bucket: req.query.bucket ?? null, accountId: req.query.accountId ?? null, msg: 'getMutationsJson timing' });
+    }
+  });
   try {
-    const limit = Math.min(parseInt(req.query.limit as string) || 200, 500);
+    const limit = Math.min(parseInt(req.query.limit as string) || 200, 5000);
     const source = normalizeMutationSource(req.query.source);
     const bucket = normalizeQrisBucket(req.query.bucket);
     if (source === 'qris') {
@@ -1842,16 +2005,37 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
         // Semua Akun: baca baris Madera ASLI per akun dari DB (worker yang menariknya saat saldo berubah),
         // hitung saldo berjalan per akun, lalu gabung & urut waktu. Baca DB murni -> cepat seperti QRIS.
         const maderaAccounts = await db.qrisAccount.findMany({
-          where: scopeIds ? { status: 'active', id: { in: scopeIds } } : { status: 'active' },
+          where: scopeIds ? { id: { in: scopeIds } } : {}, // MADERA_AUDIT_B2: sertakan akun OFF (tetap transaksi) supaya total tak kehilangan uang; RBAC via scopeIds
           orderBy: { code: 'asc' },
           select: { id: true, code: true, merchantName: true, orkutAccountIndex: true, lastMaderaBalance: true },
         });
-        const perAccount = await Promise.all(maderaAccounts.map((acc) => buildMaderaRealRowsForAccount(acc, source, limit)));
+        // Hindari N+1: ambil semua baris madera (untuk akun yang di-scope) dalam 1 query,
+        // lalu kelompokkan per akun. Pakai index (walletCategory, transactionTime).
+        const _cutMad = resolveListCutoffDate(isShowAll(req));
+        // MADERA_AUDIT_B #5/#11/#12: tegakkan batas BAWAH tanggal (WIB +07:00) di server, di-floor ke cutoff.
+        // Batas ATAS (dateTo) tetap difilter di client supaya baris TERBARU tetap jadi anchor lastMaderaBalance.
+        // Saat search: jangan clamp (biar cari lintas-waktu).
+        const _sMad = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+        const _dfMad = (!_sMad && typeof req.query.dateFrom === 'string' && req.query.dateFrom) ? new Date(`${req.query.dateFrom}T00:00:00.000+07:00`) : null;
+        let _gteMad: Date | null = _sMad ? null : _cutMad;
+        if (_dfMad && !Number.isNaN(_dfMad.getTime()) && (!_gteMad || _dfMad > _gteMad)) _gteMad = _dfMad;
+        const allMaderaRows = maderaAccounts.length === 0 ? [] : await db.mutation.findMany({
+          where: { walletCategory: 'madera', qrisAccountId: { in: maderaAccounts.map((a) => a.id) }, ...(_gteMad ? { transactionTime: { gte: _gteMad } } : {}) },
+          orderBy: [{ transactionTime: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+        });
+        const rowsByAccount = new Map<string, typeof allMaderaRows>();
+        for (const row of allMaderaRows) {
+          const list = rowsByAccount.get(row.qrisAccountId);
+          if (list) { if (list.length < limit) list.push(row); }
+          else rowsByAccount.set(row.qrisAccountId, [row]);
+        }
+        const perAccount = maderaAccounts.map((acc) => presentMaderaRows(acc, rowsByAccount.get(acc.id) ?? [], source));
         const merged = perAccount.flat().sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
         const balances: Record<string, number> = {};
         for (const acc of maderaAccounts) {
           balances[acc.id] = typeof acc.lastMaderaBalance === 'number' ? acc.lastMaderaBalance : 0;
         }
+        const __bs = await getQrisBalanceSummary();
         res.json({
           ok: true,
           source,
@@ -1859,7 +2043,7 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
           total: merged.length,
           currentBalance: null,
           accountBalances: balances,
-          balanceSummary: await getQrisBalanceSummary(),
+          balanceSummary: __bs,
           note: null,
           bucketCounts: { qris: 0, utama: 0, madera: merged.length },
           mutations: merged.slice(0, limit),
@@ -1869,7 +2053,13 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
       if (bucket === 'madera' && targetAccountId && targetAccount) {
         // Baris Madera ASLI dari DB (worker menariknya saat saldo Madera berubah via System B).
         // Baca DB murni -> cepat seperti menu QRIS. Saldo berjalan dihitung dari lastMaderaBalance.
-        const presentedMutations = await buildMaderaRealRowsForAccount(targetAccount, source, limit);
+        // MADERA_AUDIT_B #11/#15/#28: batas bawah = max(cutoff, dateFrom WIB), kecuali saat search.
+        const _sMad1 = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+        const _cutMad1 = _sMad1 ? null : resolveListCutoffDate(isShowAll(req));
+        const _dfMad1 = (!_sMad1 && typeof req.query.dateFrom === 'string' && req.query.dateFrom) ? new Date(`${req.query.dateFrom}T00:00:00.000+07:00`) : null;
+        let _gteMad1: Date | null = _cutMad1;
+        if (_dfMad1 && !Number.isNaN(_dfMad1.getTime()) && (!_gteMad1 || _dfMad1 > _gteMad1)) _gteMad1 = _dfMad1;
+        const presentedMutations = await buildMaderaRealRowsForAccount(targetAccount, source, limit, _gteMad1);
         const currentBalance = typeof targetAccount.lastMaderaBalance === 'number'
           ? targetAccount.lastMaderaBalance
           : (presentedMutations[0]?.balanceAfter ?? 0);
@@ -1906,6 +2096,30 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
         if (Object.keys(timeFilter).length > 0) {
           where.transactionTime = timeFilter;
         }
+      }
+      // Mulai Operasional: sembunyikan mutasi SEBELUM cutoff (kecuali Tampilkan Semua / date-from lebih tua).
+      {
+        const _cut = resolveListCutoffDate(isShowAll(req));
+        if (_cut) {
+          const _tf = (where.transactionTime as Record<string, Date>) || {};
+          if (!_tf.gte || _tf.gte < _cut) _tf.gte = _cut;
+          where.transactionTime = _tf;
+        }
+      }
+      // Pencarian lintas-waktu (koko): jika ada `search`, cari 30 HARI terakhir, ABAIKAN cutoff & window harian,
+      // filter teks server-side (case-insensitive) termasuk username = matchedTransaction.userIdExt.
+      const _searchTerm = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+      if (_searchTerm) {
+        where.transactionTime = { gte: new Date(Date.now() - 30 * 86400000) };
+        const _digits = _searchTerm.replace(/[^0-9]/g, '');
+        const _or: Record<string, unknown>[] = [
+          { rrn: { contains: _searchTerm, mode: 'insensitive' } },
+          { rawDataJson: { contains: _searchTerm, mode: 'insensitive' } },
+          { matchedTransaction: { is: { userIdExt: { contains: _searchTerm, mode: 'insensitive' } } } },
+          { matchedTransaction: { is: { rrn: { contains: _searchTerm, mode: 'insensitive' } } } },
+        ];
+        if (_digits.length >= 3 && Number(_digits) > 0) _or.push({ amount: Number(_digits) });
+        where.OR = _or;
       }
       // Bucket UTAMA: filter walletCategory di DB supaya window `take` terisi baris utama,
       // tidak tertimbun mutasi QRIS yang jauh lebih banyak (future-proof saat total mutasi > limit).
@@ -2124,6 +2338,7 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
               ?? balanceSummary?.qrisBalance
               ?? 0)
             : balanceSummary?.qrisBalance ?? presentedMutations[0]?.balanceAfter ?? 0;
+      const _periodSummary = await computeMutationPeriodSummary(where, bucket).catch(() => null);
       res.json({
         ok: true,
         source,
@@ -2133,6 +2348,7 @@ export async function getMutationsJson(req: Request, res: Response): Promise<voi
         balanceSummary,
         note: maderaInferenceNote,
         bucketCounts: dedupedBucketCounts,
+        summary: _periodSummary,
         mutations: presentedMutations,
       });
       return;
@@ -2211,7 +2427,21 @@ function reorderReconcileChain<T extends { balanceBefore: number | null; balance
         let idx = cur != null
           ? remaining.findIndex((r) => (r.balanceBefore ?? 0) === cur)
           : remaining.findIndex((r) => !groupAfters.has(r.balanceBefore ?? 0)); // baris AWAL rantai (grup pertama, tak ada entry)
-        if (idx < 0) idx = 0; // rantai tak nyambung -> pertahankan urutan asli utk langkah ini
+        if (idx < 0 && cur != null) {
+          // FALLBACK (fix 10 Jul): rantai tak nyambung persis (mis. ada debit kecil tak tercatat
+          // seperti potongan fee, atau credit sesama-menit keurut kebalik) -> pilih baris yang
+          // balanceBefore PALING DEKAT ke saldo berjalan, BUKAN urutan array. Cegah false-alarm
+          // 'gap naik' saat baris besar keambil duluan (mis. WRNASI: 450035 -> harus 447034 dulu,
+          // bukan 1439837 -> lompatan palsu 989802). Saldo akhir tetap sama, deteksi gap NYATA tetap
+          // jalan (kalau semua baris di atas saldo berjalan, yang terkecil-di-atas tetap ketahuan).
+          let bestK = 0, bestD = Infinity;
+          for (let k = 0; k < remaining.length; k++) {
+            const d = Math.abs((remaining[k].balanceBefore ?? 0) - cur);
+            if (d < bestD) { bestD = d; bestK = k; }
+          }
+          idx = bestK;
+        }
+        if (idx < 0) idx = 0; // grup pertama / tak nyambung -> pertahankan urutan asli
         out.push(remaining[idx]);
         cur = remaining[idx].balanceAfter ?? 0;
         remaining.splice(idx, 1);
@@ -2260,9 +2490,21 @@ async function computeWalletReconcileForAccount(
     const prevAfter = chain[i - 1].balanceAfter ?? 0;
     const curBefore = chain[i].balanceBefore ?? 0;
     if (curBefore > prevAfter && !afterSet.has(curBefore)) {
+      const _jump = curBefore - prevAfter;
+      // NGAPAKCELL: 2 pembayaran nyaris-bersamaan bisa punya saldo-antara SALING-SILANG dari provider
+      // (balanceAfter kembar). Jump yg PERSIS = amount baris credit waktu-sama (±90s) = artefak rantai,
+      // BUKAN uang hilang -> skip (uang total & saldo akhir tetap benar).
+      const _tI = chain[i].transactionTime.getTime();
+      const _explained = chain.some((r, k) => k !== i && r.type === 'credit' && Math.abs(Number(r.amount || 0)) === _jump && Math.abs(r.transactionTime.getTime() - _tI) <= 90000);
+      if (_explained) continue;
+      // FIX GDGCELL 02:03: skip gap yg MUNDUR-WAKTU = artefak reorder same-minute (balanceAfter
+      // kembar + Pencairan dalam 1 menit -> baris credit terlempar SESUDAH Pencairan -> lompatan
+      // naik semu). Gap NYATA (mutasi masuk hilang) selalu maju-waktu. Dikonfirmasi Web Report
+      // missingCount=0 & saldo akhir benar -> gap semu (reorder same-minute), bukan uang hilang.
+      if (chain[i].transactionTime.getTime() < chain[i - 1].transactionTime.getTime()) continue;
       const raw = parseRawMutationPayload(chain[i].rawDataJson);
       upwardGap = {
-        jump: curBefore - prevAfter,
+        jump: _jump,
         atTime: chain[i].transactionTime,
         sinceTime: chain[i - 1].transactionTime,
         keterangan: readString(raw.keterangan) || readString(raw.description) || '',
@@ -2346,6 +2588,13 @@ async function computeMaderaReconcileForAccount(
 
 export async function getQrisReconcileApi(req: Request, res: Response): Promise<void> {
   const db = dbRead; // pintu-baca
+  const __t0 = Date.now();
+  res.on('finish', () => {
+    const ms = Date.now() - __t0;
+    if (ms >= 150) {
+      logger.info({ ms, wallet: req.query.wallet ?? null, accountId: req.query.accountId ?? null, msg: 'getQrisReconcileApi timing' });
+    }
+  });
   try {
     // Wallet mana yang dicocokkan: 'qris' (default), 'utama', atau 'madera'.
     // qris/utama pakai rantai balanceAfter provider vs saldo fisik.
@@ -2357,6 +2606,8 @@ export async function getQrisReconcileApi(req: Request, res: Response): Promise<
       : computeWalletReconcileForAccount(acc, wallet, wallet === 'utama' ? acc.lastMainBalance : acc.lastQrisBalance);
     const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : null;
     if (accountId) {
+      const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined); // RBAC: alias tak boleh reconcile akun site lain (findUnique lolos interceptor)
+      if (_scopeIds && !_scopeIds.includes(accountId)) { res.status(404).json({ ok: false, error: 'Akun tidak ditemukan' }); return; }
       const account = await db.qrisAccount.findUnique({
         where: { id: accountId },
         select: accountSelect,
@@ -2369,8 +2620,10 @@ export async function getQrisReconcileApi(req: Request, res: Response): Promise<
       res.json({ ok: true, wallet, account: result });
       return;
     }
+    // RECONCILE_ALL (11 Jul): cocokkan SEMUA akun ber-kredensial (aktif+nonaktif) -> akun nonaktif kini
+    // tetap dipoll (dormant 5mnt) jadi saldonya fresh & bisa direkonsiliasi. koko: biar semua sinkron.
     const accounts = await db.qrisAccount.findMany({
-      where: { status: 'active' },
+      where: { OR: [ { sessionTokenEncrypted: { not: null } }, { cookiesEncrypted: { not: null } }, { webCookiesEncrypted: { not: null } } ] },
       orderBy: { code: 'asc' },
       select: accountSelect,
     });
@@ -2420,6 +2673,7 @@ export async function getReconcileDetailApi(req: Request, res: Response): Promis
     const accountId = typeof req.query.accountId === 'string' ? req.query.accountId : '';
     const account = await db.qrisAccount.findUnique({ where: { id: accountId } });
     if (!account) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; }
+    if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; } // RBAC di luar scope (mutasi2)
     const physical = wallet === 'utama' ? account.lastMainBalance : account.lastQrisBalance;
     const recon = (await computeWalletReconcileForAccount(account, wallet, physical)) as { match?: boolean; gap?: { jump: number; atTime: Date; sinceTime: Date } | null };
     if (recon.match) { res.json({ ok: true, match: true, missing: [], message: 'Sudah cocok — tidak ada selisih.' }); return; }
@@ -2450,6 +2704,7 @@ export async function postReconcileBackfillApi(req: Request, res: Response): Pro
     const wallet = body.wallet === 'utama' ? 'utama' : 'qris';
     const account = await db.qrisAccount.findUnique({ where: { id: String(body.accountId || '') } });
     if (!account) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; }
+    if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; } // RBAC di luar scope (mutasi2)
     const physical = wallet === 'utama' ? account.lastMainBalance : account.lastQrisBalance;
     const recon = (await computeWalletReconcileForAccount(account, wallet, physical)) as { match?: boolean; gap?: { jump: number; atTime: Date; sinceTime: Date } | null };
     if (recon.match || !recon.gap || !recon.gap.sinceTime) { res.json({ ok: true, wallet, newCount: 0, message: 'Tidak ada selisih terdeteksi untuk ditarik.' }); return; }
@@ -2492,9 +2747,9 @@ export async function getGenerateQrStatusApi(req: Request, res: Response): Promi
     }
     const tx = await db.transaction.findUnique({
       where: { id },
-      select: { statusPay: true, paidAt: true, expiresAt: true, finalAmount: true },
+      select: { statusPay: true, paidAt: true, expiresAt: true, finalAmount: true, qrisAccountId: true },
     });
-    if (!tx) {
+    if (!tx || !accountInScope(req.session.user as AccessUser | undefined, tx.qrisAccountId)) {
       res.status(404).json({ ok: false, error: 'Transaksi tidak ditemukan' });
       return;
     }
@@ -2585,7 +2840,7 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
       logger.warn({ err }, 'showSettlement: unable to reconcile processing madera transfers');
     });
     const [{ settlements, total }, utamaBalance, maderaBalance, doneAgg, rawAccounts] = await Promise.all([
-      listSettlements({ limit: 100 }),
+      listSettlements({ limit: 5000 }), // HIST_PAGER: kirim semua riwayat ke DOM supaya filter Hari ini/Kemarin/Custom lihat SEMUA (dulu 100 -> potong)
       getWalletBalance('utama'),
       getWalletBalance('madera'),
       db.settlementRequest.aggregate({
@@ -2706,6 +2961,10 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
         withdrawMessage,
       };
     }));
+    // URUT KARTU: aktif & belum limit (atas) -> nonaktif belum limit -> sudah limit >=29,6jt (bawah).
+    const _LIMIT_CAP = 29600000;
+    const _rankLimit = (a: { usedToday?: number | null; status?: string | null }) => ((Number(a.usedToday) || 0) >= _LIMIT_CAP ? 2 : (a.status === 'active' ? 0 : 1));
+    accounts.sort((x, y) => _rankLimit(x) - _rankLimit(y));
     const _scopeSite = getSiteScopeForUser(req.session.user as AccessUser | undefined);
     const sites = _scopeSite ? listSites().filter((s) => s.id === _scopeSite) : listSites();
     // Total saldo gabungan (SUM akun ter-scope; aman utk alias-tenant -> hanya site-nya).
@@ -2716,11 +2975,21 @@ export async function showSettlement(req: Request, res: Response): Promise<void>
       return t;
     }, { qris: 0, utama: 0, madera: 0 } as { qris: number; utama: number; madera: number; grand?: number });
     walletTotals.grand = walletTotals.qris + walletTotals.utama + walletTotals.madera;
+    const _nagoxMap = readNagoxTransfers();
+    const _cutSetl = resolveListCutoffDate(isShowAll(req));
+    const _acctNameMap: Record<string, string> = {}; // AKUNQRIS_COL: id -> nama merchant
+    for (const _a of rawAccounts) _acctNameMap[_a.id] = _a.merchantName || _a.code || '-';
+    const settlementsView = settlements.filter((s) => !_cutSetl || new Date(s.createdAt).getTime() >= _cutSetl.getTime()).map((s) => ({
+      ...s,
+      merchantName: s.qrisAccountId ? (_acctNameMap[s.qrisAccountId] || null) : null, // AKUNQRIS_COL
+      nagoxStatus: _nagoxMap[s.id] ? _nagoxMap[s.id].status : null,
+      nagoxMessage: _nagoxMap[s.id] ? (_nagoxMap[s.id].message || null) : null,
+    }));
     res.render('settlement/index', {
       title: 'Saldo Per Akun',
       sites,
       walletTotals,
-      settlements,
+      settlements: settlementsView,
       total,
       accounts,
       balances: { utama: utamaBalance, madera: inferredMaderaAggregate || maderaBalance },
@@ -2759,6 +3028,7 @@ export async function handleSettlementBankInquiryApi(req: Request, res: Response
       res.json({ ok: false, error: parsed.error.errors.map((item) => item.message).join(', ') });
       return;
     }
+    if (!accountInScope(req.session.user as AccessUser | undefined, (parsed.data as { qrisAccountId?: string }).qrisAccountId)) { res.json({ ok: false, error: 'Akun di luar akses Anda.' }); return; } // RBAC: alias tak inquiry pakai akun site lain
     const result = await inquireSettlementBankAccount(parsed.data);
     void logAction(req, { category: 'settlement', action: 'bank_inquiry', summary: 'Inquiry rekening tujuan transfer' });
     res.json({
@@ -2925,6 +3195,7 @@ export async function handleBankListApi(req: Request, res: Response): Promise<vo
       res.json({ ok: false, banks: [], error: 'qrisAccountId wajib diisi' });
       return;
     }
+    if (!accountInScope(req.session.user as AccessUser | undefined, qrisAccountId)) { res.json({ ok: true, banks: [] }); return; } // RBAC: alias tak boleh intip bank akun site lain
     const banks = (await listSettlementTransferBanks(qrisAccountId))
       .filter((bank) => bank.status === 'OPERATIONAL');
     res.json({
@@ -3087,6 +3358,21 @@ function _bankSiteName(siteId: string): string {
   const s = listSites().find((x) => x.id === siteId);
   return s ? s.name : siteId;
 }
+// Nagox: baca saldo bank tersinkron (ditulis service Python tiap ~10s ke data/nagox-balances.json).
+function _readNagox(): { syncedAt: number; loggedIn: boolean; connected: boolean; banks: Array<Record<string, unknown>> } {
+  try {
+    const raw = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'data', 'nagox-balances.json'), 'utf8'));
+    const syncedAt = Number(raw.syncedAt) || 0;
+    const connected = !!raw.loggedIn && (Date.now() - syncedAt < 40000);
+    return { syncedAt, loggedIn: !!raw.loggedIn, connected, banks: Array.isArray(raw.banks) ? raw.banks : [] };
+  } catch { return { syncedAt: 0, loggedIn: false, connected: false, banks: [] }; }
+}
+function _nagoxSaldoOf(ng: { banks: Array<Record<string, unknown>> }, noRek: string): { nagoxSaldo: number | null; nagoxSaldoText: string | null } {
+  const nr = String(noRek || '').replace(/[^0-9]/g, '');
+  if (!nr) return { nagoxSaldo: null, nagoxSaldoText: null };
+  const h = ng.banks.find((b) => String((b as { noRekening?: string }).noRekening || '').replace(/[^0-9]/g, '') === nr) as { saldo?: number; saldoText?: string } | undefined;
+  return h ? { nagoxSaldo: typeof h.saldo === 'number' ? h.saldo : null, nagoxSaldoText: h.saldoText || null } : { nagoxSaldo: null, nagoxSaldoText: null };
+}
 export async function showDaftarBank(req: Request, res: Response): Promise<void> {
   try {
     const user = req.session.user as AccessUser | undefined;
@@ -3103,8 +3389,9 @@ export async function showDaftarBank(req: Request, res: Response): Promise<void>
 export async function getDaftarBankApi(req: Request, res: Response): Promise<void> {
   try {
     const scope = getSiteScopeForUser(req.session.user as AccessUser | undefined);
-    const banks = listBanksForScope(scope).map((b) => ({ ...b, siteName: _bankSiteName(b.siteId) }));
-    res.json({ ok: true, banks });
+    const _ng = _readNagox();
+    const banks = listBanksForScope(scope).map((b) => ({ ...b, siteName: _bankSiteName(b.siteId), ..._nagoxSaldoOf(_ng, b.noRekening) }));
+    res.json({ ok: true, banks, nagoxConnected: _ng.connected });
   } catch (err) { logger.error({ err }, 'getDaftarBankApi error'); res.status(500).json({ ok: false }); }
 }
 export async function createDaftarBankApi(req: Request, res: Response): Promise<void> {
@@ -3167,14 +3454,80 @@ export async function getSettlementSavedBanksApi(req: Request, res: Response): P
     if (!siteId) { res.json({ ok: true, banks: [] }); return; }
     const scope = getSiteScopeForUser(req.session.user as AccessUser | undefined);
     if (scope && siteId !== scope) { res.json({ ok: true, banks: [] }); return; }
-    res.json({ ok: true, siteId, banks: listBanks(siteId) });
+    const _ng2 = _readNagox();
+    res.json({ ok: true, siteId, nagoxConnected: _ng2.connected, banks: listBanks(siteId).map((b) => ({ ...b, ..._nagoxSaldoOf(_ng2, b.noRekening) })) });
   } catch (err) { logger.error({ err }, 'getSettlementSavedBanksApi error'); res.status(500).json({ ok: false }); }
 }
+export async function getNagoxStatusApi(req: Request, res: Response): Promise<void> {
+  try {
+    const n = _readNagox();
+    res.json({ ok: true, connected: n.connected, loggedIn: n.loggedIn, syncedAt: n.syncedAt, count: n.banks.length });
+  } catch { res.status(500).json({ ok: false }); }
+}
+const _nagoxInflight = new Set<string>();
+export async function nagoxApproveApi(req: Request, res: Response): Promise<void> {
+  const id = String((req.body || {}).id || '').trim();
+  if (!id) { res.status(400).json({ ok: false, message: 'ID transaksi kosong.' }); return; }
+  // Guard SINKRON (sebelum await apa pun) anti-dobel konkuren + status ok/pending.
+  if (_nagoxInflight.has(id)) { res.status(409).json({ ok: false, message: 'Transaksi ini sedang diproses, tunggu sebentar.' }); return; }
+  const existing = getNagoxTransfer(id);
+  if (existing && existing.status === 'ok') { res.json({ ok: true, already: true, status: 'ok', message: 'Sudah tercatat di Nagox.' }); return; }
+  if (existing && existing.status === 'pending' && (Date.now() - new Date(existing.at).getTime() < 120000)) {
+    res.status(409).json({ ok: false, message: 'Transaksi sedang diproses (pending), tunggu ~2 menit atau cek manual.' }); return;
+  }
+  _nagoxInflight.add(id);
+  try {
+    const s = await db.settlementRequest.findUnique({ where: { id } });
+    if (!s) { res.status(404).json({ ok: false, message: 'Transaksi tidak ditemukan.' }); return; }
+    if (!(s.fromWallet === 'madera' && s.toWallet === 'bank')) { res.status(400).json({ ok: false, message: 'Approve hanya untuk transfer Madera to Bank.' }); return; }
+    if (s.status !== 'done') { res.status(400).json({ ok: false, message: 'Transaksi belum berstatus DONE.' }); return; }
+    if (!s.bankAccount) { res.status(400).json({ ok: false, message: 'Nomor rekening tujuan kosong.' }); return; }
+    const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
+    if (_scopeIds && s.qrisAccountId && !_scopeIds.includes(s.qrisAccountId)) { res.status(403).json({ ok: false, message: 'Transaksi di luar site Anda.' }); return; }
+    const fee = 2500;
+    let namaAkun = '';
+    let siteName = '';
+    try {
+      const acc = s.qrisAccountId ? await db.qrisAccount.findUnique({ where: { id: s.qrisAccountId }, select: { merchantName: true } }) : null;
+      namaAkun = (acc && acc.merchantName ? acc.merchantName : '').trim();
+    } catch { /* ignore */ }
+    try { if (s.qrisAccountId) siteName = (buildResolver()(s.qrisAccountId).siteName || '').trim(); } catch { /* ignore */ }
+    const wib = new Date(Date.now() + 25200000).toISOString().replace('T', ' ').slice(0, 16);
+    const catatan = ((namaAkun || 'QRIS') + ' ' + s.amount + ' dan biaya ' + fee + ' ' + wib + ' #' + id).trim();
+    // Klaim 'pending' SEBELUM POST: kalau tulis hasil gagal / crash, retry tetap terhalang (lalu python pre-check dedup by ref).
+    try { setNagoxTransfer(id, { status: 'pending', at: new Date().toISOString(), message: 'diproses' }); } catch { /* ignore */ }
+    const r = callNagoxTransfer({ settlementId: id, norekPenerima: s.bankAccount, bankPenerima: s.bankName || '', panel: siteName, nominal: s.amount, nilaiBiaya: fee, catatan });
+    const status: NagoxTfStatus = r.ok ? 'ok' : (r.unknown ? 'unknown' : 'fail');
+    setNagoxTransfer(id, { status, at: new Date().toISOString(), message: r.message, pengirim: r.pengirim, penerima: r.penerima });
+    void logAction(req, { category: 'settlement', action: 'nagox_approve', summary: 'Approve catat Nagox ' + (r.ok ? 'SUKSES' : (r.unknown ? 'TIDAK PASTI' : 'GAGAL')) + ': ' + (namaAkun || '-') + ' Rp' + s.amount + ' -> ' + (s.bankName || '') + ' ' + s.bankAccount, severity: r.ok ? 'important' : 'critical', targetType: 'SettlementRequest', targetId: id, detail: { ok: r.ok, status, message: r.message, penerima: r.penerima, already: r.already } });
+    res.json({ ok: r.ok, status, message: r.message, pengirim: r.pengirim, penerima: r.penerima });
+  } catch (err) {
+    logger.error({ err }, 'nagoxApproveApi error');
+    res.status(500).json({ ok: false, message: 'Error internal saat catat Nagox.' });
+  } finally {
+    _nagoxInflight.delete(id);
+  }
+}
+
+export async function nagoxRejectApi(req: Request, res: Response): Promise<void> {
+  try {
+    const id = String((req.body || {}).id || '').trim();
+    if (!id) { res.status(400).json({ ok: false, message: 'ID kosong.' }); return; }
+    const cur = getNagoxTransfer(id);
+    if (cur && cur.status === 'ok') { res.status(400).json({ ok: false, message: 'Sudah tercatat di Nagox, tidak bisa direject.' }); return; }
+    setNagoxTransfer(id, { status: 'rejected', at: new Date().toISOString() });
+    void logAction(req, { category: 'settlement', action: 'nagox_reject', summary: 'Reject (lokal) pencatatan Nagox transaksi ' + id, targetType: 'SettlementRequest', targetId: id, detail: {} });
+    res.json({ ok: true, status: 'rejected' });
+  } catch (err) { logger.error({ err }, 'nagoxRejectApi error'); res.status(500).json({ ok: false, message: 'Error internal.' }); }
+}
+
 export async function showAccountSettings(req: Request, res: Response): Promise<void> {
   const _u = req.session.user as AccessUser | undefined;
   const canManageWebgame = !!_u && (isMasterUser(_u) || canDo(getMenuPermsForUser(_u), 'settings', 'manage'));
   try {
+    const _scopeIds = getScopeAccountIds(_u); // RBAC: alias-tenant hanya lihat akun site-nya
     const qrisAccounts = await db.qrisAccount.findMany({
+      where: _scopeIds ? { id: { in: _scopeIds } } : undefined,
       orderBy: { code: 'asc' },
       select: { id: true, code: true, merchantName: true, status: true },
     });
@@ -3688,9 +4041,9 @@ export async function showHistoryOrkut(req: Request, res: Response): Promise<voi
   try {
     const wallet = req.params.wallet === 'utama' ? 'utama' : 'qris';
     const accountsRaw = await db.qrisAccount.findMany({
-      where: { status: 'active' },
+      where: {},
       orderBy: { code: 'asc' },
-      select: { id: true, code: true, merchantName: true, lastQrisBalance: true, lastMainBalance: true, webReportUrlEncrypted: true, healthStatus: true },
+      select: { id: true, code: true, merchantName: true, status: true, lastQrisBalance: true, lastMainBalance: true, webReportUrlEncrypted: true, healthStatus: true },
     });
     const _scopeIds = getScopeAccountIds(req.session.user as AccessUser | undefined);
     const _scoped = _scopeIds ? accountsRaw.filter((a) => _scopeIds.includes(a.id)) : accountsRaw;
@@ -3797,5 +4150,44 @@ export async function handleRecentPaidApi(req: Request, res: Response): Promise<
   } catch (err) {
     logger.error({ err }, 'handleRecentPaidApi error');
     res.status(500).json({ ok: false, error: 'Gagal ambil paid terbaru.' });
+  }
+}
+
+
+// ── Retry deposit (force kirim SEKARANG) & Kredit Manual (tandai BERHASIL + kunci) ──
+export async function postDashRetryDeposit(req: Request, res: Response): Promise<void> {
+  const { qrId } = req.params;
+  try {
+    const tx = await db.transaction.findUnique({
+      where: { qrId },
+      select: { id: true, statusPay: true, statusBot: true, userIdExt: true },
+    });
+    if (!tx) { res.status(404).json({ ok: false, message: 'Transaksi tidak ditemukan' }); return; }
+    if (tx.statusPay !== 'paid') { res.status(400).json({ ok: false, message: 'Hanya transaksi PAID yang bisa di-retry' }); return; }
+    if (!['deposit_failed', 'manual_review'].includes(tx.statusBot)) {
+      res.status(400).json({ ok: false, message: `Retry hanya untuk status GAGAL/REVIEW (kini: ${tx.statusBot})` }); return;
+    }
+    await attemptDeposit(tx.id, { force: true });
+    const after = await db.transaction.findUnique({ where: { id: tx.id }, select: { statusBot: true } });
+    const ok = after?.statusBot === 'deposit_success';
+    void logAction(req, { category: 'generate-qr', action: 'deposit_retry_force', severity: 'important', status: ok ? 'success' : 'failed', summary: `Retry deposit ${ok ? 'BERHASIL' : 'masih gagal'} — user ${tx.userIdExt}`, targetType: 'Transaction', targetId: qrId, targetName: tx.userIdExt });
+    res.json({ ok, statusBot: after?.statusBot, message: ok ? 'Deposit BERHASIL dikirim ke panel.' : 'Bot mencoba lagi tapi masih gagal — status tetap REVIEW.' });
+  } catch (err) {
+    logger.error({ err, qrId }, 'postDashRetryDeposit error');
+    res.status(500).json({ ok: false, message: err instanceof Error ? err.message : 'Gagal retry deposit' });
+  }
+}
+
+export async function postDashManualCredit(req: Request, res: Response): Promise<void> {
+  const { qrId } = req.params;
+  try {
+    const u = req.session.user as { username?: string; name?: string; id?: string } | undefined;
+    const actor = String(u?.username || u?.name || u?.id || 'operator');
+    await manualCreditDeposit(qrId, actor);
+    void logAction(req, { category: 'generate-qr', action: 'deposit_manual_credit', severity: 'critical', status: 'success', summary: `Kredit MANUAL (tandai BERHASIL) oleh ${actor}`, targetType: 'Transaction', targetId: qrId });
+    res.json({ ok: true, message: 'Ditandai BERHASIL (kredit manual). Bot tidak akan mengkredit lagi.' });
+  } catch (err) {
+    logger.error({ err, qrId }, 'postDashManualCredit error');
+    res.status(400).json({ ok: false, message: err instanceof Error ? err.message : 'Gagal kredit manual' });
   }
 }

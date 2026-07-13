@@ -7,8 +7,13 @@ import { logger } from '../config/logger';
 import { recordWalletEntry } from './wallet-ledger.service';
 
 // ── Retry schedule (delays in ms after each failed attempt) ─────────────────
-const RETRY_DELAYS_MS = [0, 30_000, 120_000, 300_000]; // attempt 1, 2, 3, 4
+// Jadwal retry: 4 percobaan dalam ~70 detik (0s, 20s, 40s, 70s). Sesudah itu bot
+// menyerah -> manual_review. Selaras dengan DEPOSIT_TIMEOUT_MS di bawah.
+const RETRY_DELAYS_MS = [0, 20_000, 40_000, 70_000]; // attempt 1, 2, 3, 4
 const MAX_ATTEMPTS = RETRY_DELAYS_MS.length;
+// Batas 'PROSES': lewat ini transaksi paid yang belum berhasil dipaksa ke
+// manual_review (bot BERHENTI, TIDAK mengirim) -> giliran operator.
+export const DEPOSIT_TIMEOUT_MS = 90_000; // 1 menit 30 detik
 
 export interface DepositPayload {
   qrId: string;
@@ -133,7 +138,11 @@ async function sendDepositRequest(
 
     req.on('error', reject);
     req.setTimeout(10_000, () => {
-      req.destroy(new Error('Deposit request timed out after 10s'));
+      const timeoutErr = new Error('Deposit request timed out after 10s');
+      // Tandai khusus: timeout TIDAK boleh diretry otomatis. Panel mungkin sudah
+      // menerima & mengkredit member (respons cuma lambat balik) → retry = dobel-kredit.
+      (timeoutErr as Error & { isTimeout?: boolean }).isTimeout = true;
+      req.destroy(timeoutErr);
     });
     req.write(bodyStr);
     req.end();
@@ -148,7 +157,11 @@ async function sendDepositRequest(
  *
  * Mock behavior: if client.depositApiUrl is empty/null, the deposit auto-succeeds.
  */
-export async function attemptDeposit(transactionId: string): Promise<void> {
+export async function attemptDeposit(
+  transactionId: string,
+  opts: { force?: boolean } = {},
+): Promise<void> {
+  const force = opts.force === true;
   const tx = await db.transaction.findUnique({
     where: { id: transactionId },
     include: {
@@ -171,6 +184,19 @@ export async function attemptDeposit(transactionId: string): Promise<void> {
 
   if (tx.statusPay !== 'paid') {
     logger.warn({ transactionId, statusPay: tx.statusPay }, 'attemptDeposit: not paid yet');
+    return;
+  }
+
+  // Timeout 90 detik: bot menyerah -> manual_review (TIDAK kirim ke panel).
+  // Lindungi dari dobel-kredit pada transaksi lama/nyangkut (mis. orphan 0-attempt)
+  // yang mungkin sudah ditangani operator. Sesudah ini giliran operator (force=true).
+  if (!force && tx.statusBot === 'deposit_queued' && tx.paidAt &&
+      Date.now() - tx.paidAt.getTime() > DEPOSIT_TIMEOUT_MS) {
+    await db.transaction.updateMany({
+      where: { id: transactionId, statusBot: 'deposit_queued' },
+      data: { statusBot: 'manual_review' },
+    });
+    logger.warn({ transactionId }, 'Deposit timeout 90s -> manual_review (tidak dikirim)');
     return;
   }
 
@@ -202,7 +228,7 @@ export async function attemptDeposit(transactionId: string): Promise<void> {
   const attemptCount = await db.depositAttempt.count({ where: { transactionId } });
   const attemptNo = attemptCount + 1;
 
-  if (attemptNo > MAX_ATTEMPTS) {
+  if (!force && attemptNo > MAX_ATTEMPTS) {
     logger.warn({ transactionId, attemptNo }, 'Max deposit attempts exceeded, moving to manual_review');
     await db.transaction.update({
       where: { id: transactionId },
@@ -218,6 +244,9 @@ export async function attemptDeposit(transactionId: string): Promise<void> {
   let responseBody: string | null = null;
   let success = false;
   let errorMessage: string | null = null;
+  // Timeout = panel bisa jadi SUDAH mengkredit (respons lambat). Jangan retry
+  // otomatis → escalate ke manual_review agar operator verifikasi dulu (anti dobel).
+  let timedOut = false;
 
   // ── Execute deposit ───────────────────────────────────────────────────────
   if (!tx.client.depositApiUrl) {
@@ -237,14 +266,17 @@ export async function attemptDeposit(transactionId: string): Promise<void> {
       }
     } catch (err) {
       success = false;
+      timedOut = (err as Error & { isTimeout?: boolean })?.isTimeout === true;
       errorMessage = err instanceof Error ? err.message : String(err);
-      logger.warn({ transactionId, attemptNo, error: errorMessage }, 'Deposit request failed');
+      logger.warn({ transactionId, attemptNo, error: errorMessage, timedOut }, 'Deposit request failed');
     }
   }
 
   // ── Compute next retry time ───────────────────────────────────────────────
+  // Timeout TIDAK dijadwalkan retry: panel mungkin sudah kredit → biar operator
+  // yang verifikasi (manual_review). Hanya kegagalan non-timeout yang diretry.
   const nextRetryDelayMs = RETRY_DELAYS_MS[attemptNo]; // undefined if at max
-  const nextRetryAt = !success && nextRetryDelayMs !== undefined
+  const nextRetryAt = !success && !timedOut && nextRetryDelayMs !== undefined
     ? new Date(Date.now() + nextRetryDelayMs)
     : null;
 
@@ -285,7 +317,18 @@ export async function attemptDeposit(transactionId: string): Promise<void> {
     }
 
     logger.info({ transactionId, attemptNo, idempotencyKey }, 'Deposit succeeded');
-  } else if (attemptNo >= MAX_ATTEMPTS) {
+  } else if (timedOut) {
+    // Timeout: STOP. Jangan kirim ulang (panel bisa jadi sudah kredit). Operator
+    // verifikasi manual apakah member sudah menerima; kalau belum, kredit manual.
+    await db.transaction.update({
+      where: { id: transactionId },
+      data: { statusBot: 'manual_review' },
+    });
+    logger.warn(
+      { transactionId, attemptNo },
+      'Deposit TIMEOUT → manual_review (TIDAK diretry: hindari dobel-kredit)',
+    );
+  } else if (force || attemptNo >= MAX_ATTEMPTS) {
     await db.transaction.update({
       where: { id: transactionId },
       data: { statusBot: 'manual_review' },
@@ -309,6 +352,59 @@ export async function getNextRetryTime(transactionId: string): Promise<Date | nu
     select: { nextRetryAt: true },
   });
   return latest?.nextRetryAt ?? null;
+}
+
+/**
+ * Kredit Manual (operator): tandai transaksi BERHASIL TANPA mengirim ke panel.
+ * Dipakai saat operator sudah mengkreditkan member sendiri di panel game.
+ * Idempoten & anti-dobel: dalam 1 transaksi DB -> flip ke deposit_success (hanya
+ * jika belum success) + tulis DepositAttempt success (kunci idempotency) sehingga
+ * bot mana pun setelahnya otomatis berhenti (early-return di attemptDeposit).
+ */
+export async function manualCreditDeposit(qrId: string, actorLabel: string): Promise<void> {
+  const tx = await db.transaction.findUnique({ where: { qrId } });
+  if (!tx) throw new Error('Transaksi tidak ditemukan');
+  if (tx.statusPay !== 'paid') throw new Error('Hanya transaksi PAID yang bisa dikredit manual');
+  if (tx.statusBot === 'deposit_success') throw new Error('Transaksi ini sudah BERHASIL (tidak diproses ulang)');
+
+  const idempotencyKey = buildIdempotencyKey(tx.qrId);
+  await db.$transaction(async (trx) => {
+    // Gerbang idempoten: hanya SATU pihak yang boleh menandai berhasil.
+    const flip = await trx.transaction.updateMany({
+      where: { id: tx.id, statusBot: { not: 'deposit_success' } },
+      data: { statusBot: 'deposit_success' },
+    });
+    if (flip.count !== 1) throw new Error('Transaksi sudah diproses pihak lain, dibatalkan');
+    const attemptCount = await trx.depositAttempt.count({ where: { transactionId: tx.id } });
+    await trx.depositAttempt.create({
+      data: {
+        transactionId: tx.id,
+        attemptNo: attemptCount + 1,
+        idempotencyKey,
+        requestPayloadJson: JSON.stringify({ manual: true, by: actorLabel }),
+        responseCode: 200,
+        responseBody: `MANUAL CREDIT oleh ${actorLabel}`,
+        status: 'success',
+        errorMessage: null,
+        nextRetryAt: null,
+      },
+    });
+  });
+
+  // Catat wallet 'utama' agar akuntansi setara deposit bot.
+  const netAmount = tx.finalAmount - tx.feeAmount;
+  try {
+    await recordWalletEntry({
+      walletCode: 'utama',
+      amount: netAmount,
+      refType: 'deposit_success',
+      refId: tx.id,
+      description: `Kredit MANUAL (${actorLabel}) — QR ${tx.qrId.slice(0, 8)}`,
+    });
+  } catch (walletErr) {
+    logger.error({ walletErr, transactionId: tx.id }, 'manualCreditDeposit: gagal catat wallet ledger');
+  }
+  logger.info({ qrId, actorLabel }, 'Manual credit applied (deposit_success)');
 }
 
 export { MAX_ATTEMPTS, RETRY_DELAYS_MS };

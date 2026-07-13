@@ -14,6 +14,12 @@
     .dbank-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px}
     .dbank-select,.dbank-input{background:var(--db-card);border:1px solid var(--db-card-brd);color:var(--ink);border-radius:11px;padding:9px 12px;font-size:13px;font-weight:600;outline:none;transition:border-color .2s,box-shadow .2s}
     .dbank-input:focus,.dbank-select:focus{border-color:#0d9488;box-shadow:0 0 0 3px var(--db-glow)}
+    .dbank-bankpick{position:relative}
+    .dbank-bank-menu{position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:40;max-height:236px;overflow-y:auto;background:var(--panel);border:1px solid var(--db-card-brd);border-radius:11px;box-shadow:0 18px 42px rgba(0,0,0,.3);padding:5px}
+    .dbank-bank-menu:not(.open){display:none}
+    .dbank-bank-item{padding:9px 11px;border-radius:8px;font-size:13px;font-weight:600;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .dbank-bank-item:hover,.dbank-bank-item.active{background:var(--db-glow)}
+    .dbank-bank-empty{padding:11px;font-size:12px;color:var(--muted);text-align:center}
     .dbank-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
     .dbank-card{position:relative;background:var(--db-card);border:1px solid var(--db-card-brd);border-radius:18px;padding:16px 16px 14px;overflow:hidden;transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .25s,border-color .25s;animation:dbIn .45s cubic-bezier(.2,.8,.2,1) both}
     .dbank-card:hover{transform:translateY(-4px);box-shadow:0 18px 40px rgba(0,0,0,.22);border-color:var(--bk,#0d9488)}
@@ -100,7 +106,11 @@
       <% } %>
       <div class="dbank-field">
         <label class="dbank-lbl">Bank</label>
-        <select id="dbank-f-bank" class="dbank-select"><option value="">Memuat daftar bank...</option></select>
+        <div class="dbank-bankpick">
+          <input type="text" id="dbank-f-bank-search" class="dbank-input" placeholder="Ketik nama bank..." autocomplete="off" style="width:100%" oninput="dbankBankFilter(this.value)" onfocus="dbankBankFilter(this.value)" onblur="dbankBankBlur()" />
+          <div id="dbank-bank-menu" class="dbank-bank-menu"></div>
+          <select id="dbank-f-bank" class="dbank-select" style="display:none"><option value="">Memuat daftar bank...</option></select>
+        </div>
       </div>
       <div class="dbank-field">
         <label class="dbank-lbl">Nomor Rekening</label>
@@ -128,9 +138,14 @@
   var CAN_MANAGE = <%= canManage ? 'true' : 'false' %>;
   var SITE_SCOPE = <%- JSON.stringify(siteScope || null) %>;
   var API = '<%= url("/dashboard/api/daftar-bank") %>';
-  var BANKLIST = '<%= url("/dashboard/settlement/banks") %>';
-  var INQUIRY = '<%= url("/dashboard/settlement/inquiry") %>';
+  var BANKLIST = '<%= url("/dashboard/api/daftar-bank/bank-list") %>';
+  var INQUIRY = '<%= url("/dashboard/api/daftar-bank/inquiry") %>';
   var ALL = [];
+  var dbankBanks=[];
+  function dbankBankRender(q){ var menu=document.getElementById('dbank-bank-menu'); if(!menu) return; q=(q||'').trim().toLowerCase(); if(!dbankBanks.length){ menu.innerHTML='<div class="dbank-bank-empty">Daftar bank belum termuat</div>'; return; } var list=dbankBanks.filter(function(b){ return !q || (b.name||'').toLowerCase().indexOf(q)>=0 || (b.code||'').toLowerCase().indexOf(q)>=0; }); if(!list.length){ menu.innerHTML='<div class="dbank-bank-empty">Bank tidak ditemukan</div>'; return; } menu.innerHTML=list.slice(0,80).map(function(b){ return '<div class="dbank-bank-item" data-code="'+esc(b.code)+'" data-name="'+esc(b.name)+'" onmousedown="dbankBankPick(this)"><i class="fa-solid fa-building-columns" style="font-size:11px;color:#0d9488"></i> '+esc(b.name)+'</div>'; }).join(''); }
+  window.dbankBankFilter=function(q){ dbankBankRender(q); var m=document.getElementById('dbank-bank-menu'); if(m) m.classList.add('open'); };
+  window.dbankBankPick=function(el){ var code=el.getAttribute('data-code'), name=el.getAttribute('data-name'); var sel=document.getElementById('dbank-f-bank'); sel.value=code; if(sel.value!==code){ var o=document.createElement('option'); o.value=code; o.setAttribute('data-name',name); o.textContent=name; sel.appendChild(o); sel.value=code; } var srch=document.getElementById('dbank-f-bank-search'); if(srch) srch.value=name; var m=document.getElementById('dbank-bank-menu'); if(m) m.classList.remove('open'); };
+  window.dbankBankBlur=function(){ setTimeout(function(){ var m=document.getElementById('dbank-bank-menu'); if(m) m.classList.remove('open'); },160); };
   var esc = function(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
   var BANK_META = {BCA:['#0060AF','BCA'],BNI:['#ED8B00','BNI'],BRI:['#00529C','BRI'],MANDIRI:['#003D79','MDR'],CIMB:['#7A1F2B','CIMB'],PERMATA:['#00A79D','PMT'],DANAMON:['#004C97','DNM'],BSI:['#00A39D','BSI'],BTN:['#003D79','BTN'],MEGA:['#E30613','MEGA'],OCBC:['#E30613','OCBC'],PANIN:['#00539B','PNN'],SINARMAS:['#E30613','SMS'],SEABANK:['#EE4D2D','SEA'],JAGO:['#F6B21B','JAGO'],GOPAY:['#00AED6','GO'],OVO:['#4C2A86','OVO'],DANA:['#118EEA','DANA'],SHOPEEPAY:['#EE4D2D','SPAY']};
   function bankBrand(name){ var u=String(name||'').toUpperCase(); for(var k in BANK_META){ if(u.indexOf(k)>=0) return {color:BANK_META[k][0],ini:BANK_META[k][1]}; } var ini=(u.replace(/BANK/g,'').replace(/[^A-Z]/g,'').slice(0,3))||'BK'; var h=0; for(var i=0;i<u.length;i++)h=(h*31+u.charCodeAt(i))>>>0; return {color:'hsl('+(h%360)+',55%,45%)',ini:ini}; }
@@ -147,6 +162,7 @@
     var grid=document.getElementById('dbank-grid'), empty=document.getElementById('dbank-empty');
     if(!rows.length){ grid.innerHTML=''; empty.style.display=''; return; }
     empty.style.display='none';
+    if(!document.getElementById('nagox-kf')){ var _kf=document.createElement('style'); _kf.id='nagox-kf'; _kf.textContent='@keyframes nagoxPulse{0%{box-shadow:0 0 0 0 rgba(20,184,166,.5)}70%{box-shadow:0 0 0 6px rgba(20,184,166,0)}100%{box-shadow:0 0 0 0 rgba(20,184,166,0)}}'; document.head.appendChild(_kf); }
     grid.innerHTML=rows.map(function(b,i){
       var br=bankBrand(b.bankName);
       var acts = CAN_MANAGE ? ('<div class="dbank-actions"><button class="dbank-mini" onclick="dbankOpenEdit(\''+b.id+'\')"><i class="fa-solid fa-pen"></i> Edit</button><button class="dbank-mini del" onclick="dbankDelete(\''+b.id+'\')"><i class="fa-solid fa-trash"></i> Hapus</button></div>') : '';
@@ -155,6 +171,7 @@
         +'<div class="dbank-brow"><div class="dbank-logo" style="background:'+br.color+'">'+esc(br.ini)+'</div><div><div class="dbank-bname">'+esc(b.bankName)+'</div>'+siteBadge+'</div></div>'
         +'<div class="dbank-rek">'+esc(b.noRekening)+'<i class="fa-regular fa-copy dbank-copy" title="Salin" onclick="dbankCopy(\''+esc(b.noRekening)+'\')"></i></div>'
         +'<div class="dbank-nama"><i class="fa-solid fa-user" style="font-size:10px;opacity:.6"></i> '+esc(b.namaRekening||'-')+'</div>'
+        +(b.nagoxSaldoText?('<div style="margin-top:9px;padding:8px 11px;border-radius:10px;background:linear-gradient(135deg,rgba(13,148,136,.15),rgba(20,184,166,.04));border:1px solid rgba(20,184,166,.28);display:flex;align-items:center;justify-content:space-between;gap:8px"><span style="font-size:9px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);display:inline-flex;align-items:center;gap:5px"><span style="width:7px;height:7px;border-radius:50%;background:#14b8a6;animation:nagoxPulse 1.6s infinite"></span>Saldo Nagox</span><span style="font-size:14px;font-weight:900;color:#14b8a6;font-family:ui-monospace,monospace">'+esc(b.nagoxSaldoText)+'</span></div>'):'')
         +acts+'</div>';
     }).join('');
   }
@@ -165,18 +182,22 @@
   // ── Modal ──
   function currentAcc(){ var el=document.getElementById('dbank-f-site'); if(!el) return ''; if(el.tagName==='SELECT'){ var o=el.options[el.selectedIndex]; return o?o.getAttribute('data-acc'):''; } return el.getAttribute('data-acc')||''; }
   function loadBankOptions(){
-    var acc=currentAcc(); var sel=document.getElementById('dbank-f-bank');
+    var acc=currentAcc(); var sel=document.getElementById('dbank-f-bank'); var srch=document.getElementById('dbank-f-bank-search');
+    dbankBanks=[]; if(srch){ srch.value=''; srch.placeholder='Memuat daftar bank...'; }
     sel.innerHTML='<option value="">Memuat daftar bank...</option>';
-    if(!acc){ sel.innerHTML='<option value="">(Site belum punya akun)</option>'; return; }
+    if(!acc){ sel.innerHTML='<option value="">(Site belum punya akun)</option>'; if(srch) srch.placeholder='(Site belum punya akun)'; return; }
     fetch(BANKLIST+'?qrisAccountId='+encodeURIComponent(acc),{cache:'no-store'}).then(function(r){return r.json();}).then(function(d){
       var banks=(d&&(d.banks||d.data||d))||[]; if(!Array.isArray(banks)) banks=[];
-      if(!banks.length){ sel.innerHTML='<option value="">(Daftar bank kosong)</option>'; return; }
+      if(!banks.length){ sel.innerHTML='<option value="">(Daftar bank kosong)</option>'; if(srch) srch.placeholder='(Daftar bank kosong)'; return; }
+      dbankBanks=banks;
       sel.innerHTML='<option value="">Pilih bank...</option>'+banks.map(function(b){ return '<option value="'+esc(b.code)+'" data-name="'+esc(b.name)+'">'+esc(b.name)+'</option>'; }).join('');
-    }).catch(function(){ sel.innerHTML='<option value="">(Gagal memuat bank)</option>'; });
+      if(srch) srch.placeholder='Ketik nama bank...';
+      dbankBankRender('');
+    }).catch(function(){ sel.innerHTML='<option value="">(Gagal memuat bank)</option>'; if(srch) srch.placeholder='(Gagal memuat bank)'; });
   }
   window.dbankSiteChanged=loadBankOptions;
   window.dbankOpenAdd=function(){ document.getElementById('dbank-edit-id').value=''; document.getElementById('dbank-modal-title').textContent='Tambah Rekening'; document.getElementById('dbank-f-norek').value=''; document.getElementById('dbank-f-nama').value=''; resetOwner(); loadBankOptions(); document.getElementById('dbank-modal').classList.add('open'); };
-  window.dbankOpenEdit=function(id){ var b=ALL.filter(function(x){return x.id===id;})[0]; if(!b)return; document.getElementById('dbank-edit-id').value=id; document.getElementById('dbank-modal-title').textContent='Edit Rekening'; var siteEl=document.getElementById('dbank-f-site'); if(siteEl&&siteEl.tagName==='SELECT'){ siteEl.value=b.siteId; } document.getElementById('dbank-f-norek').value=b.noRekening; document.getElementById('dbank-f-nama').value=b.namaRekening||''; resetOwner(); loadBankOptions(); setTimeout(function(){ var sel=document.getElementById('dbank-f-bank'); sel.value=b.bankCode; if(sel.value!==b.bankCode){ var o=document.createElement('option'); o.value=b.bankCode; o.setAttribute('data-name',b.bankName); o.textContent=b.bankName; sel.appendChild(o); sel.value=b.bankCode; } },600); document.getElementById('dbank-modal').classList.add('open'); };
+  window.dbankOpenEdit=function(id){ var b=ALL.filter(function(x){return x.id===id;})[0]; if(!b)return; document.getElementById('dbank-edit-id').value=id; document.getElementById('dbank-modal-title').textContent='Edit Rekening'; var siteEl=document.getElementById('dbank-f-site'); if(siteEl&&siteEl.tagName==='SELECT'){ siteEl.value=b.siteId; } document.getElementById('dbank-f-norek').value=b.noRekening; document.getElementById('dbank-f-nama').value=b.namaRekening||''; resetOwner(); loadBankOptions(); setTimeout(function(){ var sel=document.getElementById('dbank-f-bank'); sel.value=b.bankCode; if(sel.value!==b.bankCode){ var o=document.createElement('option'); o.value=b.bankCode; o.setAttribute('data-name',b.bankName); o.textContent=b.bankName; sel.appendChild(o); sel.value=b.bankCode; } var _s=document.getElementById('dbank-f-bank-search'); if(_s) _s.value=b.bankName; },600); document.getElementById('dbank-modal').classList.add('open'); };
   window.dbankCloseModal=function(){ document.getElementById('dbank-modal').classList.remove('open'); };
   function resetOwner(){ var o=document.getElementById('dbank-owner'); o.className='dbank-owner'; document.getElementById('dbank-owner-txt').innerHTML='Akan terisi otomatis setelah Cek (bisa diketik manual).'; }
 

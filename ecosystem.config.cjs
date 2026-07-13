@@ -95,7 +95,8 @@ const apps = [
     name: 'qris-app',
     cwd: rootDir,
     script: path.join(rootDir, 'dist', 'server.js'),
-    instances: 1,
+    instances: 2,
+    exec_mode: 'cluster',
     autorestart: true,
     watch: false,
     env: buildQrisEnv({

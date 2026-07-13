@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { logger } from './logger';
 import { config } from './index';
+import { getScopeAccountIdsFromContext } from '../core/request-context';
 
 // Singleton pattern — prevents multiple PrismaClient instances in hot-reload
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
@@ -34,6 +35,28 @@ export const dbRead =
 if (process.env.NODE_ENV !== 'production') {
   globalForPrismaRead.prismaRead = dbRead;
 }
+
+// ── SCOPE GLOBAL (RBAC site-tenant): auto-filter READ query per akun-site utk alias-tenant. ──
+// Sumber scope = AsyncLocalStorage (diisi middleware per-request di app.ts). master / alias "semua site"
+// / worker (tanpa request) -> null -> NO-OP. Hanya READ (findMany/findFirst/count/aggregate/groupBy);
+// findUnique & tulis TIDAK disentuh. where di-AND-wrap (aman thd OR). Dipasang di db (writer) DAN dbRead (reader).
+const _SCOPE_FIELD: Record<string, string> = { Transaction: 'qrisAccountId', Mutation: 'qrisAccountId', QrisAccount: 'id' };
+const _SCOPE_READ = new Set(['findMany', 'findFirst', 'findFirstOrThrow', 'count', 'aggregate', 'groupBy']);
+function _applyScopeGuard(client: PrismaClient): void {
+  client.$use(async (params, next) => {
+    const field = params.model ? _SCOPE_FIELD[params.model] : undefined;
+    if (field && _SCOPE_READ.has(params.action as string)) {
+      const ids = getScopeAccountIdsFromContext();
+      if (ids) {
+        params.args = params.args || {};
+        params.args.where = { AND: [params.args.where ?? {}, { [field]: { in: ids } }] };
+      }
+    }
+    return next(params);
+  });
+}
+_applyScopeGuard(db);
+_applyScopeGuard(dbRead);
 
 /**
  * Initialize SQLite pragmas for optimal performance.

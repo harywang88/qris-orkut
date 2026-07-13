@@ -43,11 +43,11 @@ function buildWhere(q: Request['query']): EntryWhere {
 
   if (search) {
     where.OR = [
-      { summary: { contains: search } },
-      { actorName: { contains: search } },
-      { targetName: { contains: search } },
-      { action: { contains: search } },
-      { ipAddress: { contains: search } },
+      { summary: { contains: search, mode: 'insensitive' } },
+      { actorName: { contains: search, mode: 'insensitive' } },
+      { targetName: { contains: search, mode: 'insensitive' } },
+      { action: { contains: search, mode: 'insensitive' } },
+      { ipAddress: { contains: search, mode: 'insensitive' } },
     ];
   }
   return where;

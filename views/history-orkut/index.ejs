@@ -64,7 +64,7 @@
     <% accounts.forEach(function(acct, idx){ %>
       <div class="ho-card <%= acct.hasLink ? '' : 'ho-nolink' %>" data-id="<%= acct.id %>" data-name="<%= acct.merchantName %>" data-site="<%= acct.siteName || '' %>">
         <span class="ho-card-num"><%= idx+1 %></span>
-        <div class="ho-card-name"><%= acct.merchantName %></div>
+        <div class="ho-card-name"><%= acct.merchantName %><%= acct.status && acct.status !== 'active' ? ' · OFF' : '' %></div>
         <div class="ho-card-code"><%= acct.code %></div>
         <div class="ho-card-bal">Saldo <%= walletLabel %><br><b><%= fmtRpHo(isQris ? acct.lastQrisBalance : acct.lastMainBalance) %></b></div>
         <% if (acct.hasLink) { %>

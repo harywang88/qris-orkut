@@ -2,8 +2,9 @@ import { Request, Response } from 'express';
 import { db } from '../../config/database';
 import { logger } from '../../config/logger';
 import { listSites, getAccountSiteMap } from '../../shared/site.service';
-import { pendingMoneyTotal } from '../../shared/pending-money.service';
-import { getSiteScopeForUser } from '../../shared/alias-access.service';
+import { pendingMoneyTotal, crossDayPendingBooking } from '../../shared/pending-money.service';
+import { getSiteScopeForUser, isMasterUser } from '../../shared/alias-access.service';
+import { getOpeningAnchor, setOpeningAnchor, listOpeningAnchors, getBaseline, getStatusOverride, getPencairanOverride, getFee3Override, setPencairanOverride, setFee3Override } from '../../shared/report-opening-balance.service';
 
 // FIX #1: Batas hari dihitung dalam WIB (Asia/Jakarta, UTC+7), BUKAN zona server (UTC).
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -77,6 +78,11 @@ function utamaOnePercentFee(m: FeeMut): number {
 function maderaTransferFee(m: FeeMut): number {
   const t = _descOf(m).toLowerCase();
   return (t.includes('biaya transfer bi fast') || t.includes('biaya transfer bi-fast') || (t.includes('biaya transfer') && t.includes('bi fast'))) ? Math.abs(Number(m.amount || 0)) : 0;
+}
+// Madera "Bunga Tabungan" (pemasukan bunga bank), type credit.
+function maderaBungaAmount(m: FeeMut): number {
+  const t = _descOf(m).toLowerCase();
+  return (t.includes('bunga tabungan') || (t.includes('bunga') && t.includes('tabungan'))) ? Math.abs(Number(m.amount || 0)) : 0;
 }
 function _sumFee(map: Record<string, number>, accIds: string[]): number {
   return accIds.reduce((s, id) => s + (map[id] || 0), 0);
@@ -160,15 +166,16 @@ export async function showReports(req: Request, res: Response): Promise<void> {
       if (m.qrisAccountId) feeUtamaByAcc[m.qrisAccountId] = (feeUtamaByAcc[m.qrisAccountId] || 0) + utamaOnePercentFee(m);
     }
     const feeMaderaByAcc: Record<string, number> = {};
+    const bungaMaderaByAcc: Record<string, number> = {};
     for (const m of _maderaMuts) {
-      if (m.qrisAccountId) feeMaderaByAcc[m.qrisAccountId] = (feeMaderaByAcc[m.qrisAccountId] || 0) + maderaTransferFee(m);
+      if (m.qrisAccountId) { feeMaderaByAcc[m.qrisAccountId] = (feeMaderaByAcc[m.qrisAccountId] || 0) + maderaTransferFee(m); bungaMaderaByAcc[m.qrisAccountId] = (bungaMaderaByAcc[m.qrisAccountId] || 0) + maderaBungaAmount(m); }
     }
     const overallAccIds = restrictAccountIds || accountsAll.map((a) => a.id);
 
     // ── Saldo Awal/Akhir (hitung-mundur dari saldo terkini) + Pencairan + Direct Debit per akun ──
     // saldo_asof(T) = saldoTerkini - Σ delta(mutasi transactionTime > T). delta order-independent (anti-artefak urutan).
     const _balAccounts = await db.qrisAccount.findMany({
-      select: { id: true, lastQrisBalance: true, lastMainBalance: true, lastMaderaBalance: true },
+      select: { id: true, lastQrisBalance: true, lastMainBalance: true, lastMaderaBalance: true, createdAt: true, code: true },
     });
     const _balMuts = await db.mutation.findMany({
       where: { transactionTime: { gte: from } },
@@ -193,6 +200,8 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     }
     const _curBal: Record<string, { qris: number; utama: number; madera: number }> = {};
     for (const a of _balAccounts) _curBal[a.id] = { qris: a.lastQrisBalance || 0, utama: a.lastMainBalance || 0, madera: a.lastMaderaBalance || 0 };
+    const _codeMap: Record<string, string> = {};
+    for (const a of _balAccounts) _codeMap[a.id] = a.code || a.id;
     const _asofAcc = (accId: string, mode: 'awal' | 'akhir'): number => {
       const _c = _curBal[accId] || { qris: 0, utama: 0, madera: 0 };
       let _b = 0;
@@ -213,9 +222,50 @@ export async function showReports(req: Request, res: Response): Promise<void> {
       return { awal, akhir, pencairan, directDebit };
     };
 
+    // REPORT_ANCHOR_8: Saldo Awal Manual (jangkar) — override walk-back rapuh (Madera balanceAfter=0).
+    const _wibDateStr = (d: Date): string => { const w = new Date(d.getTime() + WIB_OFFSET_MS); return `${w.getUTCFullYear()}-${String(w.getUTCMonth() + 1).padStart(2, '0')}-${String(w.getUTCDate()).padStart(2, '0')}`; };
+    const _awalDate = _wibDateStr(from);
+    const _akhirDate = _wibDateStr(new Date(to.getTime() + 1));
+    const _anchorAwal = (scope: string): number | null => getOpeningAnchor(scope, _awalDate);
+    const _anchorAkhir = (scope: string): number | null => getOpeningAnchor(scope, _akhirDate);
+    const _isSingleDay = _awalDate === _wibDateStr(to);
+    // ONBOARDING: akun dgn createdAt = tanggal laporan (hari operasi pertama). Hanya utk tampilan 1 hari.
+    // Modal = walk-back "awal" akun baru = saldo saat ditambah (transaksi sebelum createdAt sudah disaring di ingest).
+    const _newAccIds = new Set<string>(_isSingleDay ? _balAccounts.filter((a) => _wibDateStr(a.createdAt) === _awalDate).map((a) => a.id) : []);
+    const _modalFor = (accIds: string[]): number => accIds.reduce((sm, id) => sm + (_newAccIds.has(id) ? _asofAcc(id, 'awal') : 0), 0);
+    // REPORT_BASELINE: baris Laporan pakai baseline (fixed 'awal operasional') bila ada utk hari itu;
+    // jika tidak, Saldo Akhir = RUMUS (Awal + Nominal + Pending - Fee - Fee2 - Fee3 - Pencairan). Awal = jangkar bila ada.
+    const _resolveReportRow = (scope: string, live: { nominal: number; pending: number; fee: number; fee2: number; fee3: number; bunga: number; modalMasuk: number; pencairan: number; walkbackAwal: number }) => {
+      const base = _isSingleDay ? getBaseline(scope, _awalDate) : null;
+      if (base) {
+        return { nominal: base.nominal, pending: base.pending, fee: base.fee, fee2: base.fee2, fee3: base.fee3, modalMasuk: 0, pencairan: base.pencairan, saldoAwal: base.saldoAwal, saldoAkhir: base.saldoAkhir, manual: true, isBaseline: true };
+      }
+      const saldoAwal = _anchorAwal(scope) ?? live.walkbackAwal;
+      const _pcr = getPencairanOverride(scope, _awalDate) ?? live.pencairan;
+      const _fee3 = getFee3Override(scope, _awalDate) ?? live.fee3;
+      const saldoAkhir = saldoAwal + live.nominal + live.pending - live.fee - live.fee2 - _fee3 + live.bunga + live.modalMasuk - _pcr;
+      return { nominal: live.nominal, pending: live.pending, fee: live.fee, fee2: live.fee2, fee3: _fee3, modalMasuk: live.modalMasuk, pencairan: _pcr, saldoAwal, saldoAkhir, manual: _anchorAwal(scope) != null, isBaseline: false, pencairanManual: getPencairanOverride(scope, _awalDate) != null, fee3Manual: getFee3Override(scope, _awalDate) != null };
+    };
+    // STATUS_MATCH (11 Jul): Status = Saldo Akhir (rumus) vs saldo FISIK (Grand Total scope) utk hari
+    // BERJALAN. Baseline/lampau/range -> match (angka koko / by-construction). Override manual tetap prioritas.
+    const _isCurrentDay = _isSingleDay && _awalDate === _wibDateStr(new Date());
+    const _sumBalance = (accIds: string[]): number => accIds.reduce((sm, id) => { const c = _curBal[id]; return sm + (c ? c.qris + c.utama + c.madera : 0); }, 0);
+    const _statusFor = (row: { saldoAkhir: number; isBaseline: boolean }, accIds: string[]): 'match' | 'unmatch' => {
+      if (row.isBaseline || !_isCurrentDay) return 'match';
+      const phys = _sumBalance(accIds);
+      const tol = Math.max(50000, Math.round(Math.abs(phys) * 0.01));
+      return Math.abs(row.saldoAkhir - phys) <= tol ? 'match' : 'unmatch';
+    };
+    // PENDING_CARRY: pending_booking lintas-hari -> keluar dari omset (Nominal).
+    const _pbRows = await db.transaction.findMany({
+      where: { statusPay: 'paid', paidAt: { gte: from, lte: to }, metadataJson: { contains: 'pending_booking' }, ...(restrictAccountIds ? { qrisAccountId: { in: restrictAccountIds } } : {}) },
+      select: { qrisAccountId: true, finalAmount: true, paidAt: true, metadataJson: true },
+    });
+    const _crossDay = crossDayPendingBooking(_pbRows);
     const siteBreakdown = await Promise.all(
       bucketsToShow.map(async (b) => {
-        const baseWhere = { qrisAccountId: { in: b.accountIds }, createdAt: { gte: from, lte: to } };
+        const _accIds = b.accountIds.filter((id) => !_newAccIds.has(id)); // ONBOARDING: akun baru keluar dari baris SITE (jadi mini-row), tetap dihitung di TOTAL
+        const baseWhere = { qrisAccountId: { in: _accIds }, createdAt: { gte: from, lte: to } };
         const [total, paid, expired, depositSuccess, depositFailed, manualReview, paidAgg] = await Promise.all([
           db.transaction.count({ where: baseWhere }),
           db.transaction.count({ where: { ...baseWhere, statusPay: 'paid' } }),
@@ -225,20 +275,31 @@ export async function showReports(req: Request, res: Response): Promise<void> {
           db.transaction.count({ where: { ...baseWhere, statusBot: 'manual_review' } }),
           // FIX #2: uang (nominal + fee) by paidAt (tanggal DIBAYAR) agar COCOK dgn grafik.
           db.transaction.aggregate({
-            where: { qrisAccountId: { in: b.accountIds }, statusPay: 'paid', paidAt: { gte: from, lte: to } },
+            where: { qrisAccountId: { in: _accIds }, statusPay: 'paid', paidAt: { gte: from, lte: to } },
             _sum: { finalAmount: true, feeAmount: true },
           }),
         ]);
         const totalPaid = paidAgg._sum.finalAmount ?? 0;
-        const totalFee = _sumFee(feeQrisByAcc, b.accountIds);
-        const fee2 = _sumFee(feeUtamaByAcc, b.accountIds);
-        const fee3 = _sumFee(feeMaderaByAcc, b.accountIds);
-        const _sb = _siteBal(b.accountIds);
+        const totalFee = _sumFee(feeQrisByAcc, _accIds);
+        const fee2 = _sumFee(feeUtamaByAcc, _accIds);
+        const fee3 = _sumFee(feeMaderaByAcc, _accIds);
+        const bunga = _sumFee(bungaMaderaByAcc, _accIds);
+        const _sb = _siteBal(_accIds);
         const _net = totalPaid - totalFee - fee2 - fee3;
-        const _status = Math.abs((_sb.awal + _net - _sb.pencairan - _sb.directDebit) - _sb.akhir) <= 5 ? 'match' : 'unmatch';
+        // RECONCILE STATUS (fix 11 Jul): FEE Biaya Layanan QRIS (totalFee) TIDAK memotong saldo
+        // wallet -- saldo QRIS diterima GROSS, terbukti tak ada baris 'biaya layanan' & delta saldo
+        // = nominal penuh. Kalau ikut dikurangi, tiap akun meleset persis sebesar FEE-nya (double
+        // count). Untuk cek keseimbangan SALDO, kurangi hanya fee yang benar-benar keluar saldo:
+        // fee2 (Utama 1%) + fee3 (transfer Madera). NET tampilan tetap pakai _net (net bisnis).
+        // Toleransi 0,1% NET (min Rp10.000) meredam skew tengah malam (paidAt vs waktu mutasi).
+        const _pend = (await pendingMoneyTotal(from, to, _accIds)).total;
+        const _crossSite = _sumFee(_crossDay.byAccount, _accIds);
+        const _row = _resolveReportRow('site:' + b.key, { nominal: totalPaid - _crossSite, pending: _pend, fee: totalFee, fee2, fee3, bunga, modalMasuk: 0, pencairan: _sb.pencairan, walkbackAwal: _sb.awal });
+        const _status = (getStatusOverride('site:' + b.key, _awalDate) ?? getStatusOverride('*', _awalDate)) ?? _statusFor(_row, _accIds);
         return {
           siteName: b.name,
-          accountCount: b.accountIds.length,
+          siteKey: b.key,
+          accountCount: _accIds.length,
           total,
           paid,
           expired,
@@ -246,13 +307,21 @@ export async function showReports(req: Request, res: Response): Promise<void> {
           depositSuccess,
           depositFailed,
           manualReview,
-          totalPaid,
-          totalFee,
-          fee2,
-          fee3,
-          saldoAwal: _sb.awal,
-          saldoAkhir: _sb.akhir,
-          pencairan: _sb.pencairan,
+          totalPaid: _row.nominal,
+          pending: _row.pending,
+          totalFee: _row.fee,
+          fee2: _row.fee2,
+          fee3: _row.fee3,
+          bunga,
+          modalMasuk: _row.modalMasuk,
+          saldoAwal: _row.saldoAwal,
+          saldoAkhir: _row.saldoAkhir,
+          saldoAwalManual: _row.manual,
+          isBaseline: _row.isBaseline,
+          pendingCarryProcessed: _row.isBaseline ? 0 : _crossSite,
+          pencairan: _row.pencairan,
+          pencairanManual: _row.pencairanManual,
+          fee3Manual: _row.fee3Manual,
           netAmount: _net,
           status: _status,
         };
@@ -279,9 +348,11 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     const overallTotalFee = _sumFee(feeQrisByAcc, overallAccIds);
     const overallFee2 = _sumFee(feeUtamaByAcc, overallAccIds);
     const overallFee3 = _sumFee(feeMaderaByAcc, overallAccIds);
+    const overallBunga = _sumFee(bungaMaderaByAcc, overallAccIds);
     const _osb = _siteBal(overallAccIds);
     const _onet = overallTotalPaid - overallTotalFee - overallFee2 - overallFee3;
-    const _ostatus = Math.abs((_osb.awal + _onet - _osb.pencairan - _osb.directDebit) - _osb.akhir) <= 5 ? 'match' : 'unmatch';
+    // idem site-level: feeQ (overallTotalFee) bukan potongan saldo -> jangan dikurangi saat cek match.
+    // STATUS_MATCH: _ostatus dihitung SETELAH _overallRow (butuh saldoAkhir final).
 
     // Grafik (nominal terbayar by paidAt, per HARI WIB). Selalu cakup seluruh rentang, <=31 batang.
     const totalDaysWib = Math.floor((to.getTime() - from.getTime()) / 86400000) + 1;
@@ -311,8 +382,32 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     const chartAmounts = bucketResults.map((r) => r.amount);
 
     const _pendingAgg = await pendingMoneyTotal(from, to, overallAccIds);
+    const _overallModal = _modalFor(overallAccIds);
+    const _overallRow = _resolveReportRow('overall', { nominal: overallTotalPaid - _crossDay.total, pending: _pendingAgg.total, fee: overallTotalFee, fee2: overallFee2, fee3: overallFee3, bunga: overallBunga, modalMasuk: _overallModal, pencairan: _osb.pencairan, walkbackAwal: _osb.awal - _overallModal });
+    const _ostatus = (getStatusOverride('overall', _awalDate) ?? getStatusOverride('*', _awalDate)) ?? _statusFor(_overallRow, overallAccIds);
+    // ONBOARDING mini-rows: 1 baris per akun baru (createdAt=hari ini) di antara SITE & TOTAL. Saldo Awal=0,
+    // Modal Masuk=saldo saat ditambah, Saldo Akhir=fisik. Sudah IKUT di TOTAL via _overallModal -> Grand Total match.
+    const _newRowIds = _isSingleDay ? overallAccIds.filter((id) => _newAccIds.has(id)) : [];
+    const newAccountRows = await Promise.all(_newRowIds.map(async (id) => {
+      const _pa = await db.transaction.aggregate({ where: { qrisAccountId: id, statusPay: 'paid', paidAt: { gte: from, lte: to } }, _sum: { finalAmount: true } });
+      const _nom = _pa._sum.finalAmount ?? 0;
+      const _pnd = (await pendingMoneyTotal(from, to, [id])).total;
+      const _fee = feeQrisByAcc[id] || 0, _fee2 = feeUtamaByAcc[id] || 0, _fee3 = feeMaderaByAcc[id] || 0, _bng = bungaMaderaByAcc[id] || 0;
+      const _pcr = (_madOut[id] && _madOut[id].pencairan) || 0;
+      const _modal = _asofAcc(id, 'awal');
+      const _akhir = _nom + _pnd - _fee - _fee2 - _fee3 + _bng + _modal - _pcr;
+      return { accountName: _codeMap[id] || id, siteKey: accSiteMap[id] || 'none', saldoAwal: 0, modalMasuk: _modal, totalPaid: _nom, pending: _pnd, totalFee: _fee, fee2: _fee2, fee3: _fee3, bunga: _bng, pencairan: _pcr, saldoAkhir: _akhir, status: 'match' as const };
+    }));
+    // Auto-carry (buku berjalan): laporan 1 hari LAMPAU yg sudah tutup -> simpan Saldo Akhir jadi Saldo Awal besok.
+    if (_isSingleDay && to.getTime() < Date.now()) {
+      bucketsToShow.forEach((b, i) => { const r = siteBreakdown[i] as { saldoAkhir?: number } | undefined; if (r && getOpeningAnchor('site:' + b.key, _akhirDate) == null && !getBaseline('site:' + b.key, _akhirDate)) setOpeningAnchor('site:' + b.key, _akhirDate, Number(r.saldoAkhir || 0) + newAccountRows.filter((nr) => nr.siteKey === b.key).reduce((sm, nr) => sm + nr.saldoAkhir, 0)); });
+      if (getOpeningAnchor('overall', _akhirDate) == null && !getBaseline('overall', _akhirDate)) setOpeningAnchor('overall', _akhirDate, _overallRow.saldoAkhir);
+    }
     res.render('reports/index', {
       title: 'Laporan',
+      isMaster: isMasterUser(req.session.user),
+      anchorAwalDate: _awalDate,
+      isSingleDay: _isSingleDay,
       range,
       from,
       to,
@@ -323,6 +418,7 @@ export async function showReports(req: Request, res: Response): Promise<void> {
       siteLocked: !!_aliasScope,
       hasNoneBucket,
       siteBreakdown,
+      newAccountRows,
       overall: {
         total: totalAll,
         paid: paidAll,
@@ -331,13 +427,21 @@ export async function showReports(req: Request, res: Response): Promise<void> {
         depositSuccess: depSuccessAll,
         depositFailed: depFailedAll,
         manualReview: manualReviewAll,
-        totalPaid: overallTotalPaid,
-        totalFee: overallTotalFee,
-        fee2: overallFee2,
-        fee3: overallFee3,
-        saldoAwal: _osb.awal,
-        saldoAkhir: _osb.akhir,
-        pencairan: _osb.pencairan,
+        totalPaid: _overallRow.nominal,
+        pending: _overallRow.pending,
+        totalFee: _overallRow.fee,
+        fee2: _overallRow.fee2,
+        fee3: _overallRow.fee3,
+        bunga: overallBunga,
+        modalMasuk: _overallRow.modalMasuk,
+        saldoAwal: _overallRow.saldoAwal,
+        saldoAkhir: _overallRow.saldoAkhir,
+        saldoAwalManual: _overallRow.manual,
+        saldoAkhirManual: _overallRow.isBaseline,
+        pendingCarryProcessed: _overallRow.isBaseline ? 0 : _crossDay.total,
+        pencairan: _overallRow.pencairan,
+        pencairanManual: _overallRow.pencairanManual,
+        fee3Manual: _overallRow.fee3Manual,
         netAmount: _onet,
         status: _ostatus,
         pendingTotal: _pendingAgg.total,
@@ -359,6 +463,48 @@ export async function showReports(req: Request, res: Response): Promise<void> {
 /**
  * GET /api/v1/reports/summary — JSON API dengan rentang tanggal + optional clientId.
  */
+// REPORT_ANCHOR_8: set jangkar saldo awal (master saja). scope 'overall' | 'site:<id>'.
+export async function setOpeningBalanceApi(req: Request, res: Response): Promise<void> {
+  try {
+    if (!isMasterUser(req.session.user)) { res.status(403).json({ ok: false, message: 'Hanya master.' }); return; }
+    const scope = typeof req.body?.scope === 'string' && req.body.scope ? req.body.scope : 'overall';
+    const wibDate = String(req.body?.wibDate || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(wibDate)) { res.status(400).json({ ok: false, message: 'Tanggal WIB tidak valid (YYYY-MM-DD).' }); return; }
+    const raw = req.body?.value;
+    const value = (raw === null || raw === undefined || raw === '') ? null : Number(String(raw).replace(/[^0-9-]/g, ''));
+    setOpeningAnchor(scope, wibDate, value);
+    logger.info({ scope, wibDate, value }, 'reports: set jangkar saldo awal');
+    res.json({ ok: true, scope, wibDate, value, anchors: listOpeningAnchors() });
+  } catch (err) {
+    logger.error({ err }, 'setOpeningBalanceApi error');
+    res.status(500).json({ ok: false, message: 'Gagal simpan.' });
+  }
+}
+
+export async function setMaderaCorrectionApi(req: Request, res: Response): Promise<void> {
+  try {
+    if (!isMasterUser(req.session.user)) { res.status(403).json({ ok: false, message: 'Hanya master.' }); return; }
+    const scope = typeof req.body?.scope === 'string' && req.body.scope ? req.body.scope : 'overall';
+    const wibDate = String(req.body?.wibDate || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(wibDate)) { res.status(400).json({ ok: false, message: 'Tanggal WIB tidak valid (YYYY-MM-DD).' }); return; }
+    const _num = (v: unknown): number | null => {
+      const t = String(v ?? '').replace(/[^0-9]/g, '');
+      return t === '' ? null : Number(t);
+    };
+    const pencairan = _num(req.body?.pencairan);
+    const fee3 = _num(req.body?.fee3);
+    if (pencairan !== null && (!Number.isFinite(pencairan) || pencairan < 0)) { res.status(400).json({ ok: false, message: 'Pencairan tidak valid.' }); return; }
+    if (fee3 !== null && (!Number.isFinite(fee3) || fee3 < 0)) { res.status(400).json({ ok: false, message: 'Biaya transfer tidak valid.' }); return; }
+    setPencairanOverride(scope, wibDate, pencairan);
+    setFee3Override(scope, wibDate, fee3);
+    logger.info({ scope, wibDate, pencairan, fee3 }, 'reports: set koreksi madera');
+    res.json({ ok: true, scope, wibDate, pencairan, fee3 });
+  } catch (err) {
+    logger.error({ err }, 'setMaderaCorrectionApi error');
+    res.status(500).json({ ok: false, message: 'Gagal simpan.' });
+  }
+}
+
 export async function getReportsSummary(req: Request, res: Response): Promise<void> {
   try {
     const today = new Date();

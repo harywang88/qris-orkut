@@ -5,6 +5,19 @@ import { createHash } from 'crypto';
 
 type PrismaLike = typeof db | Prisma.TransactionClient;
 
+// ONBOARDING CUTOFF: cache createdAt per akun (tak berubah seumur proses) utk saring transaksi LAMA akun baru.
+const _acctCreatedAtMs = new Map<string, number>();
+async function _accountCreatedAtMs(client: PrismaLike, accountId: string): Promise<number | null> {
+  const cached = _acctCreatedAtMs.get(accountId);
+  if (cached !== undefined) return cached;
+  try {
+    const a = await (client as typeof db).qrisAccount.findUnique({ where: { id: accountId }, select: { createdAt: true } });
+    const ms = a && a.createdAt ? a.createdAt.getTime() : null;
+    if (ms !== null) _acctCreatedAtMs.set(accountId, ms);
+    return ms;
+  } catch { return null; }
+}
+
 export interface MutationIngestInput {
   qrisAccountId: string;
   amount: number;
@@ -18,6 +31,7 @@ export interface MutationIngestInput {
   rawHash: string;
   rawDataJson: string;
   matchedTransactionId?: string | null;
+  dedupKeyOverride?: string | null; // MADERA_AUDIT_C #17: kunci dedup khusus (baris Madera kembar); QRIS/Utama TIDAK memakainya
 }
 
 function buildMutationPayload(mutation: Mutation) {
@@ -65,8 +79,19 @@ export async function storeMutationIfNew(
   input: MutationIngestInput,
   client: PrismaLike = db,
 ): Promise<{ created: boolean; mutation: Mutation }> {
-  const dedupKey = canonicalMutationHash(input);
-  const existing = await client.mutation.findFirst({ where: { dedupKey } });
+  // ONBOARDING CUTOFF: skip transaksi sebelum akun ditambah (createdAt). Melindungi data lampau akun baru.
+  if (input.transactionTime instanceof Date && !isNaN(input.transactionTime.getTime())) {
+    const _cutMs = await _accountCreatedAtMs(client, input.qrisAccountId);
+    if (_cutMs !== null && input.transactionTime.getTime() < _cutMs) {
+      return { created: false, mutation: null as unknown as Mutation };
+    }
+  }
+  const dedupKey = input.dedupKeyOverride ?? canonicalMutationHash(input); // MADERA_AUDIT_C #17: override khusus Madera; default (QRIS/Utama) TAK berubah
+  // Dedup di-SCOPE per-akun. dedupKey kanonik = type|amount|saldoAkhir|menitUTC TANPA accountId; utk Madera
+  // balanceAfter selalu 0 -> fee tetap (mis. BIAYA TRANSFER BI FAST 2500) di menit sama BENTROK LINTAS-AKUN
+  // sehingga baris akun lain ke-skip sbg "duplikat" palsu (mis. NGGICEL vs GDGCELL, 09:46 UTC 9 Jul).
+  // Mutasi selalu milik 1 akun -> scope by qrisAccountId benar & TETAP dedup cross-source (app vs report) utk akun sama.
+  const existing = await client.mutation.findFirst({ where: { dedupKey, qrisAccountId: input.qrisAccountId } });
   if (existing) {
     return { created: false, mutation: existing };
   }

@@ -36,7 +36,7 @@
 
     minAmount: 10000,
     maxAmount: 10000000,
-    tabLabel: 'QRIS QuickPay',
+    tabLabel: 'QRIS FastPay',
     pollIntervalMs: 3000,
 
     // Aktif/nonaktif cepat tanpa mencopot tag script. false = widget diam total.
@@ -46,6 +46,14 @@
     // Kosong = tampil untuk SEMUA member.
     onlyUsers: [],
   };
+
+  // 3 tab QRIS (KEMBAR): warna & label beda, tapi 1 form & sistem generate yang SAMA.
+  // Urutan array = urutan tampil dari kiri (merah paling kiri = default).
+  var QP_TABS = [
+    { id: 'qp-tab',   label: 'QRIS FastPay', bg: '#e53935', fg: '#ffffff' },
+    { id: 'qp-tab-2', label: 'QRIS Express', bg: '#f5c518', fg: '#1a1a1a' },
+    { id: 'qp-tab-3', label: 'QRIS Instan',  bg: '#1e88e5', fg: '#ffffff' },
+  ];
 
   // ── Konfigurasi dari halaman sulebet (gaya AlfaelPay) ──────────────────────
   // Prioritas: window.QRIS_QUICKPAY_CONFIG (snippet inline) > atribut data-* pada
@@ -168,9 +176,12 @@
     // game (.nav-tabs) / pills dashboard (#menu_dashboard). Bug lama: fallback
     // 'ul.nav' cocok dgn <ul class="nav navbar-nav"> -> tab QuickPay nyasar ke
     // menu atas di desktop. Desktop pakai #depo-nav-pills, mobile #depo-nav-pills-m.
-    return document.getElementById('depo-nav-pills') ||       // desktop
-           document.getElementById('depo-nav-pills-m') ||     // mobile
-           document.querySelector('.nav-pills:not(.navbar-nav):not(#menu_dashboard)');
+    // HANYA nav deposit lewat ID spesifik. Fallback '.nav-pills' RAKUS dibuang:
+    // Slot & Casino sulebet pakai 'nav nav-pills grabgtab' = juga .nav-pills, jadi saat
+    // member keluar dari Deposit (nav deposit hilang) observer re-inject -> fallback
+    // nyangkut ke nav Slot/Casino -> form QR nyasar. Kalau bukan halaman Deposit -> null -> diam.
+    return document.getElementById('depo-nav-pills') ||       // deposit desktop
+           document.getElementById('depo-nav-pills-m');       // deposit mobile
   }
 
   function findTabContent(nav) {
@@ -178,6 +189,12 @@
     while (sib) {
       if (sib.classList && sib.classList.contains('tab-content')) return sib;
       sib = sib.nextElementSibling;
+    }
+    // Fallback di-scope ke kontainer nav deposit dulu (bukan '.tab-content' global)
+    // supaya tak salah ambil tab-content Slot/Casino.
+    if (nav && nav.parentElement) {
+      var pc = nav.parentElement.querySelector('.tab-content');
+      if (pc) return pc;
     }
     return document.querySelector('.tab-content');
   }
@@ -197,18 +214,36 @@
     var sampleLink = sampleLi.querySelector('a');
     var tabContent = findTabContent(nav);
 
-    // tab
-    var li = el('li', { id: 'qp-tab' });
-    if (sampleLi.className) li.className = sampleLi.className.replace(/\bactive\b/g, '').trim();
-    var link = el('a');
-    link.href = '#qp-pane';
-    link.setAttribute('data-toggle', 'tab');
-    link.innerHTML = '<strong>' + CONFIG.tabLabel + '</strong>';
-    if (sampleLink && sampleLink.className) {
-      link.className = sampleLink.className.replace(/\bactive\b/g, '').trim();
+    // Badge/popup gambar QRIS melayang di atas tab. Offset beda desktop vs mobile.
+    var isMobileNav = (nav.id === 'depo-nav-pills-m');
+    var qpBadgeW = isMobileNav ? 60 : 64;
+    var qpBadgeML = isMobileNav ? -45 : -46;
+    var qpBadge = '<span style="position:absolute; margin-top:-26px; margin-left:' + qpBadgeML + 'px;">' +
+                  '<img src="' + CONFIG.baseUrl + '/QRIS.webp" width="' + qpBadgeW + '" alt=""></span>';
+
+    // Buat 3 tab QRIS kembar (warna beda, 1 form #qp-pane yang sama).
+    var qrisLis = [];
+    QP_TABS.forEach(function (t) {
+      var li = el('li', { id: t.id });
+      li.className = ((sampleLi.className ? sampleLi.className.replace(/\bactive\b/g, '').trim() + ' ' : '') + 'qp-qris-tab').trim();
+      var link = el('a');
+      link.href = '#qp-pane';
+      link.setAttribute('data-toggle', 'tab');
+      if (sampleLink && sampleLink.className) {
+        link.className = sampleLink.className.replace(/\bactive\b/g, '').trim();
+      }
+      // Warna tab (pakai !important supaya tak ketimpa style .active bawaan template).
+      link.style.setProperty('background', t.bg, 'important');
+      link.style.setProperty('color', t.fg, 'important');
+      link.style.fontWeight = '800';
+      link.innerHTML = '<strong style="color:' + t.fg + '">' + t.label + '</strong>' + qpBadge;
+      li.appendChild(link);
+      qrisLis.push(li);
+    });
+    // Sisipkan NOMOR 1-2-3 (paling kiri) sesuai urutan QP_TABS (insert terbalik).
+    for (var qi = qrisLis.length - 1; qi >= 0; qi--) {
+      nav.insertBefore(qrisLis[qi], nav.firstChild);
     }
-    li.appendChild(link);
-    nav.appendChild(li);
 
     // pane
     if (tabContent) {
@@ -216,7 +251,7 @@
       pane.style.display = 'none';
       pane.innerHTML =
         '<form id="qp-form" class="form-group-sm">' +
-          '<div class="well well-sm" style="margin-top:10px;">Deposit via <strong>' + CONFIG.tabLabel + '</strong>. Scan QR menggunakan e-wallet atau mobile banking Anda.</div>' +
+          '<div class="well well-sm" style="margin-top:10px;">Deposit via <strong>QRIS</strong>. Scan QR menggunakan e-wallet atau mobile banking Anda.</div>' +
           '<div class="form-group"><label>Jumlah</label>' +
             '<input type="text" inputmode="numeric" class="form-control text-right" id="qp-amount" style="font-weight:bold" placeholder="Masukkan jumlah deposit">' +
           '</div>' +
@@ -227,41 +262,64 @@
     }
 
     injectStyle();
-    wireTabToggling(nav, li, tabContent);
+    wireTabToggling(nav, qrisLis, tabContent);
     wireAmountFormat();
     wireSubmit();
+    // DEFAULT: buka tab QRIS pertama (merah) begitu form deposit muncul (kecuali
+    // member sudah pilih tab lain). Re-assert sekali setelah delay agar menang atas
+    // default bawaan template yang mungkin di-set SETELAH tab kita disisipkan.
+    if (!qpUserPicked) {
+      showQpPane(nav, qrisLis[0], tabContent);
+      setTimeout(function () {
+        if (!qpUserPicked && document.getElementById('qp-tab')) showQpPane(nav, qrisLis[0], tabContent);
+      }, 400);
+    }
     return true;
   }
 
   function injectStyle() {
     if (document.getElementById('qp-style')) return;
     var s = el('style', { id: 'qp-style' });
-    s.innerHTML = '#qp-tab a{cursor:pointer}#qp-tab.active a{font-weight:bold}';
+    s.innerHTML = '.qp-qris-tab a{cursor:pointer;border-radius:6px;margin:0 2px;transition:filter .15s}' +
+      '.qp-qris-tab a:hover{filter:brightness(1.08)}' +
+      '.qp-qris-tab.active a{font-weight:bold;filter:brightness(1.06)}' +
+      '.qp-qris-tab a strong{color:inherit}';
     document.head.appendChild(s);
   }
 
-  function wireTabToggling(nav, li, tabContent) {
-    var link = li.querySelector('a');
-    link.addEventListener('click', function (e) {
-      e.preventDefault();
-      if (tabContent) {
-        tabContent.querySelectorAll('.tab-pane:not(#qp-pane)').forEach(function (p) {
-          if (!p.getAttribute('data-qp-prev')) p.setAttribute('data-qp-prev', p.className);
-          p.classList.remove('active', 'in');
-          p.style.display = 'none';
-        });
-      }
-      nav.querySelectorAll('li').forEach(function (x) { x.classList.remove('active'); });
-      li.classList.add('active');
-      var qp = document.getElementById('qp-pane');
-      if (qp) { qp.className = 'tab-pane fade active in'; qp.style.display = 'block'; }
+  // Aktifkan pane QRIS FastPay. Dipakai oleh klik tab DAN default otomatis.
+  function showQpPane(nav, li, tabContent) {
+    if (tabContent) {
+      tabContent.querySelectorAll('.tab-pane:not(#qp-pane)').forEach(function (p) {
+        if (!p.getAttribute('data-qp-prev')) p.setAttribute('data-qp-prev', p.className);
+        p.classList.remove('active', 'in');
+        p.style.display = 'none';
+      });
+    }
+    nav.querySelectorAll('li').forEach(function (x) { x.classList.remove('active'); });
+    li.classList.add('active');
+    var qp = document.getElementById('qp-pane');
+    if (qp) { qp.className = 'tab-pane fade active in'; qp.style.display = 'block'; }
+  }
+
+  function wireTabToggling(nav, qrisLis, tabContent) {
+    // Klik tab QRIS mana pun (merah/kuning/biru) -> tampilkan form QRIS yang SAMA
+    // + highlight tab yang diklik.
+    qrisLis.forEach(function (li) {
+      var link = li.querySelector('a');
+      link.addEventListener('click', function (e) {
+        e.preventDefault();
+        showQpPane(nav, li, tabContent);
+      });
     });
 
-    nav.querySelectorAll('li:not(#qp-tab)').forEach(function (other) {
+    // Klik tab NON-QRIS -> sembunyikan pane QRIS, kembalikan pane asli template.
+    nav.querySelectorAll('li:not(.qp-qris-tab)').forEach(function (other) {
       other.addEventListener('click', function () {
+        qpUserPicked = true; // member pilih tab lain -> jangan paksa default lagi
         var qp = document.getElementById('qp-pane');
         if (qp) { qp.className = 'tab-pane fade'; qp.style.display = 'none'; }
-        li.classList.remove('active');
+        qrisLis.forEach(function (l) { l.classList.remove('active'); });
         resetForm();
         if (tabContent) {
           tabContent.querySelectorAll('.tab-pane:not(#qp-pane)').forEach(function (p) {
@@ -292,6 +350,7 @@
   }
 
   // ── generate + polling ─────────────────────────────────────────────────────
+  var qpUserPicked = false; // true bila member pilih tab lain -> jangan paksa default lagi
   var checkTimer = null, countdownTimer = null;
 
   function stopPolling() {
