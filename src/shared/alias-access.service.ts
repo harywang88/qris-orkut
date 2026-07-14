@@ -99,6 +99,7 @@ export const MENU_DEFS: MenuDef[] = [
   { key: 'mutasi-qris', label: 'Mutasi QRIS', icon: '🔁', path: '/dashboard/mutations/qris', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'mutasi-utama', label: 'Mutasi Utama', icon: '💰', path: '/dashboard/mutations/utama', subs: [{ key: 'view', label: 'Lihat' }] },
   { key: 'mutasi-madera', label: 'Mutasi Madera', icon: '🏦', path: '/dashboard/mutations/madera', subs: [{ key: 'view', label: 'Lihat' }] },
+  { key: 'laporkan-orderkuota', label: 'Laporkan ke OrderKuota', icon: '📮', path: '/dashboard/orderkuota-report', subs: [{ key: 'view', label: 'Lihat' }, { key: 'create', label: 'Lapor' }, { key: 'cancel', label: 'Batalkan' }] },
   { key: 'settlement', label: 'Settlement', icon: '💸', path: '/dashboard/settlement', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }, { key: 'transfer', label: 'Kirim Uang' }] },
   { key: 'daftar-bank', label: 'Daftar Bank', icon: '🏛️', path: '/dashboard/daftar-bank', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Kelola' }] },
   { key: 'merchant-qr', label: 'Merchant QR', icon: '🏪', path: '/merchant-qr', sensitive: true, subs: [{ key: 'view', label: 'Lihat' }, { key: 'manage', label: 'Kelola' }] },

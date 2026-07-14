@@ -372,3 +372,33 @@ model RequestNonce {
   @@unique([apiKey, nonce])
   @@index([expiresAt])
 }
+
+// ── Laporan ke OrderKuota ────────────────────────────────────────────────────
+// "Buku catatan kehilangan": CS lapor QR yg uangnya nyangkut di OrderKuota (sudah bayar,
+// saldo tak masuk, mutasi belum ada). Bot cek menu Uang Pending tiap 2 mnt; jika ada mutasi
+// UNMATCHED dgn (nominal + akun + RRN) sama → ambil alih + kredit QR itu.
+// SENGAJA tanpa @relation ke model lain (pakai id polos) agar 100% additive — tak menyentuh
+// model Transaction/Mutation/QrisAccount yang sudah ada. Join dilakukan manual di kode.
+model OrderKuotaReport {
+  id                String    @id @default(cuid())
+  qrId              String    // Transaction.qrId yang dilaporkan (kunci lookup)
+  transactionId     String?   // id Transaction hasil lookup qrId (snapshot)
+  qrisAccountId     String    // akun QRIS (dari lookup QR)
+  amount            Int       // nominal = Transaction.finalAmount (dari lookup QR)
+  rrn               String    // nomor resi pembayaran — KUNCI pencocokan uang masuk
+  proofPath         String?   // path file bukti transfer (form Fase 1 wajibkan)
+  status            String    @default("pending") // pending | processed_bot | processed_manual | cancelled
+  reportedBy        String    // username CS pelapor
+  note              String?
+  matchedMutationId String?   // id Mutation yang diambil-alih (di-set saat diproses)
+  processedBy       String?   // 'bot' | username (jika manual)
+  reportedAt        DateTime  @default(now())
+  processedAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([status, reportedAt])       // sweep bot: ambil yg masih pending
+  @@index([rrn])                       // pencocokan by RRN
+  @@index([qrisAccountId, amount, status]) // pencocokan by akun+nominal
+  @@index([qrId])                      // cegah lapor-ganda (cek report aktif per QR di kode)
+}

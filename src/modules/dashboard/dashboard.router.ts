@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import express, { Router, Request, Response } from 'express';
 import { requireMenu, requirePermission, requireMaster } from '../../core/rbac.middleware';
 import { showCariSelisih } from './cari-selisih.controller';
 import {
@@ -69,6 +69,7 @@ import {
 import { showPostgresMonitor, getPostgresMonitorJson } from './postgres-monitor.controller';
 import { showSaldoUtama, showMadera } from './wallet.controller';
 import { showPendingMoney, handleTagPendingMoney, handleUntagPendingMoney, handleBookPendingMoney } from './pending-money.controller';
+import { showOrderkuotaReport, apiLookupQr, handleCreateReport, handleCancelReport, serveProof, apiReportStatus } from './orderkuota-report.controller';
 import { showReconcile } from './reconcile.controller';
 
 const router = Router();
@@ -90,6 +91,14 @@ router.get('/pending-money', requireMenu('mutasi-qris'), showPendingMoney);
 router.post('/api/pending-money/:mutationId/tag', requireMenu('mutasi-qris'), handleTagPendingMoney);
 router.post('/api/pending-money/:mutationId/untag', requireMenu('mutasi-qris'), handleUntagPendingMoney);
 router.post('/api/pending-money/:mutationId/book', requireMenu('mutasi-qris'), handleBookPendingMoney);
+// ── Laporkan ke OrderKuota (CS lapor QR uang nyangkut; bot ambil-alih dari Uang Pending) ──
+router.get('/orderkuota-report', requireMenu('laporkan-orderkuota'), showOrderkuotaReport);
+router.get('/api/orderkuota-report/lookup', requireMenu('laporkan-orderkuota'), apiLookupQr);
+router.get('/api/orderkuota-report/status', requireMenu('laporkan-orderkuota'), apiReportStatus);
+// Bukti = raw binary (octet-stream) → global json/urlencoded skip, express.raw khusus route ini (tak ubah limit global).
+router.post('/api/orderkuota-report', requireMenu('laporkan-orderkuota', 'create'), express.raw({ type: '*/*', limit: '8mb' }), handleCreateReport);
+router.post('/api/orderkuota-report/:id/cancel', requireMenu('laporkan-orderkuota', 'cancel'), handleCancelReport);
+router.get('/orderkuota-report/proof/:id', requireMenu('laporkan-orderkuota'), serveProof);
 router.get('/reconcile', requireMenu('mutasi-utama'), showReconcile);
 router.get('/madera-nobu', showMaderaNobuHistory);
 router.get('/manual-send/:accountId', requireMenu('settlement', 'transfer'), showManualSendPage);

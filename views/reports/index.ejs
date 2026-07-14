@@ -195,8 +195,8 @@
               <td class="text-right font-mono whitespace-nowrap" style="color:#67e8f9"><% if (row.modalMasuk) { %>Rp <%= (row.modalMasuk || 0).toLocaleString('id-ID') %><% } else { %><span style="color:var(--muted)">-</span><% } %></td>
               <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= row.totalPaid.toLocaleString('id-ID') %><% if (row.pendingCarryProcessed) { %><br><span style="font-size:9px;color:#93c5fd;font-weight:600" title="Uang pending kemarin yg diproses hari ini — sudah dihitung kemarin, di luar omset">&#8617; pending kemarin: <%= row.pendingCarryProcessed.toLocaleString('id-ID') %></span><% } %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#93c5fd">Rp <%= (row.pending || 0).toLocaleString('id-ID') %></td>
-              <td class="text-right font-mono whitespace-nowrap text-muted">Rp <%= row.totalFee.toLocaleString('id-ID') %></td>
-              <td class="text-right font-mono whitespace-nowrap" style="color:#fbbf24">Rp <%= (row.fee2 || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap text-muted">Rp <%= row.totalFee.toLocaleString('id-ID') %><% if (row.feeNote) { %> <span title="<%= row.feeNote %>" style="color:#f0abfc;font-size:10px;cursor:help">&#9998;</span><% } %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#fbbf24">Rp <%= (row.fee2 || 0).toLocaleString('id-ID') %><% if (row.fee2Note) { %> <span title="<%= row.fee2Note %>" style="color:#f0abfc;font-size:10px;cursor:help">&#9998;</span><% } %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#fca5a5">Rp <%= (row.fee3 || 0).toLocaleString('id-ID') %><% if (row.fee3Manual) { %> <span title="koreksi manual" style="color:#f0abfc;font-size:10px">&#9998;</span><% } %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#34d399">Rp <%= (row.bunga || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#f0abfc">Rp <%= (row.pencairan || 0).toLocaleString('id-ID') %><% if (row.pencairanManual) { %> <span title="koreksi manual" style="color:#f0abfc;font-size:10px">&#9998;</span><% } %></td>
@@ -212,16 +212,16 @@
               <td class="text-right font-mono text-muted">-</td>
               <td class="text-right font-mono text-muted">-</td>
               <td class="text-right font-mono whitespace-nowrap text-muted">Rp 0</td>
-              <td class="text-right font-mono whitespace-nowrap" style="color:#67e8f9;font-weight:700">Rp <%= (nr.modalMasuk || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#67e8f9;font-weight:700">Rp <%= (nr.modalMasuk || 0).toLocaleString('id-ID') %><% if (typeof isMaster !== 'undefined' && isMaster) { %> <span onclick="editModalAkun('<%= nr.accountId %>', '<%= nr.accountName %>', <%= nr.modalMasuk || 0 %>)" title="Edit modal (master)" style="cursor:pointer;color:#f0abfc;font-size:10px">&#9998;</span><% } %></td>
               <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= (nr.totalPaid || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#93c5fd">Rp <%= (nr.pending || 0).toLocaleString('id-ID') %></td>
-              <td class="text-right font-mono whitespace-nowrap text-muted">Rp <%= (nr.totalFee || 0).toLocaleString('id-ID') %></td>
-              <td class="text-right font-mono whitespace-nowrap" style="color:#fbbf24">Rp <%= (nr.fee2 || 0).toLocaleString('id-ID') %></td>
+              <td class="text-right font-mono whitespace-nowrap text-muted">Rp <%= (nr.totalFee || 0).toLocaleString('id-ID') %><% if (nr.feeNote) { %> <span title="<%= nr.feeNote %>" style="color:#f0abfc;font-size:10px;cursor:help">&#9998;</span><% } %></td>
+              <td class="text-right font-mono whitespace-nowrap" style="color:#fbbf24">Rp <%= (nr.fee2 || 0).toLocaleString('id-ID') %><% if (nr.fee2Note) { %> <span title="<%= nr.fee2Note %>" style="color:#f0abfc;font-size:10px;cursor:help">&#9998;</span><% } %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#fca5a5">Rp <%= (nr.fee3 || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#34d399">Rp <%= (nr.bunga || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap" style="color:#f0abfc">Rp <%= (nr.pencairan || 0).toLocaleString('id-ID') %></td>
               <td class="text-right font-mono whitespace-nowrap text-ink">Rp <%= (nr.saldoAkhir || 0).toLocaleString('id-ID') %></td>
-              <td class="text-center font-mono"><span style="color:#86efac;font-weight:800">● MATCH</span></td>
+              <td class="text-center font-mono"><% if (nr.status === 'match') { %><span style="color:#86efac;font-weight:800">● MATCH</span><% } else { %><span style="color:#fca5a5;font-weight:800" title="Rumus (modal+deposit−fee−pencairan) belum sama dgn saldo fisik — cek pencairan/fee">● UNMATCH</span><% } %></td>
             </tr>
           <% }); %>
         </tbody>
@@ -316,6 +316,17 @@ function openMaderaKoreksi(){
   document.getElementById('mkModal').style.display='flex';
 }
 function closeMaderaKoreksi(){ document.getElementById('mkModal').style.display='none'; }
+async function editModalAkun(accountId, name, current){
+  var v = window.prompt('Modal masuk (saldo asli saat akun "'+name+'" ditambah):\n(kosongkan = kembali ke otomatis)', current);
+  if (v === null) return;
+  var val = String(v).replace(/[^0-9-]/g,'');
+  try{
+    var res=await fetch(<%- JSON.stringify(url('/reports/account-modal')) %>, { method:'POST', headers:{ 'Content-Type':'application/json','Accept':'application/json' }, body:JSON.stringify({ accountId: accountId, value: (String(v).trim()===''? null : val) }) });
+    var j=await res.json().catch(function(){ return {ok:false,message:'Respons tidak valid'}; });
+    if(j.ok){ window.location.reload(); return; }
+    alert('⚠️ '+(j.message||'Gagal simpan'));
+  }catch(e){ alert('❌ '+e.message); }
+}
 async function saveMaderaKoreksi(){
   var btn=document.getElementById('mkSave'); var msg=document.getElementById('mkMsg');
   var body={ scope:document.getElementById('mkScope').value, wibDate:document.getElementById('mkDate').value, pencairan:mkNum(document.getElementById('mkPencairan').value), fee3:mkNum(document.getElementById('mkFee3').value) };

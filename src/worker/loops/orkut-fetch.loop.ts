@@ -410,6 +410,13 @@ async function pullUtamaMutationsOnce(account: QrisAccount): Promise<void> {
 
 // System B madera: poll saldo Madera (fetchMaderaTransferOverview) → saat berubah → tarik feed madera → DB.
 async function runAppMaderaLane(account: QrisAccount, state: SchedulerState): Promise<void> {
+  // GUARD JAM OFFLINE NOBU/MADERA: 00:00:00-00:06:59 WIB provider MATI TOTAL (tak bisa cek saldo/
+  // tarik mutasi/transfer). Skip poll -> hemat request pasti-gagal + kurangi feed tak stabil (biang duplikat).
+  const _wibMinNow = ((Math.floor(Date.now() / 60000) + 7 * 60) % 1440);
+  if (_wibMinNow < 7) {
+    state.madera.nextAt = Date.now() + getMaderaLaneInterval(account);
+    return;
+  }
   state.madera.running = true;
 
   try {

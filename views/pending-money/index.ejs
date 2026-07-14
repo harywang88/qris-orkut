@@ -182,7 +182,9 @@
             </td>
             <td style="text-align:center">
               <div style="display:flex; gap:6px; justify-content:center; flex-wrap:wrap">
-                <% if (r.tag && r.tag.status === 'claimed') { %>
+                <% if (r.claimedByReport) { %>
+                  <span class="pm-badge" style="background:rgba(139,92,246,.16);color:#c4b5fd" title="Ada laporan OrderKuota aktif (RRN+nominal+akun cocok) — bot akan ambil alih & kredit otomatis. Booking manual dikunci agar tak dobel."><i class="fa-solid fa-flag"></i> Diklaim Laporan OrderKuota</span>
+                <% } else if (r.tag && r.tag.status === 'claimed') { %>
                   <span class="pm-badge" style="background:rgba(134,239,172,.15);color:#86efac"><i class="fa-solid fa-circle-check"></i> Diklaim<%= r.tag.website ? (' → ' + r.tag.website) : '' %></span>
                   <button class="pm-btn pm-btn-ghost" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/untag') %>" onclick="pmUntag(this)">Reset</button>
                 <% } else { %>
@@ -257,7 +259,8 @@
       </thead>
       <tbody>
         <% _locked.forEach(function (r) {
-             var tip = 'Dari Uang Pending · masuk ' + fmtWib(r.transactionTime) + (r.processedAt ? (' · diproses ' + fmtWib(r.processedAt)) : '') + (r.processedBy ? (' oleh ' + r.processedBy) : '');
+             var _isOk = (r.source === 'orderkuota');
+             var tip = (_isOk ? 'Diambil alih oleh Laporkan ke OrderKuota' : 'Dari Uang Pending') + ' · masuk ' + fmtWib(r.transactionTime) + (r.processedAt ? (' · diproses ' + fmtWib(r.processedAt)) : '') + (r.processedBy ? (' oleh ' + r.processedBy) : '');
         %>
           <tr class="pm-locked-row" title="<%= tip %>">
             <td class="whitespace-nowrap text-muted-2"><%= fmtWib(r.transactionTime) %></td>
@@ -276,7 +279,11 @@
               <span class="block text-[10px] text-muted"><%= (r.website ? ('→ ' + r.website) : '') %><%= r.processedBy ? (' · ' + r.processedBy) : '' %></span>
             </td>
             <td style="text-align:center">
-              <span class="pm-badge" style="background:rgba(134,239,172,.15);color:#86efac"><i class="fa-solid fa-lock"></i> Terkunci</span>
+              <% if (_isOk) { %>
+                <span class="pm-badge" style="background:rgba(139,92,246,.16);color:#c4b5fd" title="Diambil alih oleh Laporkan ke OrderKuota"><i class="fa-solid fa-flag"></i> Diambil alih (OrderKuota)</span>
+              <% } else { %>
+                <span class="pm-badge" style="background:rgba(134,239,172,.15);color:#86efac"><i class="fa-solid fa-lock"></i> Terkunci</span>
+              <% } %>
             </td>
           </tr>
         <% }); %>

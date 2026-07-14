@@ -42,15 +42,29 @@ def wib_today():
     return (datetime.now(timezone.utc) + timedelta(hours=7)).strftime("%Y-%m-%d")
 
 
+# epoch (UTC) saat hari WIB `date_str` TUTUP = date_str 24:00 WIB = date_str 17:00:00 UTC.
+# Cache tanggal-lampau baru boleh dipercaya FINAL bila di-tulis SETELAH ini + margin settlement.
+_SETTLE_MARGIN = 900  # 15 menit toleransi (offline Nobu 00:00-00:06 + lag settle ekor hari)
+
+
+def _wib_day_end_epoch(date_str):
+    d = datetime.strptime(date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+    return (d + timedelta(hours=17)).timestamp()
+
+
 # ---------- Ledger Nagox ----------
 def pull_ledger_text(date_str):
     os.makedirs(CACHE_DIR, exist_ok=True)
     cache = os.path.join(CACHE_DIR, "%s-%s.csv" % (BANK_ID, date_str))
     if os.path.exists(cache):
-        if date_str < wib_today():
-            return open(cache, encoding="utf-8").read()
         import time as _t
-        if _t.time() - os.path.getmtime(cache) < 600:
+        mtime = os.path.getmtime(cache)
+        if date_str < wib_today():
+            # Tanggal lampau: cache FINAL hanya jika di-snapshot setelah hari WIB itu benar-benar tutup.
+            # Kalau ke-snapshot tengah-hari (mis. via menu 21:46), ekor transaksi hilang -> tarik ulang 1x.
+            if mtime >= _wib_day_end_epoch(date_str) + _SETTLE_MARGIN:
+                return open(cache, encoding="utf-8").read()
+        elif _t.time() - mtime < 600:
             return open(cache, encoding="utf-8").read()
     sys.path.insert(0, "/opt/qris-orkut/nagox")
     import nagox_service as ns

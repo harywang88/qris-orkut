@@ -126,6 +126,27 @@
     </a>
     <% } %>
 
+    <% if (can('laporkan-orderkuota')) { %>
+    <a href="<%= url('/dashboard/orderkuota-report') %>" class="qris-nav-link">
+      <span class="flex items-center gap-3">
+        <i class="fa-solid fa-flag qris-nav-icon"></i>
+        <span>Laporkan ke OrderKuota</span>
+      </span>
+      <span id="okReportBadge" style="display:none;background:#fbbf24;color:#3a2500;font-size:10px;font-weight:800;border-radius:999px;padding:1px 7px;min-width:18px;text-align:center;line-height:16px" title="Laporan menunggu diproses bot"></span>
+    </a>
+    <script>
+    (function(){
+      var el = document.getElementById('okReportBadge'); if(!el) return;
+      async function okBadgeUpd(){
+        try { var r = await fetch('<%= url('/dashboard/api/orderkuota-report/status') %>'); var d = await r.json();
+          if(d && d.count > 0){ el.textContent = d.count; el.style.display='inline-block'; } else { el.style.display='none'; }
+        } catch(e){}
+      }
+      okBadgeUpd(); setInterval(okBadgeUpd, 30000);
+    })();
+    </script>
+    <% } %>
+
     <% if (can('mutasi-utama')) { %>
     <a href="<%= url('/dashboard/reconcile') %>" class="qris-nav-link">
       <span class="flex items-center gap-3">

@@ -17,6 +17,7 @@ import { createHash } from 'crypto';
 import { appGateway } from './gateways/app-orkut.gateway';
 import { storeMutationIfNew } from './mutation-ingest.service';
 import { logger } from '../config/logger';
+import { db } from '../config/database';
 
 const MONTHS: Record<string, number> = {
     jan: 0, feb: 1, mar: 2, apr: 3, mei: 4, may: 4, jun: 5,
@@ -151,11 +152,9 @@ export async function pullAndPersistMaderaHistory(account: MaderaAccount): Promi
     // ORDINAL per grup supaya N transfer kembar tersimpan N (bukan 1). Ordinal 0 pakai rumus LAMA
     // (rawHash+dedup asli) -> baris existing TAK ter-insert ulang. Ordinal>=1 dapat kunci unik.
     // Order-independent: baris identik fungible -> himpunan kunci hanya bergantung JUMLAH.
-    const _grpOrd = new Map();
-    for (const item of items) {
-        const mapped = mapMaderaFeedItem(account.id, item);
-        if (!mapped)
-            continue;
+    const _grpOrd = new Map<string, number>();
+    // Simpan 1 baris (ORDINAL #17 tetap: N baris identik dlm 1 pull tersimpan N, bukan 1).
+    const _storeRow = async (mapped: NonNullable<ReturnType<typeof mapMaderaFeedItem>>) => {
         const _ord = _grpOrd.get(mapped.rawHash) ?? 0;
         _grpOrd.set(mapped.rawHash, _ord + 1);
         const _rowHash = _ord === 0 ? mapped.rawHash : mapped.rawHash + ':' + _ord;
@@ -182,6 +181,68 @@ export async function pullAndPersistMaderaHistory(account: MaderaAccount): Promi
         catch (err) {
             logger.warn({ err, accountCode: account.code }, 'pullAndPersistMaderaHistory: store failed');
         }
+    };
+
+    // MADERA_DUP_FIX (Opsi 1, 13 Jul): feed OrderKuota kadang beri transaksi DINI HARI dgn TANGGAL
+    // SALAH (kemarin) di satu tarikan, lalu tanggal BENAR di tarikan berikutnya -> dedup lama (kunci
+    // tanggal) lolos -> DOBEL (fee3/pencairan/topup). DEDUP TOLERAN-TANGGAL: baris DISTINCTIVE (nominal
+    // unik) yg punya kembaran identik (akun+nominal+tujuan+jam-menit) beda ~24 jam -> PERTAHANKAN tanggal
+    // BENAR (belakangan/stabil), buang yg AWAL (salah "kemarin"). Nominal unik -> mustahil salah-hapus
+    // data asli. Fee (2500, generik) TIDAK di-dedup langsung (nominal tak unik=rawan); fee palsu dibuang
+    // BARENG transfer palsunya (pasangan waktu sama).
+    const _H = 3600000;
+    const _clockMin = (d: Date) => d.getUTCHours() * 60 + d.getUTCMinutes(); // beda kelipatan 24 jam -> menit sama UTC/WIB
+    const _ketOf = (raw: string | null | undefined): string => { try { return String(JSON.parse(raw || '{}').keterangan || ''); } catch { return ''; } };
+    const _isFee = (desc: string) => /biaya transfer/i.test(desc);
+    const _mapped = items.map((it) => mapMaderaFeedItem(account.id, it)).filter((m): m is NonNullable<ReturnType<typeof mapMaderaFeedItem>> => Boolean(m));
+    const _rejectedTs = new Set<number>(); // ms waktu baris SALAH (transfer di-skip) -> fee-nya ikut di-skip
+
+    // PASS 1: baris DISTINCTIVE (bukan fee) -> dedup toleran-tanggal
+    for (const mapped of _mapped) {
+        if (_isFee(mapped.description)) continue;
+        const _Tms = mapped.transactionTime.getTime();
+        const _cands = await db.mutation.findMany({
+            where: {
+                qrisAccountId: String(account.id),
+                walletCategory: 'madera',
+                amount: mapped.amount,
+                transactionTime: { gte: new Date(_Tms - 28 * _H), lte: new Date(_Tms + 28 * _H) },
+            },
+            select: { id: true, transactionTime: true, rawDataJson: true },
+        });
+        const _twin = _cands.find((c) => {
+            const dh = Math.abs(c.transactionTime.getTime() - _Tms) / _H;
+            return dh >= 20 && dh <= 28
+                && _clockMin(c.transactionTime) === _clockMin(mapped.transactionTime)
+                && _ketOf(c.rawDataJson) === mapped.description;
+        });
+        if (_twin) {
+            if (_twin.transactionTime.getTime() < _Tms) {
+                // twin = copy tanggal-AWAL (salah "kemarin") -> hapus twin + 1 fee pasangannya, simpan yg BENAR
+                try {
+                    await db.mutation.delete({ where: { id: _twin.id } });
+                    const _wrongFee = await db.mutation.findFirst({
+                        where: { qrisAccountId: String(account.id), walletCategory: 'madera', transactionTime: _twin.transactionTime, rawDataJson: { contains: 'BIAYA TRANSFER' } },
+                        select: { id: true },
+                    });
+                    if (_wrongFee) await db.mutation.delete({ where: { id: _wrongFee.id } });
+                    logger.warn({ accountCode: account.code, amount: mapped.amount, dari: _twin.transactionTime, ke: mapped.transactionTime }, 'Madera dedup: koreksi tanggal palsu (kemarin) -> benar');
+                }
+                catch (err) { logger.warn({ err, accountCode: account.code }, 'Madera dedup: gagal hapus twin palsu'); }
+            } else {
+                // baris ini = copy tanggal-AWAL (salah); twin di DB sudah BENAR (belakangan) -> skip + skip fee-nya
+                _rejectedTs.add(_Tms);
+                continue;
+            }
+        }
+        await _storeRow(mapped);
+    }
+
+    // PASS 2: baris FEE -> lewati yg waktunya milik transfer palsu (di-skip di atas), sisanya simpan
+    for (const mapped of _mapped) {
+        if (!_isFee(mapped.description)) continue;
+        if (_rejectedTs.has(mapped.transactionTime.getTime())) continue;
+        await _storeRow(mapped);
     }
     if (newCount > 0) {
         logger.info({ accountCode: account.code, newCount, total: items.length }, 'System B Madera: baris mutasi Madera baru tersimpan');

@@ -109,11 +109,15 @@ export async function tryMatchMutation(mutation: Mutation): Promise<MatchResult>
             qrisAccountId: mutation.qrisAccountId,
             finalAmount: mutation.amount,
             statusPay: 'paid',
-            // Jangan pernah re-target transaksi hasil Booking Uang Pending (manual & auto).
-            // Booking ter-link ke mutasi lama (transactionTime << createdAt) → "terlihat
-            // suspicious"; tanpa guard ini mutasi baru bisa mencuri booking → mutasi pending
-            // muncul lagi + (untuk auto) memicu deposit KE-2 (dobel-kredit). source=pending_booking.
-            NOT: { metadataJson: { contains: 'pending_booking' } },
+            // Jangan pernah re-target transaksi hasil Booking Uang Pending (manual & auto)
+            // ATAU hasil ambil-alih "Laporkan ke OrderKuota". Keduanya ter-link ke mutasi lama
+            // (transactionTime << createdAt / paid pasca-expiry) → "terlihat suspicious"; tanpa
+            // guard ini mutasi baru bisa mencuri → mutasi pending muncul lagi + memicu deposit
+            // KE-2 (dobel-kredit). source=pending_booking / orderkuota_report.
+            AND: [
+              { NOT: { metadataJson: { contains: 'pending_booking' } } },
+              { NOT: { metadataJson: { contains: 'orderkuota_report' } } },
+            ],
             ...transactionWindow,
           },
           orderBy: { createdAt: 'asc' },

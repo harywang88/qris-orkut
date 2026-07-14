@@ -9,8 +9,12 @@ import { logger } from '../config/logger';
 
 const ANCHOR_FILE = path.join(process.cwd(), 'data', 'report-opening-balance.json');
 const BASELINE_FILE = path.join(process.cwd(), 'data', 'report-baseline.json');
+// Jejak PROVENANCE jangkar: true = di-set AUTO-CARRY (boleh di-refresh saat close hari sumber dikoreksi),
+// absen/false = di-set MANUAL master (dilindungi, TAK boleh ditimpa auto-carry).
+const AUTO_ANCHOR_FILE = path.join(process.cwd(), 'data', 'report-opening-auto.json');
 
 type AnchorStore = Record<string, Record<string, number>>;
+type AutoStore = Record<string, Record<string, boolean>>;
 export interface BaselineRow {
   saldoAwal: number;
   nominal: number;
@@ -51,9 +55,35 @@ export function setOpeningAnchor(scope: string, wibDate: string, value: number |
   else store[scope][wibDate] = Math.round(value as number);
   if (Object.keys(store[scope]).length === 0) delete store[scope];
   _writeJson(ANCHOR_FILE, store);
+  _setAutoFlag(scope, wibDate, false); // set MANUAL (master) -> lindungi dari refresh auto-carry
 }
 export function listOpeningAnchors(): AnchorStore {
   return _readJson<AnchorStore>(ANCHOR_FILE, {});
+}
+
+// ── Provenance jangkar (auto-carry vs manual) ──
+export function isAutoAnchor(scope: string, wibDate: string): boolean {
+  return _readJson<AutoStore>(AUTO_ANCHOR_FILE, {})[scope]?.[wibDate] === true;
+}
+function _setAutoFlag(scope: string, wibDate: string, isAuto: boolean): void {
+  const store = _readJson<AutoStore>(AUTO_ANCHOR_FILE, {});
+  if (isAuto) {
+    if (!store[scope]) store[scope] = {};
+    store[scope][wibDate] = true;
+  } else if (store[scope]) {
+    delete store[scope][wibDate];
+    if (Object.keys(store[scope]).length === 0) delete store[scope];
+  }
+  _writeJson(AUTO_ANCHOR_FILE, store);
+}
+// Set jangkar dari AUTO-CARRY (buku berjalan): tulis nilai + tandai auto (boleh di-refresh nanti).
+export function setOpeningAnchorAuto(scope: string, wibDate: string, value: number): void {
+  if (!Number.isFinite(value)) return;
+  const store = _readJson<AnchorStore>(ANCHOR_FILE, {});
+  if (!store[scope]) store[scope] = {};
+  store[scope][wibDate] = Math.round(value);
+  _writeJson(ANCHOR_FILE, store);
+  _setAutoFlag(scope, wibDate, true);
 }
 
 // ── Baris baseline "awal operasional" (semua kolom pasti) ──
@@ -133,4 +163,75 @@ export function setFee3Override(scope: string, wibDate: string, value: number | 
 }
 export function listFee3Overrides(): PencairanStore {
   return _readJson<PencairanStore>(FEE3_FILE, {});
+}
+
+// ── Modal Masuk per AKUN (onboarding akun baru): saldo saat ditambah, angka PASTI dikunci ──
+// Auto-capture default (saldo akun saat pertama muncul di laporan) + editable master. Kunci = accountId.
+const ACCOUNT_MODAL_FILE = path.join(process.cwd(), 'data', 'account-modal.json');
+type AccountModalStore = Record<string, number>;
+export function getAccountModal(accountId: string): number | null {
+  const v = _readJson<AccountModalStore>(ACCOUNT_MODAL_FILE, {})[accountId];
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+export function setAccountModal(accountId: string, value: number | null): void {
+  const store = _readJson<AccountModalStore>(ACCOUNT_MODAL_FILE, {});
+  if (value === null || !Number.isFinite(value as number)) delete store[accountId];
+  else store[accountId] = Math.round(value as number);
+  _writeJson(ACCOUNT_MODAL_FILE, store);
+}
+export function listAccountModals(): AccountModalStore {
+  return _readJson<AccountModalStore>(ACCOUNT_MODAL_FILE, {});
+}
+
+// ── Koreksi manual Fee/Fee2 + NOTE per baris Laporan (scope 'acct:<id>' | 'site:<id>' | 'overall') ──
+// Untuk kasus fee yg tak terekam mutasi (mis. potongan pra-deposit) atau pengeluaran handover antar-site.
+const FEE_ADJUST_FILE = path.join(process.cwd(), 'data', 'report-fee-adjust.json');
+export interface FeeAdjust { fee?: number; fee2?: number; feeNote?: string; fee2Note?: string; }
+type FeeAdjustStore = Record<string, Record<string, FeeAdjust>>;
+export function getFeeAdjust(scope: string, wibDate: string): FeeAdjust | null {
+  const v = _readJson<FeeAdjustStore>(FEE_ADJUST_FILE, {})[scope]?.[wibDate];
+  return v && typeof v === 'object' ? v : null;
+}
+export function setFeeAdjust(scope: string, wibDate: string, val: FeeAdjust | null): void {
+  const store = _readJson<FeeAdjustStore>(FEE_ADJUST_FILE, {});
+  if (!store[scope]) store[scope] = {};
+  if (val === null || (val.fee == null && val.fee2 == null && !val.feeNote && !val.fee2Note)) delete store[scope][wibDate];
+  else store[scope][wibDate] = val;
+  if (Object.keys(store[scope]).length === 0) delete store[scope];
+  _writeJson(FEE_ADJUST_FILE, store);
+}
+export function listFeeAdjusts(): FeeAdjustStore {
+  return _readJson<FeeAdjustStore>(FEE_ADJUST_FILE, {});
+}
+
+// ── MIGRASI SITE sadar-tanggal ── akun yg pindah site: tetap dihitung di site LAMA utk tanggal SEBELUM
+// tgl pindah. { "<accountId>": { site: "<siteLamaId>", before: "YYYY-MM-DD" } }. Laporan date < before -> site lama.
+const ACCOUNT_SITE_MIGRATION_FILE = path.join(process.cwd(), 'data', 'account-site-migration.json');
+export interface AccountSiteMigration { site: string; before: string; }
+export function getAccountSiteMigrations(): Record<string, AccountSiteMigration> {
+  return _readJson<Record<string, AccountSiteMigration>>(ACCOUNT_SITE_MIGRATION_FILE, {});
+}
+export function setAccountSiteMigration(accountId: string, mig: AccountSiteMigration | null): void {
+  const store = _readJson<Record<string, AccountSiteMigration>>(ACCOUNT_SITE_MIGRATION_FILE, {});
+  if (mig === null || !mig.site || !mig.before) delete store[accountId];
+  else store[accountId] = mig;
+  _writeJson(ACCOUNT_SITE_MIGRATION_FILE, store);
+}
+
+// ── HIDE baris "akun baru" (onboarding mini-row) per tanggal WIB ── HIDE bukan DELETE (reversible, data
+// akun/mutasi tak disentuh). Untuk tanggal ber-flag: akun createdAt=tanggal itu dikeluarkan TOTAL utuh
+// (baris mini + agregat overall) → TOTAL = baris SITE saja. Hanya berlaku tampilan 1 hari. { "YYYY-MM-DD": true }.
+const HIDE_NEWROWS_FILE = path.join(process.cwd(), 'data', 'report-hide-newrows.json');
+type HideNewRowsStore = Record<string, boolean>;
+export function isHideNewAccounts(wibDate: string): boolean {
+  return _readJson<HideNewRowsStore>(HIDE_NEWROWS_FILE, {})[wibDate] === true;
+}
+export function setHideNewAccounts(wibDate: string, value: boolean): void {
+  const store = _readJson<HideNewRowsStore>(HIDE_NEWROWS_FILE, {});
+  if (value) store[wibDate] = true;
+  else delete store[wibDate];
+  _writeJson(HIDE_NEWROWS_FILE, store);
+}
+export function listHideNewAccounts(): HideNewRowsStore {
+  return _readJson<HideNewRowsStore>(HIDE_NEWROWS_FILE, {});
 }

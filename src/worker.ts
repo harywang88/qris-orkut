@@ -20,6 +20,7 @@ import { startDepositRetryLoop } from './worker/loops/deposit-retry.loop';
 import { startSettlementSweepLoop } from './worker/loops/settlement-sweep.loop';
 import { startOrkutFetchLoop } from './worker/loops/orkut-fetch.loop';
 import { startLogPurgeLoop } from './worker/loops/log-purge.loop';
+import { startOrderkuotaReportSweepLoop } from './worker/loops/orderkuota-report-sweep.loop';
 import { startRuntimeHeartbeat } from './shared/runtime-heartbeat';
 
 async function startWorker(): Promise<void> {
@@ -37,6 +38,7 @@ async function startWorker(): Promise<void> {
   startSettlementSweepLoop();
   startOrkutFetchLoop();
   startLogPurgeLoop();
+  startOrderkuotaReportSweepLoop();
 
   logger.info('⚙️  QRIS Worker running — all loops active. Press Ctrl+C to stop.');
 

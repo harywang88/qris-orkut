@@ -1,0 +1,396 @@
+<%
+  function fmtWib(d) {
+    try { var t = new Date(new Date(d).getTime() + 7 * 3600000); var p = function (n) { return String(n).padStart(2, '0'); };
+      return p(t.getUTCDate()) + '/' + p(t.getUTCMonth() + 1) + ' ' + p(t.getUTCHours()) + ':' + p(t.getUTCMinutes()); } catch (e) { return '-'; }
+  }
+  function rp(n) { return 'Rp ' + Number(n || 0).toLocaleString('id-ID'); }
+  var _reportable = (typeof reportable !== 'undefined' && reportable) ? reportable : [];
+  var _pd = (typeof period !== 'undefined') ? period : 'today';
+  var _st = (typeof status !== 'undefined') ? status : '';
+  var _okBase = url('/dashboard/orderkuota-report');
+  function okUrl(ov) {
+    var p = Object.assign({ period: _pd, from: (typeof fromValue!=='undefined'?fromValue:''), to: (typeof toValue!=='undefined'?toValue:''), status: _st, pageSize: (typeof pageSize!=='undefined'?pageSize:25), page: (typeof page!=='undefined'?page:1) }, ov || {});
+    var parts = []; Object.keys(p).forEach(function (k) { if (p[k] !== '' && p[k] != null) parts.push(k + '=' + encodeURIComponent(p[k])); });
+    return _okBase + '?' + parts.join('&');
+  }
+  var STA = {
+    pending:          { t: '⏳ Menunggu',        c: '#fbbf24', bg: 'rgba(251,191,36,.14)' },
+    processed_bot:    { t: '🤖 Diproses Bot',    c: '#4ade80', bg: 'rgba(74,222,128,.14)' },
+    processed_manual: { t: '✅ Diproses Manual', c: '#4ade80', bg: 'rgba(74,222,128,.14)' },
+    cancelled:        { t: '✖ Dibatalkan',       c: '#94a3b8', bg: 'rgba(148,163,184,.14)' }
+  };
+%>
+<style>
+  .ok-wrap { animation: okFade .35s ease; }
+  @keyframes okFade { from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:none;} }
+  .ok-flip-hi { animation: okFlipHi 1.6s ease; }
+  @keyframes okFlipHi { 0%,15%{ background:rgba(74,222,128,.30); } 100%{ background:transparent; } }
+  .ok-wait::before { content:''; display:inline-block; width:5px; height:5px; border-radius:50%; background:#fbbf24; margin-right:5px; vertical-align:middle; animation:okPulse 1.3s ease-in-out infinite; }
+  @keyframes okPulse { 0%,100%{ opacity:.35; transform:scale(.8);} 50%{ opacity:1; transform:scale(1.3);} }
+  .ok-stat { display:flex; gap:12px; align-items:center; }
+  .ok-form-grid { display:grid; grid-template-columns:1fr; gap:14px; }
+  @media(min-width:820px){ .ok-form-grid { grid-template-columns:1.1fr .9fr; } }
+  .ok-label { font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--muted,#8b8b8b); display:block; margin-bottom:6px; }
+  .ok-field { width:100%; height:42px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.12); color:var(--ink); border-radius:11px; padding:0 13px; font-size:14px; outline:none; transition:border .18s, box-shadow .18s; }
+  .ok-field:focus { border-color:#8b5cf6; box-shadow:0 0 0 3px rgba(139,92,246,.18); }
+  .ok-field.mono { font-family:ui-monospace,monospace; letter-spacing:.02em; }
+  .ok-info { border-radius:12px; padding:12px 14px; font-size:13px; margin-top:10px; border:1px solid rgba(148,163,184,.2); background:rgba(148,163,184,.08); display:none; }
+  .ok-info.show { display:block; animation:okFade .25s ease; }
+  .ok-info-row { display:flex; justify-content:space-between; gap:10px; padding:3px 0; }
+  .ok-info-row .k { color:var(--muted,#8b8b8b); }
+  .ok-info-amt { color:#4ade80; font-weight:800; }
+  .ok-warn { color:#fca5a5; font-weight:600; margin-top:6px; font-size:12.5px; }
+  .ok-drop { border:1.5px dashed rgba(139,92,246,.4); border-radius:13px; padding:16px; text-align:center; cursor:pointer; transition:background .18s, border .18s; background:rgba(139,92,246,.05); }
+  .ok-drop:hover { background:rgba(139,92,246,.1); border-color:#8b5cf6; }
+  .ok-drop.filled { border-style:solid; border-color:rgba(74,222,128,.5); background:rgba(74,222,128,.06); }
+  .ok-thumb { max-width:100%; max-height:150px; border-radius:10px; margin-top:10px; box-shadow:0 6px 18px rgba(0,0,0,.35); }
+  .ok-submit { width:100%; height:46px; border:none; border-radius:12px; font-size:15px; font-weight:800; cursor:pointer; color:#fff; background:linear-gradient(135deg,#8b5cf6,#6d28d9); box-shadow:0 8px 22px rgba(109,40,217,.4); transition:transform .12s, filter .2s, opacity .2s; display:flex; align-items:center; justify-content:center; gap:8px; }
+  .ok-submit:hover { transform:translateY(-1px); filter:brightness(1.08); }
+  .ok-submit:disabled { opacity:.5; cursor:not-allowed; transform:none; filter:grayscale(.3); }
+  .ok-table th { font-size:10px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted,#8b8b8b); text-align:left; padding:9px 10px; border-bottom:1px solid rgba(255,255,255,.08); white-space:nowrap; }
+  .ok-table td { padding:11px 10px; border-bottom:1px solid rgba(255,255,255,.05); vertical-align:middle; }
+  .ok-table tbody tr { transition:background .15s; }
+  .ok-table tbody tr:hover { background:rgba(255,255,255,.03); }
+  .ok-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:999px; font-size:11.5px; font-weight:700; white-space:nowrap; }
+  .ok-amt { font-weight:800; color:#fbbf24; font-family:ui-monospace,monospace; white-space:nowrap; }
+  .ok-proof-th { width:44px; height:44px; object-fit:cover; border-radius:8px; cursor:zoom-in; border:1px solid rgba(255,255,255,.12); transition:transform .15s; }
+  .ok-proof-th:hover { transform:scale(1.06); }
+  .ok-pill { padding:7px 14px; border-radius:999px; font-size:12px; font-weight:700; cursor:pointer; border:1px solid rgba(255,255,255,.1); background:transparent; color:var(--muted,#8b8b8b); text-decoration:none; transition:all .18s; }
+  .ok-pill:hover { border-color:rgba(255,255,255,.25); color:var(--ink); }
+  .ok-pill.on { border-color:rgba(139,92,246,.5); background:rgba(139,92,246,.16); color:#c4b5fd; font-weight:800; }
+  .ok-btn-sm { border:none; cursor:pointer; border-radius:8px; font-size:12px; font-weight:700; padding:6px 11px; display:inline-flex; align-items:center; gap:5px; transition:transform .12s, filter .2s; }
+  .ok-btn-sm:hover { transform:translateY(-1px); filter:brightness(1.08); }
+  .ok-btn-red { background:rgba(239,68,68,.16); color:#fca5a5; }
+  .ok-lightbox { position:fixed; inset:0; background:rgba(2,6,23,.85); backdrop-filter:blur(4px); z-index:1200; display:none; align-items:center; justify-content:center; padding:24px; }
+  .ok-lightbox.show { display:flex; }
+  .ok-lightbox img { max-width:94vw; max-height:90vh; border-radius:12px; box-shadow:0 30px 80px rgba(0,0,0,.6); }
+</style>
+
+<div class="ok-wrap">
+<!-- Header -->
+<div class="qris-page-header flex flex-wrap items-start justify-between gap-4">
+  <div>
+    <h1 class="qris-page-title">Laporkan ke <span>OrderKuota</span></h1>
+    <p class="qris-section-sub mt-1">Member sudah bayar tapi saldo tak masuk & mutasi belum ada. Setelah CS lapor ke OrderKuota, catat di sini — bot akan otomatis kredit saat uangnya masuk (cek Uang Pending tiap 2 menit).</p>
+  </div>
+</div>
+
+<!-- Ringkasan -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+  <div class="qris-stat-card" style="border-color:rgba(251,191,36,.25)">
+    <div class="qris-stat-icon" style="background:rgba(251,191,36,.12);color:#fbbf24"><i class="fa-solid fa-hourglass-half"></i></div>
+    <div><p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Menunggu</p><p class="text-base font-bold" style="color:#fbbf24"><%= counts.pending %></p></div>
+  </div>
+  <div class="qris-stat-card" style="border-color:rgba(74,222,128,.25)">
+    <div class="qris-stat-icon" style="background:rgba(74,222,128,.12);color:#4ade80"><i class="fa-solid fa-robot"></i></div>
+    <div><p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Sudah Diproses</p><p class="text-base font-bold" style="color:#4ade80"><%= counts.processed %></p></div>
+  </div>
+  <div class="qris-stat-card" style="border-color:rgba(148,163,184,.2)">
+    <div class="qris-stat-icon" style="background:rgba(148,163,184,.12);color:#94a3b8"><i class="fa-solid fa-ban"></i></div>
+    <div><p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Dibatalkan</p><p class="text-base font-bold" style="color:#94a3b8"><%= counts.cancelled %></p></div>
+  </div>
+  <div class="qris-stat-card" style="border-color:rgba(139,92,246,.25)">
+    <div class="qris-stat-icon" style="background:rgba(139,92,246,.12);color:#c4b5fd"><i class="fa-solid fa-clipboard-list"></i></div>
+    <div><p class="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Total Laporan</p><p class="text-base font-bold" style="color:#c4b5fd"><%= counts.all %></p></div>
+  </div>
+</div>
+
+<!-- ── Form: Lapor QR nyangkut ── -->
+<div class="qris-card p-5 mb-5">
+  <div class="flex items-center gap-2 mb-4">
+    <i class="fa-solid fa-flag" style="color:#8b5cf6"></i>
+    <h2 class="text-sm font-bold text-ink">Buat Laporan Baru</h2>
+  </div>
+  <div class="ok-form-grid">
+    <div>
+      <label class="ok-label">QR ID <span style="color:#ef4444">*</span></label>
+      <div style="display:flex; gap:8px">
+        <input id="okQrId" class="ok-field mono" list="okQrList" autocomplete="off" placeholder="Tempel / ketik / pilih QR ID" value="<%= typeof prefillQrId!=='undefined'?prefillQrId:'' %>" />
+        <button type="button" class="ok-btn-sm" style="background:rgba(139,92,246,.16);color:#c4b5fd;height:42px;padding:0 14px" onclick="okLookup()"><i class="fa-solid fa-magnifying-glass"></i> Cek</button>
+      </div>
+      <datalist id="okQrList">
+        <% _reportable.forEach(function(q){ %><option value="<%= q.qrId %>"><%= q.accountCode %> · <%= rp(q.amount) %> · <%= q.statusPay %></option><% }); %>
+      </datalist>
+      <div class="ok-info" id="okInfo">
+        <div class="ok-info-row"><span class="k">Akun QRIS</span><span id="okiAcc" style="font-weight:700">-</span></div>
+        <div class="ok-info-row"><span class="k">Nominal</span><span class="ok-info-amt" id="okiAmt">-</span></div>
+        <div class="ok-info-row"><span class="k">Status QR</span><span id="okiStatus">-</span></div>
+        <div class="ok-warn" id="okWarn" style="display:none"></div>
+      </div>
+
+      <label class="ok-label" style="margin-top:14px">RRN (Nomor Resi) <span style="color:#ef4444">*</span></label>
+      <input id="okRrn" class="ok-field mono" autocomplete="off" placeholder="Nomor referensi pembayaran (kunci pencocokan)" />
+
+      <label class="ok-label" style="margin-top:14px">Catatan (opsional)</label>
+      <input id="okNote" class="ok-field" autocomplete="off" placeholder="mis. sudah lapor via WA jam 14:00" />
+    </div>
+    <div>
+      <label class="ok-label">Bukti Transfer <span style="color:#ef4444">*</span> <span class="text-muted-2" style="text-transform:none;letter-spacing:0;font-weight:500">(JPG/PNG, maks 5MB)</span></label>
+      <div class="ok-drop" id="okDrop" onclick="document.getElementById('okFile').click()">
+        <div id="okDropHint">
+          <i class="fa-solid fa-cloud-arrow-up" style="font-size:26px;color:#8b5cf6"></i>
+          <p class="text-sm text-ink font-semibold mt-2">Klik untuk pilih gambar bukti</p>
+          <p class="text-[11px] text-muted-2 mt-1">Foto struk / bukti transfer member</p>
+        </div>
+        <img id="okThumb" class="ok-thumb" style="display:none" />
+      </div>
+      <input type="file" id="okFile" accept="image/jpeg,image/png" style="display:none" onchange="okPickFile(this)" />
+      <button type="button" id="okSubmit" class="ok-submit" style="margin-top:16px" onclick="okSubmit()" disabled>
+        <i class="fa-solid fa-paper-plane"></i> Kirim Laporan
+      </button>
+      <p class="text-[11px] text-muted-2 mt-2" style="text-align:center"><i class="fa-solid fa-shield-halved"></i> Bot cocokkan nominal + akun + RRN, lalu kredit otomatis.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ── Filter ── -->
+<style>
+  .okf { display:flex;flex-wrap:wrap;align-items:flex-end;gap:14px;padding:13px 15px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.09);border-radius:14px;margin-bottom:14px; }
+  .okf-l { font-size:10px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted,#8b8b8b);display:block;margin-bottom:6px; }
+</style>
+<div class="okf">
+  <div>
+    <span class="okf-l">Periode</span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <a href="<%= okUrl({period:'today',from:'',to:'',page:1}) %>" class="ok-pill <%= _pd==='today'?'on':'' %>">Hari Ini</a>
+      <a href="<%= okUrl({period:'yesterday',from:'',to:'',page:1}) %>" class="ok-pill <%= _pd==='yesterday'?'on':'' %>">Kemarin</a>
+      <a href="<%= okUrl({period:'all',from:'',to:'',page:1}) %>" class="ok-pill <%= _pd==='all'?'on':'' %>">Semua</a>
+    </div>
+  </div>
+  <div>
+    <span class="okf-l">Status</span>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <a href="<%= okUrl({status:'',page:1}) %>" class="ok-pill <%= _st===''?'on':'' %>">Semua</a>
+      <a href="<%= okUrl({status:'pending',page:1}) %>" class="ok-pill <%= _st==='pending'?'on':'' %>">⏳ Menunggu</a>
+      <a href="<%= okUrl({status:'processed',page:1}) %>" class="ok-pill <%= _st==='processed'?'on':'' %>">🤖 Diproses</a>
+      <a href="<%= okUrl({status:'cancelled',page:1}) %>" class="ok-pill <%= _st==='cancelled'?'on':'' %>">✖ Dibatalkan</a>
+    </div>
+  </div>
+</div>
+
+<!-- ── Daftar laporan ── -->
+<div class="qris-card p-4">
+  <% if (!rows || rows.length === 0) { %>
+    <div class="text-center py-10 text-muted-2">
+      <i class="fa-solid fa-inbox text-3xl mb-2" style="color:#8b5cf6"></i>
+      <p>Belum ada laporan pada filter ini.</p>
+    </div>
+  <% } else { %>
+  <div class="overflow-x-auto">
+    <table class="w-full ok-table">
+      <thead>
+        <tr>
+          <th>Status</th>
+          <th>QR ID</th>
+          <th>Akun / Site</th>
+          <th>Nominal</th>
+          <th>RRN</th>
+          <th style="text-align:center">Bukti</th>
+          <th>Pelapor</th>
+          <th>Waktu</th>
+          <th style="text-align:center">Aksi</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% rows.forEach(function (r) { var s = STA[r.status] || STA.pending; %>
+          <tr data-rid="<%= r.id %>" data-status="<%= r.status %>">
+            <td class="ok-st-cell"><span class="ok-badge ok-st-badge" style="background:<%= s.bg %>;color:<%= s.c %>"><%= s.t %></span>
+              <% if (r.status==='processed_bot' || r.status==='processed_manual') { %><span class="block text-[10px] text-muted mt-1 ok-st-sub"><%= r.processedAt ? fmtWib(r.processedAt) : '' %><%= r.processedBy ? (' · ' + r.processedBy) : '' %></span><% } %>
+              <% if (r.status==='pending') { %><span class="ok-wait block text-[10px] mt-1" style="color:#fbbf24" data-since="<%= new Date(r.reportedAt).toISOString() %>"></span><% } %>
+            </td>
+            <td class="mono text-[12px] text-ink" style="font-family:ui-monospace,monospace"><%= r.qrId.slice(0,14) %><% if(r.qrId.length>14){ %>…<% } %></td>
+            <td class="whitespace-nowrap">
+              <span class="text-ink font-semibold text-sm"><%= r.accountCode %></span>
+              <span class="block text-[10px] text-muted"><%= r.siteName || 'Tanpa site' %></span>
+            </td>
+            <td><span class="ok-amt"><%= rp(r.amount) %></span></td>
+            <td class="text-[12px] text-muted font-mono" style="font-family:ui-monospace,monospace"><%= r.rrn %></td>
+            <td style="text-align:center">
+              <% if (r.proofPath) { %><img class="ok-proof-th" src="<%= url('/dashboard/orderkuota-report/proof/' + r.id) %>" onclick="okZoom(this.src)" alt="bukti" /><% } else { %><span class="text-muted-2 text-[11px]">—</span><% } %>
+            </td>
+            <td class="text-[12px] text-muted"><%= r.reportedBy %><% if(r.note){ %><span class="block text-[10px] text-muted-2" title="<%= r.note %>"><i class="fa-solid fa-note-sticky"></i> <%= r.note.slice(0,22) %></span><% } %></td>
+            <td class="text-[12px] text-muted-2 whitespace-nowrap"><%= fmtWib(r.reportedAt) %></td>
+            <td style="text-align:center">
+              <% if (r.status === 'pending') { %>
+                <button class="ok-btn-sm ok-btn-red" data-url="<%= url('/dashboard/api/orderkuota-report/' + r.id + '/cancel') %>" onclick="okCancel(this)"><i class="fa-solid fa-xmark"></i> Batal</button>
+              <% } else { %><span class="text-muted-2 text-[11px]">—</span><% } %>
+            </td>
+          </tr>
+        <% }); %>
+      </tbody>
+    </table>
+  </div>
+  <% } %>
+</div>
+
+<% if (typeof totalPages !== 'undefined' && totalPages > 1) { %>
+<div class="qris-card p-3 mt-3" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+  <span class="text-[11px] text-muted-2">Halaman <b class="text-ink"><%= page %></b> dari <%= totalPages %> · <%= total %> laporan</span>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">
+    <% var _lo=Math.max(1,page-2),_hi=Math.min(totalPages,page+2); var _pl=[]; if(_lo>1){_pl.push(1); if(_lo>2)_pl.push('...');} for(var _i=_lo;_i<=_hi;_i++)_pl.push(_i); if(_hi<totalPages){if(_hi<totalPages-1)_pl.push('...');_pl.push(totalPages);} %>
+    <% _pl.forEach(function(pn){ %>
+      <% if(pn==='...'){ %><span style="padding:0 6px;color:var(--muted);align-self:center">…</span><% } else { %>
+      <a href="<%= okUrl({page:pn}) %>" class="ok-pill <%= pn===page?'on':'' %>"><%= pn %></a>
+      <% } %>
+    <% }); %>
+  </div>
+</div>
+<% } %>
+</div>
+
+<div class="ok-lightbox" id="okLightbox" onclick="this.classList.remove('show')"><img id="okLightboxImg" src="" alt="bukti" /></div>
+
+<script>
+  var okProofBlob = null;
+  var okLookupOk = false;
+
+  function okZoom(src){ var lb=document.getElementById('okLightbox'); document.getElementById('okLightboxImg').src=src; lb.classList.add('show'); }
+
+  function okRefreshSubmit(){
+    var ok = okLookupOk && document.getElementById('okRrn').value.trim().length >= 4 && !!okProofBlob;
+    document.getElementById('okSubmit').disabled = !ok;
+  }
+
+  async function okLookup(){
+    var qrId = document.getElementById('okQrId').value.trim();
+    var info = document.getElementById('okInfo'); var warn = document.getElementById('okWarn');
+    okLookupOk = false; okRefreshSubmit();
+    if(!qrId){ info.classList.remove('show'); return; }
+    try {
+      var r = await fetch('<%= url('/dashboard/api/orderkuota-report/lookup') %>?qrId=' + encodeURIComponent(qrId));
+      var d = await r.json();
+      if(!d.found){ document.getElementById('okiAcc').textContent='-'; document.getElementById('okiAmt').textContent='-'; document.getElementById('okiStatus').textContent='-'; warn.style.display='block'; warn.textContent = '⚠ ' + (d.message||'QR ID tidak ditemukan.'); info.classList.add('show'); return; }
+      document.getElementById('okiAcc').textContent = d.accountCode || '-';
+      document.getElementById('okiAmt').textContent = 'Rp ' + Number(d.amount||0).toLocaleString('id-ID');
+      document.getElementById('okiStatus').textContent = (d.statusPay||'-') + ' / ' + (d.statusBot||'-');
+      info.classList.add('show');
+      if(d.alreadyCredited){ warn.style.display='block'; warn.textContent='⚠ QR ini SUDAH berhasil dikredit — tak perlu dilaporkan.'; okLookupOk=false; }
+      else if(d.activeReportId){ warn.style.display='block'; warn.textContent='⚠ QR ini sudah ada laporan yang menunggu.'; okLookupOk=false; }
+      else { warn.style.display='none'; okLookupOk=true; }
+    } catch(e){ warn.style.display='block'; warn.textContent='⚠ Gagal cek QR ID.'; info.classList.add('show'); }
+    okRefreshSubmit();
+  }
+
+  function okPickFile(inp){
+    var f = inp.files && inp.files[0]; if(!f) return;
+    if(!/image\/(jpeg|png)/.test(f.type)){ alert('Bukti harus JPG atau PNG.'); inp.value=''; return; }
+    if(f.size > 8*1024*1024){ alert('File terlalu besar (maks ~8MB sebelum kompres).'); inp.value=''; return; }
+    var reader = new FileReader();
+    reader.onload = function(ev){
+      var img = new Image();
+      img.onload = function(){
+        // Downscale ke maks 1400px + kompres JPEG 0.85 supaya kecil
+        var max=1400, w=img.width, h=img.height;
+        if(w>max||h>max){ if(w>h){ h=Math.round(h*max/w); w=max; } else { w=Math.round(w*max/h); h=max; } }
+        var cv=document.createElement('canvas'); cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        var th=document.getElementById('okThumb'); th.src=cv.toDataURL('image/jpeg', 0.85); th.style.display='block';
+        cv.toBlob(function(blob){
+          okProofBlob = blob;
+          document.getElementById('okDropHint').style.display='none';
+          document.getElementById('okDrop').classList.add('filled');
+          okRefreshSubmit();
+        }, 'image/jpeg', 0.85);
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(f);
+  }
+
+  async function okSubmit(){
+    var qrId = document.getElementById('okQrId').value.trim();
+    var rrn = document.getElementById('okRrn').value.trim();
+    if(!okLookupOk){ alert('Cek QR ID dulu (klik Cek) & pastikan valid.'); return; }
+    if(rrn.length<4){ alert('RRN wajib diisi.'); return; }
+    if(!okProofBlob){ alert('Bukti transfer wajib diunggah.'); return; }
+    var btn=document.getElementById('okSubmit'); btn.disabled=true; btn.innerHTML='<i class="fa-solid fa-spinner fa-spin"></i> Mengirim...';
+    try {
+      var note = document.getElementById('okNote').value.trim();
+      var qs = 'qrId=' + encodeURIComponent(qrId) + '&rrn=' + encodeURIComponent(rrn) + '&note=' + encodeURIComponent(note);
+      var r = await fetch('<%= url('/dashboard/api/orderkuota-report') %>?' + qs, {
+        method:'POST', headers:{'Content-Type':'application/octet-stream'}, body: okProofBlob
+      });
+      var d={}; try{ d=await r.json(); }catch(e){}
+      if(r.ok && d.ok){ location.reload(); }
+      else { alert(d.message||'Gagal menyimpan laporan.'); btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-paper-plane"></i> Kirim Laporan'; }
+    } catch(e){ alert('Gagal: '+e.message); btn.disabled=false; btn.innerHTML='<i class="fa-solid fa-paper-plane"></i> Kirim Laporan'; }
+  }
+
+  async function okCancel(btn){
+    if(!confirm('Batalkan laporan ini? (bot berhenti mencari)')) return;
+    try { var r=await fetch(btn.dataset.url,{method:'POST'}); var d={}; try{d=await r.json();}catch(e){}
+      if(r.ok && d.ok){ location.reload(); } else { alert(d.message||'Gagal membatalkan.'); }
+    } catch(e){ alert('Gagal: '+e.message); }
+  }
+
+  document.getElementById('okRrn').addEventListener('input', okRefreshSubmit);
+  document.getElementById('okQrId').addEventListener('change', okLookup);
+  document.addEventListener('keydown', function(e){ if(e.key==='Escape'){ document.getElementById('okLightbox').classList.remove('show'); } });
+  // Auto-lookup kalau ada prefill QR ID (dari tombol one-click History)
+  (function(){ if(document.getElementById('okQrId').value.trim()){ okLookup(); } })();
+
+  // ── Fase 3: countdown "menunggu Xj" (live) ──
+  function okFmtWait(sinceIso){
+    var ms = Date.now() - new Date(sinceIso).getTime(); if(ms<0) ms=0;
+    var mins = Math.floor(ms/60000), d=Math.floor(mins/1440), h=Math.floor((mins%1440)/60), m=mins%60;
+    if(d>0) return d+' hari '+h+'j'; if(h>0) return h+'j '+m+'m'; return m+'m';
+  }
+  function okTickWait(){ document.querySelectorAll('.ok-wait').forEach(function(el){ el.textContent = 'menunggu '+okFmtWait(el.dataset.since); }); }
+  okTickWait(); setInterval(okTickWait, 30000);
+
+  // ── Fase 3: cha-ching (Web Audio) + confetti ──
+  function okChaChing(){
+    try {
+      var AC = window.AudioContext||window.webkitAudioContext; if(!AC) return; var ac=new AC();
+      [[784,0],[1046,0.09],[1318,0.18]].forEach(function(p){
+        var o=ac.createOscillator(), g=ac.createGain(); o.type='triangle'; o.frequency.value=p[0];
+        o.connect(g); g.connect(ac.destination); var t=ac.currentTime+p[1];
+        g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.02); g.gain.exponentialRampToValueAtTime(0.0001,t+0.35);
+        o.start(t); o.stop(t+0.37);
+      });
+    } catch(e){}
+  }
+  function okConfetti(anchor){
+    var rect = anchor ? anchor.getBoundingClientRect() : { left:innerWidth/2, top:innerHeight/3, width:0, height:0 };
+    var cv=document.createElement('canvas'); cv.width=innerWidth; cv.height=innerHeight;
+    cv.style.cssText='position:fixed;inset:0;pointer-events:none;z-index:2000'; document.body.appendChild(cv);
+    var ctx=cv.getContext('2d'), parts=[], cx=rect.left+rect.width/2, cy=rect.top+rect.height/2;
+    var colors=['#8b5cf6','#4ade80','#fbbf24','#60a5fa','#f472b6','#c4b5fd'];
+    for(var i=0;i<70;i++){ var a=Math.random()*Math.PI*2, sp=3+Math.random()*7; parts.push({x:cx,y:cy,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp-4,g:0.16,life:1,c:colors[i%colors.length],s:4+Math.random()*5,rot:Math.random()*6,vr:(Math.random()-.5)*.4}); }
+    var t0=Date.now();
+    (function anim(){ var el=(Date.now()-t0)/1000; ctx.clearRect(0,0,cv.width,cv.height);
+      parts.forEach(function(p){ p.vy+=p.g; p.x+=p.vx; p.y+=p.vy; p.life-=0.011; p.rot+=p.vr;
+        if(p.life>0){ ctx.save(); ctx.globalAlpha=Math.max(0,p.life); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.fillStyle=p.c; ctx.fillRect(-p.s/2,-p.s/2,p.s,p.s*0.62); ctx.restore(); } });
+      if(el<2.4) requestAnimationFrame(anim); else cv.remove();
+    })();
+  }
+  function okFlipRow(tr, info){
+    tr.dataset.status = info.status;
+    var stBadge = tr.querySelector('.ok-st-badge');
+    if(stBadge){ var lbl = info.status==='processed_manual' ? '✅ Diproses Manual' : '🤖 Diproses Bot'; stBadge.textContent=lbl; stBadge.style.background='rgba(74,222,128,.14)'; stBadge.style.color='#4ade80'; }
+    var w = tr.querySelector('.ok-wait'); if(w) w.remove();
+    var act = tr.querySelector('td:last-child'); if(act) act.innerHTML='<span class="text-muted-2 text-[11px]">—</span>';
+    tr.classList.add('ok-flip-hi');
+    okChaChing(); okConfetti(tr);
+  }
+  // ── Fase 3: live poll deteksi flip pending → diproses ──
+  function okPendingRows(){ return Array.prototype.slice.call(document.querySelectorAll('tr[data-status="pending"]')); }
+  async function okPoll(){
+    var trs = okPendingRows(); if(!trs.length) return;
+    var ids = trs.map(function(tr){ return tr.dataset.rid; });
+    try {
+      var r = await fetch('<%= url('/dashboard/api/orderkuota-report/status') %>?ids=' + ids.join(','));
+      var d = await r.json();
+      if(d && d.statuses){
+        Object.keys(d.statuses).forEach(function(id){
+          var st = d.statuses[id].status;
+          if(st && st !== 'pending'){
+            var tr = document.querySelector('tr[data-rid="'+id+'"][data-status="pending"]');
+            if(tr) okFlipRow(tr, d.statuses[id]);
+          }
+        });
+      }
+    } catch(e){}
+  }
+  if(okPendingRows().length) setInterval(okPoll, 12000);
+</script>

@@ -1730,6 +1730,44 @@ export async function getMaderaNobuHistoryApi(req: Request, res: Response): Prom
     }
     if (!accountInScope(req.session.user as AccessUser | undefined, account.id)) { res.status(404).json({ ok: false, message: 'Akun tidak ditemukan.' }); return; } // RBAC di luar scope (mutasi2)
     const result = await (appGateway as any).fetchMaderaTransactionHistory(account);
+    // FEED TRUNCATION FIX (14 Jul): feed app Madera hanya balikin ~halaman pertama (baris terbaru).
+    // Utk akun sangat aktif (mis. DISKY CELL: 31 tx/2 hari), transaksi lebih lama tapi masih hari
+    // ini/kemarin JATUH DI LUAR jendela feed -> seolah "hilang" di History Nobu walau NYATA (tertarik
+    // ke DB saat masih di feed, verified Nagox). Lengkapi dgn baris DB (walletCategory='madera') yg
+    // LEBIH LAMA dari baris feed tertua (tanpa overlap -> tak perlu dedup), ditandai status 'arsip'.
+    // TIDAK mengubah data uang; hanya melengkapi tampilan agar konsisten dgn Mutasi Madera/DB.
+    if (result && result.ok && Array.isArray(result.items)) {
+      try {
+        const feedMapped = (result.items as unknown[])
+          .map((it) => mapMaderaFeedItem(account.id, it as Parameters<typeof mapMaderaFeedItem>[1]))
+          .filter((m): m is NonNullable<ReturnType<typeof mapMaderaFeedItem>> => Boolean(m));
+        const feedOldestMs = feedMapped.length ? Math.min(...feedMapped.map((m) => m.transactionTime.getTime())) : Date.now();
+        const olderRows = await db.mutation.findMany({
+          where: { qrisAccountId: account.id, walletCategory: 'madera', transactionTime: { lt: new Date(feedOldestMs) } },
+          orderBy: { transactionTime: 'desc' },
+          take: 100,
+        });
+        if (olderRows.length > 0) {
+          const _fmtRp = (n: number) => Math.abs(Math.round(n)).toLocaleString('id-ID');
+          const extras = olderRows.map((r) => {
+            let raw: Record<string, unknown> = {};
+            try { raw = JSON.parse(r.rawDataJson || '{}') as Record<string, unknown>; } catch { /* ignore */ }
+            const dir = r.type === 'debit' ? 'out' : 'in';
+            const dateStr = (typeof raw.tanggal === 'string' && raw.tanggal) || r.transactionTime.toISOString();
+            return {
+              type: r.type, direction: dir, amount: _fmtRp(r.amount), status: 'arsip',
+              description: String(raw.keterangan || raw.description || ''),
+              date: dateStr, icon: (raw.icon as string) || null, fromArchive: true,
+            };
+          });
+          result.items = result.items.concat(extras);
+          const _oldestDate = String(extras[extras.length - 1].date || '').split('@')[0].trim();
+          if (_oldestDate) result.fromDate = _oldestDate;
+        }
+      } catch (mergeErr) {
+        logger.warn({ err: mergeErr, accountId: account.id }, 'getMaderaNobuHistoryApi: gagal lengkapi baris DB (feed truncation)');
+      }
+    }
     res.json(result);
   } catch (err) {
     logger.error({ err }, 'getMaderaNobuHistoryApi error');

@@ -178,6 +178,7 @@ export interface PendingMoneyRow {
   ageMinutes: number;
   guesses: PendingGuess[];
   tag: PendingTag | null;
+  claimedByReport?: boolean; // ada laporan OrderKuota AKTIF yg cocok (rrn+nominal+akun) → soft-lock
 }
 
 function parseOriginalAmount(metadataJson: string | null): number | null {
@@ -213,6 +214,10 @@ export async function listPendingMoney(accountIds?: string[] | null, showAll = f
   });
 
   const tags = readTags();
+  // Laporan OrderKuota AKTIF (pending) — utk soft-lock: mutasi yg cocok tak boleh dibooking manual
+  // (cegah balapan dgn bot yg akan ambil-alih). Kunci = rrn|amount|akun.
+  const _repRows = await db.orderKuotaReport.findMany({ where: { status: 'pending' }, select: { rrn: true, amount: true, qrisAccountId: true } });
+  const _repKeys = new Set(_repRows.map((r) => `${r.rrn}|${r.amount}|${r.qrisAccountId}`));
   const rows: PendingMoneyRow[] = [];
   for (const m of muts) {
     // Jaring pengaman: buang uang keluar (status OUT / pencairan) yang lolos filter query.
@@ -250,6 +255,7 @@ export async function listPendingMoney(accountIds?: string[] | null, showAll = f
       ageMinutes: Math.floor((Date.now() - m.transactionTime.getTime()) / 60000),
       guesses,
       tag: tags[m.id] || null,
+      claimedByReport: _repKeys.has(`${m.rrn}|${m.amount}|${m.qrisAccountId}`),
     });
   }
   return rows;
@@ -389,6 +395,7 @@ export interface BookedPendingRow {
   website: string | null;
   userIdExt: string | null;
   mode: string | null;
+  source: string | null; // 'booking' (Push Website) | 'orderkuota' (diambil alih Laporkan ke OrderKuota)
 }
 
 /** Uang pending yang SUDAH dibooking (matched ke tx manual_booked) — tampil terkunci di menu. */
@@ -396,7 +403,7 @@ export async function listBookedPendings(accountIds?: string[] | null, showAll =
   const where: Record<string, unknown> = {
     walletCategory: 'qris',
     type: 'credit',
-    matchedTransaction: { is: { metadataJson: { contains: 'pending_booking' } } },
+    matchedTransaction: { is: { OR: [{ metadataJson: { contains: 'pending_booking' } }, { metadataJson: { contains: 'orderkuota_report' } }] } },
   };
   if (accountIds) where.qrisAccountId = { in: accountIds };
   const _opCutB = resolveListCutoffMs(showAll);
@@ -411,8 +418,9 @@ export async function listBookedPendings(accountIds?: string[] | null, showAll =
     },
   });
   return muts.map((m) => {
-    let meta: { processedBy?: string; website?: string; mode?: string } = {};
+    let meta: { processedBy?: string; website?: string; mode?: string; source?: string } = {};
     try { meta = JSON.parse(m.matchedTransaction?.metadataJson || '{}'); } catch { /* ignore */ }
+    const _src = meta.source === 'orderkuota_report' ? 'orderkuota' : 'booking';
     return {
       id: m.id,
       qrisAccountId: m.qrisAccountId,
@@ -428,6 +436,7 @@ export async function listBookedPendings(accountIds?: string[] | null, showAll =
       website: meta.website || null,
       userIdExt: m.matchedTransaction?.userIdExt || null,
       mode: meta.mode || null,
+      source: _src,
     };
   });
 }

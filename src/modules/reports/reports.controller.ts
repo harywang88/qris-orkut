@@ -4,7 +4,8 @@ import { logger } from '../../config/logger';
 import { listSites, getAccountSiteMap } from '../../shared/site.service';
 import { pendingMoneyTotal, crossDayPendingBooking } from '../../shared/pending-money.service';
 import { getSiteScopeForUser, isMasterUser } from '../../shared/alias-access.service';
-import { getOpeningAnchor, setOpeningAnchor, listOpeningAnchors, getBaseline, getStatusOverride, getPencairanOverride, getFee3Override, setPencairanOverride, setFee3Override } from '../../shared/report-opening-balance.service';
+import { runWithScope } from '../../core/request-context';
+import { getOpeningAnchor, setOpeningAnchor, setOpeningAnchorAuto, isAutoAnchor, listOpeningAnchors, getBaseline, getStatusOverride, getPencairanOverride, getFee3Override, setPencairanOverride, setFee3Override, getAccountModal, setAccountModal, getFeeAdjust, getAccountSiteMigrations, isHideNewAccounts } from '../../shared/report-opening-balance.service';
 
 // FIX #1: Batas hari dihitung dalam WIB (Asia/Jakarta, UTC+7), BUKAN zona server (UTC).
 const WIB_OFFSET_MS = 7 * 60 * 60 * 1000;
@@ -117,9 +118,39 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     // ── Per-SITE breakdown (Site = unit bisnis; diturunkan dari AKUN via site.service) ──
     // Fase 6: alias-tenant -> paksa lihat site-nya saja (abaikan ?site= dari query).
     const _aliasScope = getSiteScopeForUser(req.session.user);
+    // LAPORAN scope SADAR-TANGGAL (report-only): alias-tenant lihat akun yg site-nya (migrasi-adjusted)
+    // = site-nya PADA tanggal laporan. 12 Jul: sulebet lihat akun eks-nya (spt master); 13 Jul+: isolasi
+    // ketat antar-tenant. Master (_aliasScope null) tanpa filter. Override HANYA di laporan (menu lain
+    // tetap pakai scope assignment-kini dari middleware app.ts).
+    const _reportScope: string[] | null = (() => {
+      if (!_aliasScope) return null;
+      const _rw = getAccountSiteMap();
+      const _mg = getAccountSiteMigrations();
+      const _wd = (d: Date): string => { const w = new Date(d.getTime() + 7 * 3600 * 1000); return `${w.getUTCFullYear()}-${String(w.getUTCMonth() + 1).padStart(2, '0')}-${String(w.getUTCDate()).padStart(2, '0')}`; };
+      const _rd = _wd(from);
+      const _out: string[] = [];
+      for (const _id of new Set<string>([...Object.keys(_rw), ...Object.keys(_mg)])) {
+        const _m = _mg[_id];
+        const _s = (_m && _m.site && _m.before && _rd < _m.before) ? _m.site : _rw[_id];
+        if (_s === _aliasScope) _out.push(_id);
+      }
+      return _out;
+    })();
+    await runWithScope({ scopeAccountIds: _reportScope }, async () => {
     const sites = _aliasScope ? listSites().filter((s) => s.id === _aliasScope) : listSites();
     const accountsAll = await db.qrisAccount.findMany({ select: { id: true } });
-    const accSiteMap = getAccountSiteMap();
+    const accSiteMap: Record<string, string> = { ...getAccountSiteMap() };
+    // MIGRASI SITE sadar-tanggal: akun yg pindah site tetap dihitung di site LAMA utk tanggal SEBELUM
+    // tgl pindah (mis. Sulebet->ASDTOTO 13 Jul: 12 Jul & sebelumnya = Sulebet). Single-day pakai tgl `from`.
+    {
+      const _wibD = (d: Date): string => { const w = new Date(d.getTime() + 7 * 3600 * 1000); return `${w.getUTCFullYear()}-${String(w.getUTCMonth() + 1).padStart(2, '0')}-${String(w.getUTCDate()).padStart(2, '0')}`; };
+      const _repDate = _wibD(from);
+      const _migs = getAccountSiteMigrations();
+      for (const _aid of Object.keys(_migs)) {
+        const _m = _migs[_aid];
+        if (_m && _m.site && _m.before && _repDate < _m.before) accSiteMap[_aid] = _m.site;
+      }
+    }
     const noneAccountIds = accountsAll.filter((a) => !accSiteMap[a.id]).map((a) => a.id);
     const hasNoneBucket = noneAccountIds.length > 0;
     const siteBuckets = sites
@@ -138,8 +169,19 @@ export async function showReports(req: Request, res: Response): Promise<void> {
       const sb = allBuckets.find((x) => x.key === selectedSite);
       restrictAccountIds = sb ? sb.accountIds : [];
     }
-    const withAccount = (w: Record<string, unknown>): Record<string, unknown> =>
-      restrictAccountIds ? { ...w, qrisAccountId: { in: restrictAccountIds } } : w;
+    // HIDE akun-baru (onboarding) utk tanggal ber-flag: dikeluarkan dari SEMUA agregat overall (nominal,
+    // hitung, chart, fee, saldo, modal, mini-row) → TOTAL = baris SITE saja. Set diisi setelah _newAccIds
+    // dihitung (lihat _hideNewIds di bawah); withAccount = closure, membacanya saat query dijalankan.
+    const _hideNewSet = new Set<string>();
+    const withAccount = (w: Record<string, unknown>): Record<string, unknown> => {
+      const out: Record<string, unknown> = restrictAccountIds ? { ...w, qrisAccountId: { in: restrictAccountIds } } : { ...w };
+      if (_hideNewSet.size > 0) {
+        const cur = out.qrisAccountId as { in?: string[] } | undefined;
+        if (cur && Array.isArray(cur.in)) out.qrisAccountId = { in: cur.in.filter((id) => !_hideNewSet.has(id)) };
+        else out.qrisAccountId = { notIn: [..._hideNewSet] };
+      }
+      return out;
+    };
     const bucketsToShow = selectedSite ? allBuckets.filter((b) => b.key === selectedSite) : allBuckets;
 
     // FEE (QRIS Biaya Layanan) + FEE2 (Utama 1%) dari MUTASI (transactionTime dalam periode), per akun.
@@ -170,7 +212,7 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     for (const m of _maderaMuts) {
       if (m.qrisAccountId) { feeMaderaByAcc[m.qrisAccountId] = (feeMaderaByAcc[m.qrisAccountId] || 0) + maderaTransferFee(m); bungaMaderaByAcc[m.qrisAccountId] = (bungaMaderaByAcc[m.qrisAccountId] || 0) + maderaBungaAmount(m); }
     }
-    const overallAccIds = restrictAccountIds || accountsAll.map((a) => a.id);
+    const _allReportAccIds = restrictAccountIds || accountsAll.map((a) => a.id);
 
     // ── Saldo Awal/Akhir (hitung-mundur dari saldo terkini) + Pencairan + Direct Debit per akun ──
     // saldo_asof(T) = saldoTerkini - Σ delta(mutasi transactionTime > T). delta order-independent (anti-artefak urutan).
@@ -232,7 +274,43 @@ export async function showReports(req: Request, res: Response): Promise<void> {
     // ONBOARDING: akun dgn createdAt = tanggal laporan (hari operasi pertama). Hanya utk tampilan 1 hari.
     // Modal = walk-back "awal" akun baru = saldo saat ditambah (transaksi sebelum createdAt sudah disaring di ingest).
     const _newAccIds = new Set<string>(_isSingleDay ? _balAccounts.filter((a) => _wibDateStr(a.createdAt) === _awalDate).map((a) => a.id) : []);
-    const _modalFor = (accIds: string[]): number => accIds.reduce((sm, id) => sm + (_newAccIds.has(id) ? _asofAcc(id, 'awal') : 0), 0);
+    // HIDE akun-baru (onboarding) utk tanggal ber-flag (mis. 10 Jul): keluarkan akun createdAt=tanggal-ini
+    // dari SEMUA agregat overall (via _hideNewSet dibaca withAccount + overallAccIds terfilter) → TOTAL = baris
+    // SITE saja, mini-row kosong. HIDE bukan DELETE (data akun/mutasi utuh; hapus flag = tampil lagi). 1 hari saja.
+    const _hideNew = _isSingleDay && isHideNewAccounts(_awalDate);
+    if (_hideNew) for (const _id of _newAccIds) _hideNewSet.add(_id);
+    const overallAccIds = _allReportAccIds.filter((id) => !_hideNewSet.has(id));
+    // MODAL akun baru = saldo PASTI saat ditambah (angka dikunci, BUKAN walk-back rapuh).
+    // Auto-capture default = saldo tepat sebelum transaksi PERTAMA (>= createdAt) per wallet; tersimpan sekali, editable master.
+    const _firstBBAfterCreate: Record<string, { qris?: number; utama?: number; madera?: number; qrisT?: number; utamaT?: number; maderaT?: number }> = {};
+    if (_newAccIds.size > 0) {
+      const _createdAtMap: Record<string, Date> = {};
+      for (const a of _balAccounts) _createdAtMap[a.id] = a.createdAt;
+      for (const m of _balMuts) {
+        if (!m.qrisAccountId || !m.walletCategory || !_newAccIds.has(m.qrisAccountId)) continue;
+        const cAt = _createdAtMap[m.qrisAccountId];
+        if (!cAt || m.transactionTime < cAt) continue;
+        const _w = m.walletCategory as 'qris' | 'utama' | 'madera';
+        const e = _firstBBAfterCreate[m.qrisAccountId] || (_firstBBAfterCreate[m.qrisAccountId] = {});
+        const tKey = (_w + 'T') as 'qrisT' | 'utamaT' | 'maderaT';
+        const tMs = m.transactionTime.getTime();
+        if (e[tKey] === undefined || tMs < (e[tKey] as number)) { e[_w] = m.balanceBefore; e[tKey] = tMs; }
+      }
+    }
+    const _anchorModal = (accId: string): number => {
+      const cur = _curBal[accId] || { qris: 0, utama: 0, madera: 0 };
+      const f = _firstBBAfterCreate[accId] || {};
+      // Clamp per-wallet >= 0: modal = injeksi saldo, tak boleh negatif (saldo QRIS bisa sempat minus krn timing fee).
+      return Math.max(0, f.qris ?? cur.qris) + Math.max(0, f.utama ?? cur.utama) + Math.max(0, f.madera ?? cur.madera);
+    };
+    const _modalOf = (accId: string): number => {
+      const stored = getAccountModal(accId);
+      if (stored != null) return stored;
+      const a = _anchorModal(accId);
+      setAccountModal(accId, a); // rekam sekali (auto-capture), lalu dikunci
+      return a;
+    };
+    const _modalFor = (accIds: string[]): number => accIds.reduce((sm, id) => sm + (_newAccIds.has(id) ? _modalOf(id) : 0), 0);
     // REPORT_BASELINE: baris Laporan pakai baseline (fixed 'awal operasional') bila ada utk hari itu;
     // jika tidak, Saldo Akhir = RUMUS (Awal + Nominal + Pending - Fee - Fee2 - Fee3 - Pencairan). Awal = jangkar bila ada.
     const _resolveReportRow = (scope: string, live: { nominal: number; pending: number; fee: number; fee2: number; fee3: number; bunga: number; modalMasuk: number; pencairan: number; walkbackAwal: number }) => {
@@ -285,7 +363,11 @@ export async function showReports(req: Request, res: Response): Promise<void> {
         const fee3 = _sumFee(feeMaderaByAcc, _accIds);
         const bunga = _sumFee(bungaMaderaByAcc, _accIds);
         const _sb = _siteBal(_accIds);
-        const _net = totalPaid - totalFee - fee2 - fee3;
+        // Koreksi manual Fee/Fee2 per SITE (mis. pengeluaran handover akun pindah site) + note.
+        const _sfa = getFeeAdjust('site:' + b.key, _awalDate);
+        const _feeUse = _sfa && _sfa.fee != null ? _sfa.fee : totalFee;
+        const _fee2Use = _sfa && _sfa.fee2 != null ? _sfa.fee2 : fee2;
+        const _net = totalPaid - _feeUse - _fee2Use - fee3;
         // RECONCILE STATUS (fix 11 Jul): FEE Biaya Layanan QRIS (totalFee) TIDAK memotong saldo
         // wallet -- saldo QRIS diterima GROSS, terbukti tak ada baris 'biaya layanan' & delta saldo
         // = nominal penuh. Kalau ikut dikurangi, tiap akun meleset persis sebesar FEE-nya (double
@@ -294,7 +376,7 @@ export async function showReports(req: Request, res: Response): Promise<void> {
         // Toleransi 0,1% NET (min Rp10.000) meredam skew tengah malam (paidAt vs waktu mutasi).
         const _pend = (await pendingMoneyTotal(from, to, _accIds)).total;
         const _crossSite = _sumFee(_crossDay.byAccount, _accIds);
-        const _row = _resolveReportRow('site:' + b.key, { nominal: totalPaid - _crossSite, pending: _pend, fee: totalFee, fee2, fee3, bunga, modalMasuk: 0, pencairan: _sb.pencairan, walkbackAwal: _sb.awal });
+        const _row = _resolveReportRow('site:' + b.key, { nominal: totalPaid - _crossSite, pending: _pend, fee: _feeUse, fee2: _fee2Use, fee3, bunga, modalMasuk: 0, pencairan: _sb.pencairan, walkbackAwal: _sb.awal });
         const _status = (getStatusOverride('site:' + b.key, _awalDate) ?? getStatusOverride('*', _awalDate)) ?? _statusFor(_row, _accIds);
         return {
           siteName: b.name,
@@ -310,7 +392,9 @@ export async function showReports(req: Request, res: Response): Promise<void> {
           totalPaid: _row.nominal,
           pending: _row.pending,
           totalFee: _row.fee,
+          feeNote: (_sfa && _sfa.feeNote) || null,
           fee2: _row.fee2,
+          fee2Note: (_sfa && _sfa.fee2Note) || null,
           fee3: _row.fee3,
           bunga,
           modalMasuk: _row.modalMasuk,
@@ -383,8 +467,12 @@ export async function showReports(req: Request, res: Response): Promise<void> {
 
     const _pendingAgg = await pendingMoneyTotal(from, to, overallAccIds);
     const _overallModal = _modalFor(overallAccIds);
-    const _overallRow = _resolveReportRow('overall', { nominal: overallTotalPaid - _crossDay.total, pending: _pendingAgg.total, fee: overallTotalFee, fee2: overallFee2, fee3: overallFee3, bunga: overallBunga, modalMasuk: _overallModal, pencairan: _osb.pencairan, walkbackAwal: _osb.awal - _overallModal });
-    const _ostatus = (getStatusOverride('overall', _awalDate) ?? getStatusOverride('*', _awalDate)) ?? _statusFor(_overallRow, overallAccIds);
+    // Alias-tenant: baris TOTAL "Semua Site" = hitung SITE mereka sendiri (bukan overall global) →
+    // scope jangkar/anchor/status pakai 'site:<alias>', biar saldo awal/akhir tak bocor angka semua-site.
+    // Master & bawah-master tetap 'overall'.
+    const _overallScope = _aliasScope ? ('site:' + _aliasScope) : 'overall';
+    const _overallRow = _resolveReportRow(_overallScope, { nominal: overallTotalPaid - _crossDay.total, pending: _pendingAgg.total, fee: overallTotalFee, fee2: overallFee2, fee3: overallFee3, bunga: overallBunga, modalMasuk: _overallModal, pencairan: _osb.pencairan, walkbackAwal: _osb.awal - _overallModal });
+    const _ostatus = (getStatusOverride(_overallScope, _awalDate) ?? getStatusOverride('*', _awalDate)) ?? _statusFor(_overallRow, overallAccIds);
     // ONBOARDING mini-rows: 1 baris per akun baru (createdAt=hari ini) di antara SITE & TOTAL. Saldo Awal=0,
     // Modal Masuk=saldo saat ditambah, Saldo Akhir=fisik. Sudah IKUT di TOTAL via _overallModal -> Grand Total match.
     const _newRowIds = _isSingleDay ? overallAccIds.filter((id) => _newAccIds.has(id)) : [];
@@ -392,16 +480,35 @@ export async function showReports(req: Request, res: Response): Promise<void> {
       const _pa = await db.transaction.aggregate({ where: { qrisAccountId: id, statusPay: 'paid', paidAt: { gte: from, lte: to } }, _sum: { finalAmount: true } });
       const _nom = _pa._sum.finalAmount ?? 0;
       const _pnd = (await pendingMoneyTotal(from, to, [id])).total;
-      const _fee = feeQrisByAcc[id] || 0, _fee2 = feeUtamaByAcc[id] || 0, _fee3 = feeMaderaByAcc[id] || 0, _bng = bungaMaderaByAcc[id] || 0;
+      // Koreksi manual Fee/Fee2 per AKUN-BARU (mis. biaya layanan yg tak terekam mutasi) + note.
+      const _afa = getFeeAdjust('acct:' + id, _awalDate);
+      const _fee = _afa && _afa.fee != null ? _afa.fee : (feeQrisByAcc[id] || 0);
+      const _fee2 = _afa && _afa.fee2 != null ? _afa.fee2 : (feeUtamaByAcc[id] || 0);
+      const _fee3 = feeMaderaByAcc[id] || 0, _bng = bungaMaderaByAcc[id] || 0;
       const _pcr = (_madOut[id] && _madOut[id].pencairan) || 0;
-      const _modal = _asofAcc(id, 'awal');
-      const _akhir = _nom + _pnd - _fee - _fee2 - _fee3 + _bng + _modal - _pcr;
-      return { accountName: _codeMap[id] || id, siteKey: accSiteMap[id] || 'none', saldoAwal: 0, modalMasuk: _modal, totalPaid: _nom, pending: _pnd, totalFee: _fee, fee2: _fee2, fee3: _fee3, bunga: _bng, pencairan: _pcr, saldoAkhir: _akhir, status: 'match' as const };
+      const _modal = _modalOf(id); // saldo saat ditambah (dikunci), BUKAN walk-back
+      // Saldo Akhir = FISIK (saldo nyata akun), sesuai model koko. Status = cek rumus vs fisik.
+      // feeQ AUTO (biaya layanan) TIDAK memotong saldo (QRIS gross - memo reconcile). TAPI fee MANUAL
+      // (koko set, mis. potongan pra-deposit yg tak jadi mutasi) memang memotong -> ikut dikurangi.
+      const _physAkhir = _asofAcc(id, 'akhir');
+      const _manualFee = (_afa && _afa.fee != null) ? _afa.fee : 0;
+      const _formulaAkhir = _nom + _pnd - _manualFee - _fee2 - _fee3 + _bng + _modal - _pcr;
+      const _tolAkhir = Math.max(50000, Math.round(Math.abs(_physAkhir) * 0.01));
+      const _stAkhir: 'match' | 'unmatch' = Math.abs(_formulaAkhir - _physAkhir) <= _tolAkhir ? 'match' : 'unmatch';
+      return { accountName: _codeMap[id] || id, siteKey: accSiteMap[id] || 'none', saldoAwal: 0, modalMasuk: _modal, totalPaid: _nom, pending: _pnd, totalFee: _fee, feeNote: (_afa && _afa.feeNote) || null, fee2: _fee2, fee2Note: (_afa && _afa.fee2Note) || null, fee3: _fee3, bunga: _bng, pencairan: _pcr, saldoAkhir: _physAkhir, formulaAkhir: _formulaAkhir, status: _stAkhir, accountId: id };
     }));
-    // Auto-carry (buku berjalan): laporan 1 hari LAMPAU yg sudah tutup -> simpan Saldo Akhir jadi Saldo Awal besok.
+    // Auto-carry (buku berjalan): Saldo Akhir hari LAMPAU (sudah tutup) -> Saldo Awal besok.
+    // Set bila anchor besok NULL (baru) ATAU AUTO (carry lama -> REFRESH saat close hari ini dikoreksi).
+    // Anchor MANUAL master + baseline DILINDUNGI (tak ditimpa). Fix bug jangkar basi tak update.
     if (_isSingleDay && to.getTime() < Date.now()) {
-      bucketsToShow.forEach((b, i) => { const r = siteBreakdown[i] as { saldoAkhir?: number } | undefined; if (r && getOpeningAnchor('site:' + b.key, _akhirDate) == null && !getBaseline('site:' + b.key, _akhirDate)) setOpeningAnchor('site:' + b.key, _akhirDate, Number(r.saldoAkhir || 0) + newAccountRows.filter((nr) => nr.siteKey === b.key).reduce((sm, nr) => sm + nr.saldoAkhir, 0)); });
-      if (getOpeningAnchor('overall', _akhirDate) == null && !getBaseline('overall', _akhirDate)) setOpeningAnchor('overall', _akhirDate, _overallRow.saldoAkhir);
+      bucketsToShow.forEach((b, i) => {
+        const r = siteBreakdown[i] as { saldoAkhir?: number } | undefined;
+        const _sc = 'site:' + b.key;
+        if (r && !getBaseline(_sc, _akhirDate) && (getOpeningAnchor(_sc, _akhirDate) == null || isAutoAnchor(_sc, _akhirDate)))
+          setOpeningAnchorAuto(_sc, _akhirDate, Number(r.saldoAkhir || 0) + newAccountRows.filter((nr) => nr.siteKey === b.key).reduce((sm, nr) => sm + nr.saldoAkhir, 0));
+      });
+      if (!_aliasScope && !getBaseline('overall', _akhirDate) && (getOpeningAnchor('overall', _akhirDate) == null || isAutoAnchor('overall', _akhirDate)))
+        setOpeningAnchorAuto('overall', _akhirDate, _overallRow.saldoAkhir);
     }
     res.render('reports/index', {
       title: 'Laporan',
@@ -454,6 +561,7 @@ export async function showReports(req: Request, res: Response): Promise<void> {
         amounts: JSON.stringify(chartAmounts),
       },
     });
+    });
   } catch (err) {
     logger.error({ err }, 'showReports error');
     res.status(500).render('error/500', { title: 'Error' });
@@ -477,6 +585,24 @@ export async function setOpeningBalanceApi(req: Request, res: Response): Promise
     res.json({ ok: true, scope, wibDate, value, anchors: listOpeningAnchors() });
   } catch (err) {
     logger.error({ err }, 'setOpeningBalanceApi error');
+    res.status(500).json({ ok: false, message: 'Gagal simpan.' });
+  }
+}
+
+// MODAL akun baru (master saja): set/koreksi saldo saat akun ditambah. Kosong = hapus (kembali auto-capture).
+export async function setAccountModalApi(req: Request, res: Response): Promise<void> {
+  try {
+    if (!isMasterUser(req.session.user)) { res.status(403).json({ ok: false, message: 'Hanya master.' }); return; }
+    const accountId = String(req.body?.accountId || '');
+    if (!accountId) { res.status(400).json({ ok: false, message: 'accountId wajib.' }); return; }
+    const raw = req.body?.value;
+    const value = (raw === null || raw === undefined || raw === '') ? null : Number(String(raw).replace(/[^0-9-]/g, ''));
+    if (value !== null && !Number.isFinite(value)) { res.status(400).json({ ok: false, message: 'Nilai modal tidak valid.' }); return; }
+    setAccountModal(accountId, value);
+    logger.info({ accountId, value }, 'reports: set modal akun baru');
+    res.json({ ok: true, accountId, value });
+  } catch (err) {
+    logger.error({ err }, 'setAccountModalApi error');
     res.status(500).json({ ok: false, message: 'Gagal simpan.' });
   }
 }

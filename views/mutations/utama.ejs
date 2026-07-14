@@ -331,7 +331,12 @@
     document.getElementById('tbl-count').textContent=`${rows.length} transaksi`;
     if(!rows.length){document.getElementById('tbl-empty').style.display='';document.getElementById('tbl-wrap').style.display='none'; if(table) table.clearData(); return;}
     document.getElementById('tbl-empty').style.display='none';document.getElementById('tbl-wrap').style.display='';
-    initTable().then((t)=>{var pg=1;try{pg=t.getPage()||1;}catch(_){}var apply=(typeof t.replaceData==='function')?t.replaceData(rows):t.setData(rows);return apply.then(function(){try{var mx=(t.getPageMax&&t.getPageMax())||pg;t.setPage(Math.min(pg,mx));}catch(_){}});}).catch(()=>{}); // MADERA_AUDIT_A #9 pertahankan halaman
+    // FIX scroll-loncat: replaceData+setPage me-reset scroll ke atas tiap refresh live → simpan & pulihkan
+    // posisi scroll (window + tableholder Tabulator). requestAnimationFrame utk lolos reflow.
+    var _win=window.scrollY||window.pageYOffset||0, _hold=null, _hs=0;
+    try{_hold=document.querySelector('#mut-main-tabulator .tabulator-tableholder');_hs=_hold?_hold.scrollTop:0;}catch(_){}
+    function _restore(){try{if(_hold)_hold.scrollTop=_hs;}catch(_){}try{window.scrollTo(0,_win);}catch(_){}}
+    initTable().then((t)=>{var pg=1;try{pg=t.getPage()||1;}catch(_){}var apply=(typeof t.replaceData==='function')?t.replaceData(rows):t.setData(rows);return apply.then(function(){try{var mx=(t.getPageMax&&t.getPageMax())||pg;t.setPage(Math.min(pg,mx));}catch(_){} _restore(); requestAnimationFrame(_restore);});}).catch(()=>{}); // MADERA_AUDIT_A #9 pertahankan halaman + posisi scroll
   }
 
   function applyFiltersInternal(){

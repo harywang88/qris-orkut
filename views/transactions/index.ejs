@@ -319,7 +319,7 @@
   .tx-act-btn {
     font-size: 10px;
     font-weight: 600;
-    padding: 3px 8px;
+    padding: 3px 6px;
     border: 1px solid rgba(255,255,255,0.1);
     border-radius: 6px;
     background: rgba(255,255,255,0.04);
@@ -446,9 +446,9 @@
   }
   .tx-actions-wrap {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     justify-content: center;
-    gap: 4px;
+    gap: 3px;
   }
   /* -- Kolom ringkas 1-baris (History Generate QR): detail sekunder pindah ke tooltip hover -- */
   .tx-cell-1line {
@@ -961,8 +961,8 @@ const txTable = new Tabulator('#transactions-table', {
     {
       title: 'User',
       field: 'userIdExt',
-      minWidth: 170,
-      widthGrow: 2,
+      minWidth: 144,
+      widthGrow: 1,
       formatter: (cell) => {
         const row = cell.getData();
         const site = resolveSiteLabel(row);
@@ -1074,8 +1074,8 @@ const txTable = new Tabulator('#transactions-table', {
     {
       title: 'Status',
       field: 'statusPay',
-      minWidth: 150,
-      widthGrow: 1,
+      minWidth: 165,
+      widthGrow: 2,
       hozAlign: 'center',
       formatter: (cell) => {
         const row = cell.getData();
@@ -1127,7 +1127,7 @@ const txTable = new Tabulator('#transactions-table', {
     {
       title: 'Aksi',
       field: 'qrId',
-      width: isDev ? 180 : 140,
+      width: isDev ? 202 : 157,
       headerSort: false,
       resizable: false,
       formatter: (cell) => {
@@ -1144,6 +1144,10 @@ const txTable = new Tabulator('#transactions-table', {
         }
         if (isDev && row.statusPay === 'open') {
           buttons.push(`<button type="button" onclick="simulatePay('${row.qrId}', this)" class="tx-act-btn tx-act-green">Sim</button>`);
+        }
+        // Laporkan ke OrderKuota: QR yang BELUM sukses kredit (uang bisa nyangkut di OrderKuota).
+        if (row.statusBot !== 'deposit_success') {
+          buttons.push(`<button type="button" onclick="okLapor('${row.qrId}')" class="tx-act-btn" style="background:rgba(139,92,246,.18);color:#c4b5fd" title="Laporkan ke OrderKuota">Lapor</button>`);
         }
         return `<div class="tx-actions-wrap">${buttons.join('')}</div>`;
       },
@@ -1223,6 +1227,15 @@ window.downloadReceipt = function(qrId){
 const syncStateByAccount = new Map();
 let transactionRealtimeTimer = null;
 let snapshotInFlight = false;
+
+// FIX scroll-loncat: redraw(true) Tabulator reset scrollTop tableholder ke 0 → koko kelempar ke atas
+// tiap 3 dtk saat live-update. Bungkus redraw supaya posisi scroll dipertahankan.
+function txRedrawKeepScroll() {
+  var holder = null, st = 0;
+  try { holder = document.querySelector('#transactions-table .tabulator-tableholder'); st = holder ? holder.scrollTop : 0; } catch (_) {}
+  try { txTable.redraw(true); } catch (_) {}
+  if (holder) { try { holder.scrollTop = st; } catch (_) {} requestAnimationFrame(function () { try { holder.scrollTop = st; } catch (_) {} }); }
+}
 
 function getOpenRows() {
   // Poll baris 'open' (menunggu bayar) DAN baris 'paid' yang bot-nya belum final
@@ -1325,7 +1338,7 @@ async function refreshTransactionSnapshot() {
 
     if (changedRows.length) {
       await txTable.updateData(changedRows).catch(() => {});
-      txTable.redraw(true);
+      txRedrawKeepScroll();
       updateRealtimeStats();
     }
   } catch (_) {
@@ -1346,6 +1359,8 @@ let injectInFlight = false;
 function canInjectNewRows() {
   if (TX_HAS_FILTER) return false; // sedang difilter -> jangan suntik (bisa langgar filter)
   try { if (txTable && typeof txTable.getPage === 'function' && txTable.getPage() !== 1) return false; } catch (_) {}
+  // Jangan suntik baris baru saat user sedang scroll ke bawah (lagi baca data) — cegah tampilan geser.
+  try { var _h = document.querySelector('#transactions-table .tabulator-tableholder'); if (_h && _h.scrollTop > 40) return false; } catch (_) {}
   // hanya kalau user memang di tampilan TERKINI (baris teratas < 1 jam); kalau lihat riwayat lama -> jangan suntik
   if (tableData.length) {
     let newest = 0;
@@ -1367,7 +1382,7 @@ async function injectNewTransactions() {
     fresh.sort((a, b) => (new Date(a.createdAt).getTime() || 0) - (new Date(b.createdAt).getTime() || 0));
     for (const r of fresh) tableData.unshift(r);
     await txTable.addData(fresh, true).catch(() => {}); // true = tambah di ATAS
-    txTable.redraw(true);
+    txRedrawKeepScroll();
     refreshExpiryCountdowns();
     updateRealtimeStats();
     flashNewRows(fresh.map((r) => r.qrId));
@@ -1508,6 +1523,8 @@ async function showStatus(qrId) {
 function closeStatusModal() {
   document.getElementById('tx-status-modal').classList.add('hidden');
 }
+
+function okLapor(qrId) { window.location.href = apiUrl('/dashboard/orderkuota-report') + '?qrId=' + encodeURIComponent(qrId); }
 
 async function retryDeposit(qrId, button) {
   if (!confirm('YAKIN retry?\n\nBot akan mencoba mengkreditkan member SEKARANG.')) return;
