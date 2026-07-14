@@ -179,11 +179,12 @@
           const barClass = usedPct >= 90 ? 'qris-progress-bar-red' : usedPct >= 70 ? 'qris-progress-bar-amber' : 'qris-progress-bar-blue';
         %>
         <div class="rounded-2xl border border-line bg-card-hi p-3 dash-qris-card" data-site="<%= acc.siteId || '' %>">
-          <div class="flex justify-center mb-2">
-            <span class="qris-pill qris-pill-muted" style="font-size:10px;gap:4px" title="Site akun ini"><i class="fa-solid fa-layer-group" style="font-size:9px"></i> <%= acc.siteName || 'Tanpa site' %></span>
-          </div>
+          <% var _dsc = (acc.siteId && typeof siteColorById !== 'undefined') ? siteColorById[acc.siteId] : ''; %>
           <div class="flex items-center justify-between gap-2 mb-2">
-            <span class="font-bold text-sm text-ink truncate min-w-0" title="<%= acc.code %>"><%= acc.merchantName || acc.code %></span>
+            <div class="flex items-center gap-2 min-w-0">
+              <span class="font-bold text-sm text-ink truncate min-w-0" title="<%= acc.code %>"><%= acc.merchantName || acc.code %></span>
+              <span class="qris-pill" style="flex:none;font-size:9.5px;gap:4px;<%= _dsc ? ('background:'+_dsc+'22;border:1px solid '+_dsc+'55;color:'+_dsc) : 'background:rgba(148,163,184,.14);color:var(--muted)' %>" title="Site akun ini"><span style="width:6px;height:6px;border-radius:50%;flex:none;background:<%= _dsc || 'rgba(148,163,184,.6)' %><%= _dsc ? (';box-shadow:0 0 5px '+_dsc+'99') : '' %>"></span><%= acc.siteName || 'Tanpa site' %></span>
+            </div>
             <div class="flex items-center gap-2 flex-shrink-0">
               <span class="qris-pill <%= hPill %>"><%= acc.healthStatus %></span>
               <label style="display:inline-flex;align-items:center;cursor:pointer" title="Aktif/Nonaktif akun QRIS">
@@ -266,7 +267,7 @@
           %>
           <tr>
             <td class="font-mono text-xs text-muted-2"><%= tx.qrId.slice(0,12) %>…</td>
-            <td class="font-medium text-ink-2 text-xs"><%= tx.siteName || '—' %></td>
+            <td class="font-medium text-ink-2 text-xs"><% var _tsc = (tx.siteName && typeof siteColorByName !== 'undefined') ? siteColorByName[tx.siteName] : ''; %><% if (_tsc) { %><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:<%= _tsc %>;box-shadow:0 0 5px <%= _tsc %>99;margin-right:5px;vertical-align:middle"></span><% } %><%= tx.siteName || '—' %></td>
             <td class="text-xs text-muted font-mono"><%= tx.qrisAccount.code %></td>
             <td class="text-right font-semibold text-ink text-sm">
               Rp <%= tx.finalAmount.toLocaleString('id-ID') %>

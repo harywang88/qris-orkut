@@ -164,7 +164,7 @@
             </td>
             <td class="whitespace-nowrap">
               <span class="text-ink font-semibold"><%= r.merchantName || r.accountCode %></span>
-              <span class="block text-[10px] text-muted"><%= r.siteName || 'Tanpa site' %></span>
+              <% var _psc = (r.siteName && typeof siteColorByName !== 'undefined') ? siteColorByName[r.siteName] : ''; %><span class="block text-[10px]" style="color:<%= _psc || 'var(--muted)' %>"><% if (_psc) { %><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:<%= _psc %>;box-shadow:0 0 4px <%= _psc %>99;margin-right:4px;vertical-align:middle"></span><% } %><%= r.siteName || 'Tanpa site' %></span>
             </td>
             <td>
               <div class="pm-amt"><%= rp(r.amount) %></div>
@@ -283,7 +283,7 @@
             <td class="whitespace-nowrap"><span class="pm-badge" style="background:rgba(96,165,250,.15);color:#93c5fd"><%= r.userIdExt || '-' %></span></td>
             <td class="whitespace-nowrap">
               <span class="text-ink font-semibold"><%= r.merchantName || r.accountCode %></span>
-              <span class="block text-[10px] text-muted"><%= r.siteName || 'Tanpa site' %></span>
+              <% var _psc = (r.siteName && typeof siteColorByName !== 'undefined') ? siteColorByName[r.siteName] : ''; %><span class="block text-[10px]" style="color:<%= _psc || 'var(--muted)' %>"><% if (_psc) { %><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:<%= _psc %>;box-shadow:0 0 4px <%= _psc %>99;margin-right:4px;vertical-align:middle"></span><% } %><%= r.siteName || 'Tanpa site' %></span>
             </td>
             <td><div class="pm-amt" style="color:#86efac"><%= rp(r.amount) %></div></td>
             <td>

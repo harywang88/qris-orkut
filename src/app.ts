@@ -6,7 +6,7 @@ import { createSessionMiddleware } from './config/session';
 import { logger } from './config/logger';
 import { normalizeBasePath, withBasePath } from './core/base-path';
 import { isMasterUser, getMenuPermsForUser, getSiteScopeForUser } from './shared/alias-access.service';
-import { accountIdsForSite } from './shared/site.service';
+import { accountIdsForSite, listSites } from './shared/site.service';
 import { runWithScope } from './core/request-context';
 import { requireAuth } from './core/auth.middleware';
 import { authRouter } from './modules/auth/auth.router';
@@ -97,6 +97,16 @@ export function createApp(): express.Application {
     app.get(`${basePath}/healthz`, healthHandler);
   }
 
+  // Warna site (dari Kelola Site) tersedia GLOBAL utk semua view. Cache 15s -> tak baca file tiap poll.
+  let _scCache: { at: number; byName: Record<string, string>; byId: Record<string, string> } | null = null;
+  const _siteColors = () => {
+    if (!_scCache || Date.now() - _scCache.at > 15000) {
+      const c = { at: Date.now(), byName: {} as Record<string, string>, byId: {} as Record<string, string> };
+      try { for (const s of listSites()) { c.byName[s.name] = s.color; c.byId[s.id] = s.color; } } catch { /* ignore */ }
+      _scCache = c;
+    }
+    return _scCache;
+  };
   app.use((req: Request, res: Response, next: NextFunction) => {
     const sessUser = req.session.user ?? null;
     // Perkaya user utk view/gating dgn isMaster + menuPerms (per-request, TANPA ubah session).
@@ -122,6 +132,7 @@ export function createApp(): express.Application {
     res.locals.basePath = basePath;
     res.locals.url = (pathname: string) => withBasePath(pathname, basePath);
     res.locals.currentPath = req.originalUrl.split('?')[0];
+    { const _sc = _siteColors(); res.locals.siteColorByName = _sc.byName; res.locals.siteColorById = _sc.byId; }
 
     if (req.session.flash) {
       delete req.session.flash;

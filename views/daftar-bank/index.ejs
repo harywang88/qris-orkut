@@ -137,6 +137,7 @@
 (function(){
   var CAN_MANAGE = <%= canManage ? 'true' : 'false' %>;
   var SITE_SCOPE = <%- JSON.stringify(siteScope || null) %>;
+  var SITE_COLORS = <%- JSON.stringify((typeof sites !== 'undefined' ? sites : []).reduce(function (m, s) { m[s.name] = s.color; return m; }, {})) %>;
   var API = '<%= url("/dashboard/api/daftar-bank") %>';
   var BANKLIST = '<%= url("/dashboard/api/daftar-bank/bank-list") %>';
   var INQUIRY = '<%= url("/dashboard/api/daftar-bank/inquiry") %>';
@@ -166,7 +167,8 @@
     grid.innerHTML=rows.map(function(b,i){
       var br=bankBrand(b.bankName);
       var acts = CAN_MANAGE ? ('<div class="dbank-actions"><button class="dbank-mini" onclick="dbankOpenEdit(\''+b.id+'\')"><i class="fa-solid fa-pen"></i> Edit</button><button class="dbank-mini del" onclick="dbankDelete(\''+b.id+'\')"><i class="fa-solid fa-trash"></i> Hapus</button></div>') : '';
-      var siteBadge = (!SITE_SCOPE && b.siteName) ? ('<span class="dbank-site"><i class="fa-solid fa-location-dot" style="font-size:8px"></i>'+esc(b.siteName)+'</span>') : '';
+      var _sc = (b.siteColor || SITE_COLORS[b.siteName] || '#8b5cf6');
+      var siteBadge = (!SITE_SCOPE && b.siteName) ? ('<span class="dbank-site" style="background:'+_sc+'22;border-color:'+_sc+'66;color:'+_sc+'"><span style="width:7px;height:7px;border-radius:50%;background:'+_sc+';box-shadow:0 0 6px '+_sc+'99;flex:none"></span>'+esc(b.siteName)+'</span>') : '';
       return '<div class="dbank-card" style="--bk:'+br.color+';animation-delay:'+(i*45)+'ms">'
         +'<div class="dbank-brow"><div class="dbank-logo" style="background:'+br.color+'">'+esc(br.ini)+'</div><div><div class="dbank-bname">'+esc(b.bankName)+'</div>'+siteBadge+'</div></div>'
         +'<div class="dbank-rek">'+esc(b.noRekening)+'<i class="fa-regular fa-copy dbank-copy" title="Salin" onclick="dbankCopy(\''+esc(b.noRekening)+'\')"></i></div>'

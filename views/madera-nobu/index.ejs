@@ -133,7 +133,11 @@
             <span class="mn-smm-shine"></span><i class="fa-solid fa-paper-plane"></i> Send Money Manual
           </button>
         </div>
-        <span class="mn-card-num"><%= idx + 1 %></span>
+        <% var _msc = (acct.siteName && typeof siteColorByName !== 'undefined') ? siteColorByName[acct.siteName] : ''; var _mc = _msc || '#8b5cf6'; %>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px">
+          <span class="mn-card-num" style="margin-bottom:0"><%= idx + 1 %></span>
+          <% if (acct.siteName) { %><span style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:10px;font-weight:800;background:<%= _mc %>22;border:1px solid <%= _mc %>55;color:<%= _mc %>"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:<%= _mc %>;box-shadow:0 0 6px <%= _mc %>99"></span><%= acct.siteName %></span><% } %>
+        </div>
         <div class="mn-card-name"><%= acct.merchantName %></div>
         <div class="mn-card-code"><%= acct.code %><% if (acct.status && acct.status !== 'active') { %> <span style="display:inline-block;margin-left:4px;padding:1px 6px;border-radius:6px;background:rgba(248,113,113,.15);color:#f87171;font-size:8px;font-weight:800;letter-spacing:.05em;">NONAKTIF</span><% } %></div>
         <div class="mn-card-bal">Saldo Madera<br><b><%= fmtRpMn(acct.lastMaderaBalance) %></b></div>

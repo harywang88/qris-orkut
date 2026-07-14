@@ -13,6 +13,7 @@ import {
   setHealthStatus,
   resetDailyUsage,
 } from '../qris-accounts/qris-accounts.service';
+import { siteNameForAccount, siteIdForAccount } from '../../shared/site.service';
 import {
   compareReportVsLiveSources,
   syncMerchantNow,
@@ -125,7 +126,8 @@ function renderMerchantForm(
 
 export async function showMerchantQrList(req: Request, res: Response): Promise<void> {
   try {
-    const accounts = await listQrisAccounts();
+    const _accountsRaw = await listQrisAccounts();
+    const accounts = _accountsRaw.map((a) => Object.assign({}, a, { siteName: siteNameForAccount(a.id) || '', siteId: siteIdForAccount(a.id) || '' }));
     res.render('merchant-qr/index', {
       title: 'Merchant QR',
       accounts,

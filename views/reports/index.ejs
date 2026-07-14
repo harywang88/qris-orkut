@@ -184,7 +184,7 @@
           <% siteBreakdown.forEach(row => { %>
             <tr>
               <td class="font-medium text-ink">
-                <%= row.siteName %>
+                <% var _rsc = (row.siteName && typeof siteColorByName !== 'undefined') ? siteColorByName[row.siteName] : ''; %><% if (_rsc) { %><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:<%= _rsc %>;box-shadow:0 0 6px <%= _rsc %>99;margin-right:6px;vertical-align:middle"></span><% } %><%= row.siteName %>
                 <span class="text-[10px] text-muted-2 font-normal">· <%= row.accountCount %> akun</span>
               </td>
               <td class="text-right font-mono"><%= row.total %></td>

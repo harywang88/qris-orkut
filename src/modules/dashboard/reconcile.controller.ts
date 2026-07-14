@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { reconcileTransfers, type ReconRow } from '../../shared/reconcile-transfer.service';
 import { isShowAll } from '../../shared/operational-cutoff.service';
 import { db } from '../../config/database';
+import { siteNameForAccount, siteIdForAccount, listSites } from '../../shared/site.service';
 import { logger } from '../../config/logger';
 
 const WIB = 7 * 3600000;
@@ -41,6 +42,7 @@ export async function showReconcile(req: Request, res: Response): Promise<void> 
     }
 
     const accountCode = typeof req.query.accountCode === 'string' ? req.query.accountCode.trim() : '';
+    const site = typeof req.query.site === 'string' ? req.query.site.trim() : '';
     const nominalRaw = typeof req.query.nominal === 'string' ? req.query.nominal : '';
     const nominal = parseInt(nominalRaw.replace(/[^\d]/g, ''), 10) || 0;
     const status = ['match', 'pending', 'unmatch'].includes(String(req.query.status))
@@ -60,10 +62,13 @@ export async function showReconcile(req: Request, res: Response): Promise<void> 
     }
 
     const { hop1, hop2 } = await reconcileTransfers(days, isShowAll(req));
-    let rows: ReconRow[] = hop === 2 ? hop2 : hop1;
+    // Peta akun -> site (rows pakai accountCode). Enrich siteName/siteId utk kolom + filter Site.
+    const accounts = await db.qrisAccount.findMany({ select: { id: true, code: true, merchantName: true }, orderBy: { code: 'asc' } });
+    let rows: (ReconRow & { siteName: string; siteId: string })[] = (hop === 2 ? hop2 : hop1).map((r) => ({ ...r, siteName: siteNameForAccount(r.accountId) || '', siteId: siteIdForAccount(r.accountId) || '' }));
     if (from) rows = rows.filter((r) => new Date(r.outTime).getTime() >= from!.getTime());
     if (to) rows = rows.filter((r) => new Date(r.outTime).getTime() <= to!.getTime());
     if (accountCode) rows = rows.filter((r) => r.accountCode === accountCode);
+    if (site) rows = rows.filter((r) => r.siteId === site);
     if (nominal) rows = rows.filter((r) => r.amount === nominal);
     if (status) rows = rows.filter((r) => r.status === status);
 
@@ -79,11 +84,6 @@ export async function showReconcile(req: Request, res: Response): Promise<void> 
     const totalPages = Math.max(1, Math.ceil(total / pageSize));
     const curPage = Math.min(page, totalPages);
     const pageRows = rows.slice((curPage - 1) * pageSize, curPage * pageSize);
-
-    const accounts = await db.qrisAccount.findMany({
-      select: { code: true, merchantName: true },
-      orderBy: { code: 'asc' },
-    });
 
     res.render('reconcile/index', {
       title: 'Rekonsiliasi Saldo',
@@ -101,6 +101,8 @@ export async function showReconcile(req: Request, res: Response): Promise<void> 
       rows: pageRows,
       summary,
       accounts,
+      site,
+      sites: listSites().map((s) => ({ id: s.id, name: s.name })),
     });
   } catch (err) {
     logger.error({ err }, 'showReconcile error');

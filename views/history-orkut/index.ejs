@@ -63,7 +63,11 @@
   <div class="ho-grid">
     <% accounts.forEach(function(acct, idx){ %>
       <div class="ho-card <%= acct.hasLink ? '' : 'ho-nolink' %>" data-id="<%= acct.id %>" data-name="<%= acct.merchantName %>" data-site="<%= acct.siteName || '' %>">
-        <span class="ho-card-num"><%= idx+1 %></span>
+        <% var _hsc = (acct.siteName && typeof siteColorByName !== 'undefined') ? siteColorByName[acct.siteName] : ''; var _hc = _hsc || '#8b5cf6'; %>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px">
+          <span class="ho-card-num" style="margin-bottom:0"><%= idx+1 %></span>
+          <% if (acct.siteName) { %><span style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:10px;font-weight:800;background:<%= _hc %>22;border:1px solid <%= _hc %>55;color:<%= _hc %>"><span style="width:7px;height:7px;border-radius:50%;flex:none;background:<%= _hc %>;box-shadow:0 0 6px <%= _hc %>99"></span><%= acct.siteName %></span><% } %>
+        </div>
         <div class="ho-card-name"><%= acct.merchantName %><%= acct.status && acct.status !== 'active' ? ' · OFF' : '' %></div>
         <div class="ho-card-code"><%= acct.code %></div>
         <div class="ho-card-bal">Saldo <%= walletLabel %><br><b><%= fmtRpHo(isQris ? acct.lastQrisBalance : acct.lastMainBalance) %></b></div>

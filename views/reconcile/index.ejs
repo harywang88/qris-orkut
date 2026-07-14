@@ -14,7 +14,7 @@
     return '<span class="rk-badge rk-b-bad"><i class="fa-solid fa-triangle-exclamation"></i> UNMATCH</span>';
   }
   function buildUrl(ov) {
-    var p = Object.assign({ hop: hop, period: period, from: fromValue, to: toValue, accountCode: accountCode, nominal: nominal, status: status, pageSize: pageSize, page: page }, ov || {});
+    var p = Object.assign({ hop: hop, period: period, from: fromValue, to: toValue, site: site, accountCode: accountCode, nominal: nominal, status: status, pageSize: pageSize, page: page }, ov || {});
     var parts = [];
     Object.keys(p).forEach(function (k) { if (p[k] !== '' && p[k] != null) parts.push(k + '=' + encodeURIComponent(p[k])); });
     return '/dashboard/reconcile?' + parts.join('&');
@@ -128,6 +128,15 @@
         <input type="date" name="to" value="<%= toValue %>" onchange="document.getElementById('rkPeriod').value='custom'" class="rk-in" style="width:150px" />
       </div>
       <div class="rk-fg">
+        <span class="rk-lbl">Site</span>
+        <select name="site" class="rk-in" style="width:150px">
+          <option value="">Semua Site</option>
+          <% (typeof sites !== 'undefined' ? sites : []).forEach(function (s) { %>
+            <option value="<%= s.id %>" <%= site === s.id ? 'selected' : '' %>><%= s.name %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div class="rk-fg">
         <span class="rk-lbl">Akun QRIS</span>
         <select name="accountCode" class="rk-in" style="width:180px">
           <option value="">Semua Akun</option>
@@ -193,6 +202,7 @@
         <thead>
           <tr>
             <th>Waktu Keluar</th>
+            <th>Site</th>
             <th>Akun</th>
             <th class="text-right">Nominal</th>
             <th>Status</th>
@@ -204,6 +214,7 @@
           <% rows.forEach(function (r) { %>
             <tr>
               <td class="whitespace-nowrap text-muted-2"><%= fmtWib(r.outTime) %></td>
+              <td class="whitespace-nowrap"><% var _rsc = (r.siteName && typeof siteColorByName !== 'undefined') ? siteColorByName[r.siteName] : ''; %><% if (r.siteName) { var _rc = _rsc || '#8b5cf6'; %><span style="display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;font-size:10px;font-weight:800;background:<%= _rc %>22;border:1px solid <%= _rc %>55;color:<%= _rc %>"><span style="width:6px;height:6px;border-radius:50%;flex:none;background:<%= _rc %>;box-shadow:0 0 5px <%= _rc %>99"></span><%= r.siteName %></span><% } else { %><span class="text-[11px] text-muted">—</span><% } %></td>
               <td class="whitespace-nowrap text-ink font-semibold"><%= r.accountCode %></td>
               <td class="text-right font-mono font-bold whitespace-nowrap text-ink"><%= rp(r.amount) %></td>
               <td><%- badge(r.status) %></td>

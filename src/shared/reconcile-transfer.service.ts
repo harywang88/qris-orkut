@@ -21,6 +21,7 @@ export type ReconStatus = 'match' | 'pending' | 'unmatch';
 export interface ReconRow {
   hop: 1 | 2;
   outId: string;
+  accountId: string;
   accountCode: string;
   amount: number;
   outTime: Date;
@@ -109,7 +110,7 @@ export async function reconcileTransfers(
     let status: ReconStatus;
     if (best) { usedIn.add(best.id); status = 'match'; } else status = now - oTime <= PENDING_GRACE_MS ? 'pending' : 'unmatch';
     hop1.push({
-      hop: 1, outId: o.id, accountCode: accMap[o.qrisAccountId] || '-', amount: o.amount,
+      hop: 1, outId: o.id, accountId: o.qrisAccountId, accountCode: accMap[o.qrisAccountId] || '-', amount: o.amount,
       outTime: o.transactionTime, outKet: parseKet(o.rawDataJson),
       inTime: best ? best.transactionTime : null, inKet: best ? parseKet(best.rawDataJson) : null,
       code: null, status,
@@ -142,7 +143,7 @@ export async function reconcileTransfers(
     let status: ReconStatus;
     if (best) { usedM.add(best.id); status = 'match'; } else status = now - o.transactionTime.getTime() <= PENDING_GRACE_MS ? 'pending' : 'unmatch';
     hop2.push({
-      hop: 2, outId: o.id, accountCode: accMap[o.qrisAccountId] || '-', amount: o.amount,
+      hop: 2, outId: o.id, accountId: o.qrisAccountId, accountCode: accMap[o.qrisAccountId] || '-', amount: o.amount,
       outTime: o.transactionTime, outKet: parseKet(o.rawDataJson),
       inTime: best ? best.transactionTime : null, inKet: best ? parseKet(best.rawDataJson) : null,
       code, status,

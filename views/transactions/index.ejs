@@ -891,6 +891,7 @@ function parseMetadata(metadataJson) {
   }
 }
 
+window.__siteColors = <%- JSON.stringify(typeof siteColorByName !== 'undefined' ? siteColorByName : {}) %>;
 function resolveSiteLabel(row) {
   if (row.siteName) return row.siteName;
   const metadata = parseMetadata(row.metadataJson);
@@ -969,7 +970,9 @@ const txTable = new Tabulator('#transactions-table', {
         const user = cell.getValue() || '-';
         // 1 baris: tag site + username, keduanya tampil penuh. Ringkasan di tooltip.
         const tip = attrEsc(`Site: ${site} · User: ${user}`);
-        return `<div class="tx-cell-1line" title="${tip}"><span class="tx-cell-site-tag">${attrEsc(site)}</span> <span class="tx-cell-user">${attrEsc(user)}</span></div>`;
+        const _sc = (window.__siteColors || {})[site] || '';
+        const _st = _sc ? ` style="background:${_sc}22;border:1px solid ${_sc}55;color:${_sc}"` : '';
+        return `<div class="tx-cell-1line" title="${tip}"><span class="tx-cell-site-tag"${_st}>${attrEsc(site)}</span> <span class="tx-cell-user">${attrEsc(user)}</span></div>`;
       },
     },
     {
