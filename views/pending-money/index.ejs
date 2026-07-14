@@ -130,6 +130,9 @@
     </div>
     <button type="submit" class="pmf-btn" style="background:linear-gradient(135deg,#fbbf24,#f59e0b);color:#3a2500"><i class="fa-solid fa-magnifying-glass" style="font-size:11px"></i> Terapkan</button>
   </form>
+  <div style="margin-left:auto;align-self:flex-end">
+    <button type="button" class="pmf-btn" style="background:linear-gradient(135deg,#8b5cf6,#6d28d9);color:#fff" onclick="pcOpen()"><i class="fa-solid fa-database" style="font-size:11px"></i> Konfig Bank Nagox</button>
+  </div>
 </div>
 <div class="qris-card p-4">
   <% if (!rows || rows.length === 0) { %>
@@ -188,10 +191,23 @@
                   <span class="pm-badge" style="background:rgba(134,239,172,.15);color:#86efac"><i class="fa-solid fa-circle-check"></i> Diklaim<%= r.tag.website ? (' → ' + r.tag.website) : '' %></span>
                   <button class="pm-btn pm-btn-ghost" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/untag') %>" onclick="pmUntag(this)">Reset</button>
                 <% } else { %>
-                  <% if (r.tag && r.tag.status === 'pending') { %>
+                  <% var _nrec = r.nagoxRec; var _locked = _nrec && _nrec.status === 'ok'; %>
+                  <% if (_locked) { %>
+                    <span class="pm-badge" style="background:rgba(52,211,153,.16);color:#6ee7b7" title="Tercatat di DB Nagox<%= _nrec.bankLabel ? (' — ' + _nrec.bankLabel) : '' %>. Reset dikunci — hapus manual di Nagox."><i class="fa-solid fa-database"></i> Nagox&nbsp;&#10003;</span>
+                    <button class="pm-btn pm-btn-ghost" disabled style="opacity:.45;cursor:not-allowed" title="Terkunci — sudah tercatat di Nagox. Hapus manual di Nagox untuk membatalkan."><i class="fa-solid fa-lock"></i> Reset</button>
+                  <% } else if (r.tag && r.tag.status === 'pending') { %>
                     <button class="pm-btn pm-btn-green" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/untag') %>" onclick="pmUntag(this)"><i class="fa-solid fa-circle-check"></i> Dicatat</button>
+                    <% if (_nrec && _nrec.status !== 'ok') { %><span class="pm-badge" style="background:rgba(248,113,113,.16);color:#fca5a5" title="Gagal catat ke Nagox">Nagox gagal</span><% } %>
                   <% } else { %>
-                    <button class="pm-btn pm-btn-red" data-url="<%= url('/dashboard/api/pending-money/' + r.id + '/tag') %>" onclick="pmCatat(this)"><i class="fa-solid fa-bookmark"></i> Catat Pending</button>
+                    <button class="pm-btn pm-btn-red"
+                      data-catat-url="<%= url('/dashboard/api/pending-money/' + r.id + '/catat-nagox') %>"
+                      data-site-id="<%= r.siteId || '' %>"
+                      data-site-name="<%= r.siteName || '' %>"
+                      data-time="<%= r.nagoxTimeLocal || '' %>"
+                      data-user="<%= guessId %>"
+                      data-pengirim="<%= r.pengirim || '' %>"
+                      data-amount="<%= r.amount %>"
+                      onclick="pmCatatNagox(this)"><i class="fa-solid fa-bookmark"></i> Catat Pending</button>
                   <% } %>
                   <button class="pm-btn pm-btn-push"
                     data-book-url="<%= url('/dashboard/api/pending-money/' + r.id + '/book') %>"
@@ -344,8 +360,138 @@
   </div>
 </div>
 
+<!-- ── Modal Konfirmasi: Catat ke DB Nagox ── -->
+<div class="pm-modal-backdrop" id="pnModal" onclick="if(event.target===this)pnClose()">
+  <div class="pm-modal" role="dialog" aria-modal="true" style="max-width:460px">
+    <div class="pm-modal-head">
+      <div class="pm-modal-title">📮 Catat ke DB Nagox</div>
+      <div style="font-size:12px;color:#f87171;margin-top:6px;font-weight:600"><i class="fa-solid fa-triangle-exclamation"></i> Tak bisa di-Reset — hapus manual di Nagox bila salah.</div>
+    </div>
+    <div class="pm-panel">
+      <label class="pm-label">Tanggal &amp; Waktu (jam uang masuk)</label>
+      <input type="datetime-local" id="pnTime" class="pm-field">
+      <label class="pm-label">Username (dugaan, opsional)</label>
+      <input type="text" id="pnUser" class="pm-field" placeholder="mis. asik24">
+      <label class="pm-label">Nama Pemilik Bank Pengirim (opsional)</label>
+      <input type="text" id="pnPengirim" class="pm-field" placeholder="mis. DANA - NOBU / PA***">
+      <label class="pm-label">Jumlah</label>
+      <input type="text" id="pnJumlah" class="pm-field" inputmode="numeric">
+      <div class="pm-info" style="margin:14px 0 4px">
+        <div class="pm-info-row"><span class="k">Panel (site)</span><span id="pnPanel" style="font-weight:700">-</span></div>
+        <div class="pm-info-row"><span class="k">Bank penerima</span><span id="pnBank" style="font-weight:700;text-align:right;max-width:62%">-</span></div>
+      </div>
+      <div id="pnMsg" style="font-size:12px;margin-top:8px;color:#f87171"></div>
+    </div>
+    <div class="pm-actions">
+      <button class="pm-modal-btn pm-ok" id="pnSubmit" onclick="pnSubmit()"><i class="fa-solid fa-database"></i> Catat ke Nagox</button>
+      <button class="pm-modal-btn pm-cancel" onclick="pnClose()">Batal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal Konfig Bank Nagox per-Site ── -->
+<div class="pm-modal-backdrop" id="pcModal" onclick="if(event.target===this)pcClose()">
+  <div class="pm-modal" role="dialog" aria-modal="true" style="max-width:560px">
+    <div class="pm-modal-head">
+      <div class="pm-modal-title">⚙️ Konfig Bank Nagox per Site</div>
+      <div style="font-size:12px;color:#94a3b8;margin-top:4px">Pilih bank penerima Nagox tiap site. Dipakai otomatis saat "Catat Pending".</div>
+    </div>
+    <div class="pm-panel" id="pcBody"><div style="text-align:center;padding:20px;color:#94a3b8">memuat…</div></div>
+    <div class="pm-actions"><button class="pm-modal-btn pm-cancel" onclick="pcClose()" style="width:100%">Tutup</button></div>
+  </div>
+</div>
+
 <script>
+  window.__nagoxSites = <%- JSON.stringify(typeof nagoxSites !== 'undefined' ? nagoxSites : []) %>;
+  window.__nagoxConfig = <%- JSON.stringify(typeof nagoxConfig !== 'undefined' ? nagoxConfig : {}) %>;
   var pmCur = { bookUrl: '', mode: 'auto' };
+  var pnCur = { url: '', siteId: '', panel: '' };
+  function pnClose(){ document.getElementById('pnModal').classList.remove('show'); }
+  function pmCatatNagox(btn){
+    var d = btn.dataset;
+    var cfg = (window.__nagoxConfig || {})[d.siteId || ''];
+    if(!cfg || !cfg.bankId){ alert('Bank Nagox belum di-set untuk site "' + (d.siteName || '-') + '".\nBuka tombol "Konfig Bank Nagox" dulu ya.'); return; }
+    pnCur.url = d.catatUrl; pnCur.siteId = d.siteId; pnCur.panel = cfg.panel;
+    document.getElementById('pnTime').value = d.time || '';
+    document.getElementById('pnUser').value = d.user || '';
+    document.getElementById('pnPengirim').value = d.pengirim || '';
+    document.getElementById('pnJumlah').value = d.amount || '';
+    document.getElementById('pnPanel').textContent = cfg.panel || d.siteName || '-';
+    document.getElementById('pnBank').textContent = cfg.bankLabel || ('#' + cfg.bankId);
+    document.getElementById('pnMsg').textContent = '';
+    var b = document.getElementById('pnSubmit'); b.style.pointerEvents='auto'; b.style.opacity='1';
+    document.getElementById('pnModal').classList.add('show');
+  }
+  async function pnSubmit(){
+    var jml = (document.getElementById('pnJumlah').value || '').replace(/[^0-9]/g,'');
+    if(!jml || Number(jml) <= 0){ document.getElementById('pnMsg').textContent = 'Jumlah tidak valid.'; return; }
+    var tgl = document.getElementById('pnTime').value;
+    if(!tgl){ document.getElementById('pnMsg').textContent = 'Tanggal & waktu wajib.'; return; }
+    if(!confirm('Catat pending ini ke DB Nagox?\nAksi TIDAK bisa di-reset (hapus manual di Nagox bila salah).')) return;
+    var b = document.getElementById('pnSubmit'); b.style.pointerEvents='none'; b.style.opacity='.6';
+    var payload = { siteId: pnCur.siteId, tanggalWaktu: tgl, user: document.getElementById('pnUser').value.trim(), namaBankPengirim: document.getElementById('pnPengirim').value.trim(), jumlah: jml };
+    try {
+      var r = await fetch(pnCur.url, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      var d = {}; try { d = await r.json(); } catch(e2){}
+      if(r.ok && d.ok){ location.reload(); }
+      else { document.getElementById('pnMsg').textContent = (d && d.message) || 'Gagal catat ke Nagox.'; b.style.pointerEvents='auto'; b.style.opacity='1'; }
+    } catch(e){ document.getElementById('pnMsg').textContent = 'Gagal: ' + e.message; b.style.pointerEvents='auto'; b.style.opacity='1'; }
+  }
+  // ── Konfig Bank Nagox per-site ──
+  var pcPanels = null;
+  function pcClose(){ document.getElementById('pcModal').classList.remove('show'); }
+  async function pcOpen(){
+    document.getElementById('pcModal').classList.add('show');
+    var body = document.getElementById('pcBody');
+    body.innerHTML = '<div style="text-align:center;padding:20px;color:#94a3b8">memuat panel & konfig…</div>';
+    try {
+      if(!pcPanels){ var pr = await fetch('<%= url('/dashboard/api/pending-money/nagox-panels') %>'); var pd = await pr.json(); pcPanels = (pd && pd.panels) || []; }
+      var cr = await fetch('<%= url('/dashboard/api/pending-money/nagox-config') %>'); var cd = await cr.json(); var cfg = (cd && cd.config) || {};
+      window.__nagoxConfig = cfg;
+      var sites = window.__nagoxSites || [];
+      if(!sites.length){ body.innerHTML = '<div style="padding:16px;color:#94a3b8">Belum ada site.</div>'; return; }
+      var html = '';
+      sites.forEach(function(s){
+        var c = cfg[s.id] || {};
+        var popts = '<option value="">— panel —</option>' + pcPanels.map(function(p){ var sel = (c.panel === p || (!c.panel && p.toUpperCase() === String(s.name).toUpperCase())) ? 'selected' : ''; return '<option value="' + p + '" ' + sel + '>' + p + '</option>'; }).join('');
+        html += '<div class="pc-row" data-site="' + s.id + '" style="border:1px solid rgba(148,163,184,.2);border-radius:12px;padding:12px;margin-bottom:10px">'
+          + '<div style="font-weight:700;margin-bottom:8px">' + s.name + '</div>'
+          + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+          + '<select class="pm-field pc-panel" style="flex:0 0 130px" onchange="pcLoadBanks(this)">' + popts + '</select>'
+          + '<select class="pm-field pc-bank" style="flex:1;min-width:180px"><option value="">— pilih panel dulu —</option></select>'
+          + '<button class="pm-btn pm-btn-green pc-save" onclick="pcSave(this)"><i class="fa-solid fa-floppy-disk"></i></button>'
+          + '</div>'
+          + '<div class="pc-cur" style="font-size:11px;color:#94a3b8;margin-top:6px">' + (c.bankLabel ? ('Tersimpan: ' + c.bankLabel) : 'Belum di-set') + '</div>'
+          + '</div>';
+      });
+      body.innerHTML = html;
+      document.querySelectorAll('#pcBody .pc-row').forEach(function(row){ var ps = row.querySelector('.pc-panel'); if(ps.value){ pcLoadBanks(ps, (cfg[row.dataset.site] || {}).bankId); } });
+    } catch(e){ body.innerHTML = '<div style="padding:16px;color:#f87171">Gagal memuat: ' + e.message + '</div>'; }
+  }
+  async function pcLoadBanks(panelSel, presetBankId){
+    var row = panelSel.closest('.pc-row'); var bankSel = row.querySelector('.pc-bank'); var panel = panelSel.value;
+    if(!panel){ bankSel.innerHTML = '<option value="">— pilih panel dulu —</option>'; return; }
+    bankSel.innerHTML = '<option value="">memuat bank…</option>';
+    try {
+      var r = await fetch('<%= url('/dashboard/api/pending-money/nagox-banks') %>?panel=' + encodeURIComponent(panel));
+      var d = await r.json(); var banks = (d && d.banks) || [];
+      bankSel.innerHTML = '<option value="">— pilih bank —</option>' + banks.map(function(b){ var sel = (String(b.id) === String(presetBankId || '')) ? 'selected' : ''; return '<option value="' + b.id + '" data-label="' + String(b.label).replace(/"/g,'&quot;') + '" ' + sel + '>' + b.label + '</option>'; }).join('');
+    } catch(e){ bankSel.innerHTML = '<option value="">gagal muat bank</option>'; }
+  }
+  async function pcSave(btn){
+    var row = btn.closest('.pc-row'); var siteId = row.dataset.site;
+    var panel = row.querySelector('.pc-panel').value; var bankSel = row.querySelector('.pc-bank'); var bankId = bankSel.value;
+    var opt = bankSel.options[bankSel.selectedIndex]; var bankLabel = opt ? (opt.dataset.label || opt.textContent) : '';
+    if(!panel || !bankId){ alert('Pilih panel & bank dulu.'); return; }
+    btn.style.pointerEvents='none'; btn.style.opacity='.6';
+    try {
+      var r = await fetch('<%= url('/dashboard/api/pending-money/nagox-config') %>', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ siteId:siteId, panel:panel, bankId:bankId, bankLabel:bankLabel }) });
+      var d = {}; try { d = await r.json(); } catch(e2){}
+      if(r.ok && d.ok){ row.querySelector('.pc-cur').textContent = 'Tersimpan: ' + bankLabel; (window.__nagoxConfig = window.__nagoxConfig || {})[siteId] = { panel:panel, bankId:bankId, bankLabel:bankLabel }; btn.innerHTML = '<i class="fa-solid fa-check"></i>'; setTimeout(function(){ btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i>'; }, 1500); }
+      else { alert((d && d.message) || 'Gagal simpan'); }
+    } catch(e){ alert('Gagal: ' + e.message); }
+    btn.style.pointerEvents='auto'; btn.style.opacity='1';
+  }
   function pmOpenPush(btn) {
     pmCur.bookUrl = btn.dataset.bookUrl;
     document.getElementById('pmiIssuer').textContent = btn.dataset.issuer;
@@ -406,11 +552,12 @@
     if (!confirm('Reset status uang pending ini?')) return;
     try {
       var r = await fetch(btn.dataset.url, { method: 'POST' });
-      if (r.ok) { location.reload(); } else { alert('Gagal'); }
+      var d = {}; try { d = await r.json(); } catch (e2) {}
+      if (r.ok && d.ok) { location.reload(); } else { alert((d && d.message) || 'Gagal'); }
     } catch (e) { alert('Gagal: ' + e.message); }
   }
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') pmClose(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { pmClose(); pnClose(); pcClose(); } });
   // Pindahkan modal ke <body> supaya position:fixed lepas dari ancestor ber-transform
   // (fix: breakdown tak muncul pas / harus zoom-out+scroll karena kejebak container beranimasi).
-  (function () { var m = document.getElementById('pmModal'); if (m && m.parentElement !== document.body) document.body.appendChild(m); })();
+  (function () { ['pmModal','pnModal','pcModal'].forEach(function(id){ var m = document.getElementById(id); if (m && m.parentElement !== document.body) document.body.appendChild(m); }); })();
 </script>

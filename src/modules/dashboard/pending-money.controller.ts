@@ -7,7 +7,12 @@ import {
   removePendingTag,
 } from '../../shared/pending-money.service';
 import { isShowAll } from '../../shared/operational-cutoff.service';
-import { buildResolver } from '../../shared/site.service';
+import { buildResolver, listSites } from '../../shared/site.service';
+import {
+  listPendingConfig, getPendingConfig, setPendingConfig,
+  listNagoxPendRecords, setNagoxPendRecord, isRecordedToNagox,
+  callNagoxPending, nagoxListPanels, nagoxListBanks,
+} from '../../shared/nagox-pending.service';
 import { db } from '../../config/database';
 import { getScopeAccountIdsFromContext } from '../../core/request-context';
 import { logger } from '../../config/logger';
@@ -18,9 +23,18 @@ export async function showPendingMoney(req: Request, res: Response): Promise<voi
     const _all = await listPendingMoney(null, isShowAll(req));
     const lockedRows = await listBookedPendings(null, isShowAll(req));
     const resolve = buildResolver();
+    const _nagoxRecs = listNagoxPendRecords();
+    const _toLocalWib = (d: Date | string): string => {
+      const t = new Date(d); if (Number.isNaN(t.getTime())) return '';
+      return new Date(t.getTime() + 7 * 3600000).toISOString().slice(0, 16); // "YYYY-MM-DDTHH:MM" (WIB) utk datetime-local
+    };
     for (const r of _all) {
       const s = resolve(r.qrisAccountId);
       r.siteName = s && s.siteName ? s.siteName : null;
+      const _rx = r as unknown as Record<string, unknown>;
+      _rx.siteId = s && s.siteId ? s.siteId : null;
+      _rx.nagoxRec = _nagoxRecs[r.id] || null;
+      _rx.nagoxTimeLocal = _toLocalWib(r.transactionTime);
     }
     // "Sudah Diproses": resolve site (dulu null -> selalu "Tanpa site") + paginasi terpisah.
     for (const r of lockedRows) {
@@ -82,6 +96,8 @@ export async function showPendingMoney(req: Request, res: Response): Promise<voi
       dPage,
       dTotalPages,
       dTotal,
+      nagoxConfig: listPendingConfig(),
+      nagoxSites: listSites().map((s) => ({ id: s.id, name: s.name })),
     });
   } catch (err) {
     logger.error({ err }, 'showPendingMoney error');
@@ -175,6 +191,7 @@ export async function handleBookPendingMoney(req: Request, res: Response): Promi
 export async function handleUntagPendingMoney(req: Request, res: Response): Promise<void> {
   try {
     if (!(await _mutInScope(req.params.mutationId))) { res.status(404).json({ ok: false, message: 'Mutasi tidak ditemukan' }); return; }
+    if (isRecordedToNagox(req.params.mutationId)) { res.status(409).json({ ok: false, message: 'Sudah tercatat di DB Nagox — Reset dikunci. Hapus dulu manual di Nagox.' }); return; }
     removePendingTag(req.params.mutationId);
     void logAction(req, { category: 'pending', action: 'pending_untag', summary: 'Hapus tag Uang Pending', targetType: 'Mutation', targetId: req.params.mutationId });
     res.json({ ok: true });
@@ -182,4 +199,64 @@ export async function handleUntagPendingMoney(req: Request, res: Response): Prom
     logger.error({ err }, 'handleUntagPendingMoney error');
     res.status(500).json({ ok: false });
   }
+}
+
+// ══ Nagox Pending: konfig bank per-site + Catat ke DB Nagox ══
+export async function handleNagoxPanelsApi(_req: Request, res: Response): Promise<void> {
+  try { res.json(nagoxListPanels()); }
+  catch (err) { logger.error({ err }, 'handleNagoxPanelsApi'); res.status(500).json({ ok: false, panels: [] }); }
+}
+
+export async function handleNagoxBanksApi(req: Request, res: Response): Promise<void> {
+  try {
+    const panel = String(req.query.panel || '').trim();
+    if (!panel) { res.status(400).json({ ok: false, banks: [], message: 'panel kosong' }); return; }
+    res.json(nagoxListBanks(panel));
+  } catch (err) { logger.error({ err }, 'handleNagoxBanksApi'); res.status(500).json({ ok: false, banks: [] }); }
+}
+
+export async function handleGetNagoxConfigApi(_req: Request, res: Response): Promise<void> {
+  try { res.json({ ok: true, config: listPendingConfig() }); }
+  catch (err) { logger.error({ err }, 'handleGetNagoxConfigApi'); res.status(500).json({ ok: false }); }
+}
+
+export async function handleSetNagoxConfigApi(req: Request, res: Response): Promise<void> {
+  try {
+    const b = (req.body || {}) as { siteId?: string; panel?: string; bankId?: string; bankLabel?: string };
+    const siteId = String(b.siteId || '').trim();
+    if (!siteId) { res.status(400).json({ ok: false, message: 'siteId kosong' }); return; }
+    const cfg = (b.panel && b.bankId) ? { panel: String(b.panel), bankId: String(b.bankId), bankLabel: String(b.bankLabel || '') } : null;
+    setPendingConfig(siteId, cfg);
+    void logAction(req, { category: 'pending', action: 'nagox_pending_config', summary: 'Set bank Nagox site ' + siteId + (cfg ? (' → ' + cfg.panel + ' / ' + cfg.bankLabel) : ' (hapus)'), targetType: 'Site', targetId: siteId, detail: { ...b } });
+    res.json({ ok: true });
+  } catch (err) { logger.error({ err }, 'handleSetNagoxConfigApi'); res.status(500).json({ ok: false }); }
+}
+
+export async function handleCatatNagoxApi(req: Request, res: Response): Promise<void> {
+  try {
+    const mutationId = req.params.mutationId;
+    const body = (req.body || {}) as { tanggalWaktu?: string; user?: string; namaBankPengirim?: string; jumlah?: number | string; siteId?: string };
+    if (!mutationId) { res.status(400).json({ ok: false, message: 'mutationId kosong' }); return; }
+    if (!(await _mutInScope(mutationId))) { res.status(404).json({ ok: false, message: 'Mutasi tidak ditemukan' }); return; }
+    if (isRecordedToNagox(mutationId)) { res.status(409).json({ ok: false, message: 'Sudah tercatat di Nagox sebelumnya.' }); return; }
+    const siteId = String(body.siteId || '').trim();
+    const cfg = siteId ? getPendingConfig(siteId) : null;
+    if (!cfg || !cfg.bankId || !cfg.panel) { res.status(400).json({ ok: false, message: 'Bank Nagox belum di-set untuk site ini. Buka "Konfig Bank Nagox" dulu.' }); return; }
+    const jumlah = parseInt(String(body.jumlah ?? '').replace(/[^0-9]/g, ''), 10) || 0;
+    if (jumlah <= 0) { res.status(400).json({ ok: false, message: 'Jumlah tidak valid' }); return; }
+    const by = (req.session as unknown as { user?: { username?: string } }).user?.username || 'unknown';
+    const result = callNagoxPending({
+      ref: mutationId, tanggalWaktu: String(body.tanggalWaktu || '').trim(), user: String(body.user || '').trim(),
+      panel: cfg.panel, namaBankPengirim: String(body.namaBankPengirim || '').trim(), bankId: cfg.bankId, jumlah,
+    });
+    if (result.ok) {
+      setPendingTag(mutationId, { status: 'pending', taggedBy: by });
+      setNagoxPendRecord(mutationId, { status: result.already ? 'already' : 'ok', at: new Date().toISOString(), message: result.message, bankLabel: result.bankLabel, by });
+      void logAction(req, { category: 'pending', action: 'nagox_pending_catat', severity: 'important', summary: 'Catat Uang Pending ke Nagox (' + cfg.panel + ' Rp' + jumlah.toLocaleString('id-ID') + ')', targetType: 'Mutation', targetId: mutationId, detail: { panel: cfg.panel, bankId: cfg.bankId, jumlah, user: body.user, already: result.already } });
+      res.json({ ok: true, message: result.message, bankLabel: result.bankLabel, already: !!result.already });
+    } else {
+      setNagoxPendRecord(mutationId, { status: result.unknown ? 'unknown' : 'fail', at: new Date().toISOString(), message: result.message, by });
+      res.status(result.unknown ? 502 : 400).json({ ok: false, unknown: !!result.unknown, message: result.message });
+    }
+  } catch (err) { logger.error({ err }, 'handleCatatNagoxApi'); res.status(500).json({ ok: false, message: 'Gagal catat ke Nagox' }); }
 }

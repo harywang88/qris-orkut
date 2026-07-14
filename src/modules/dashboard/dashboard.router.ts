@@ -68,7 +68,7 @@ import {
 } from './dashboard.controller';
 import { showPostgresMonitor, getPostgresMonitorJson } from './postgres-monitor.controller';
 import { showSaldoUtama, showMadera } from './wallet.controller';
-import { showPendingMoney, handleTagPendingMoney, handleUntagPendingMoney, handleBookPendingMoney } from './pending-money.controller';
+import { showPendingMoney, handleTagPendingMoney, handleUntagPendingMoney, handleBookPendingMoney, handleNagoxPanelsApi, handleNagoxBanksApi, handleGetNagoxConfigApi, handleSetNagoxConfigApi, handleCatatNagoxApi } from './pending-money.controller';
 import { showOrderkuotaReport, apiLookupQr, handleCreateReport, handleCancelReport, serveProof, apiReportStatus } from './orderkuota-report.controller';
 import { showReconcile } from './reconcile.controller';
 
@@ -91,6 +91,12 @@ router.get('/pending-money', requireMenu('mutasi-qris'), showPendingMoney);
 router.post('/api/pending-money/:mutationId/tag', requireMenu('mutasi-qris'), handleTagPendingMoney);
 router.post('/api/pending-money/:mutationId/untag', requireMenu('mutasi-qris'), handleUntagPendingMoney);
 router.post('/api/pending-money/:mutationId/book', requireMenu('mutasi-qris'), handleBookPendingMoney);
+// Nagox Pending: konfig bank per-site (dari daftar Nagox live) + Catat ke DB Nagox
+router.get('/api/pending-money/nagox-panels', requireMenu('mutasi-qris'), handleNagoxPanelsApi);
+router.get('/api/pending-money/nagox-banks', requireMenu('mutasi-qris'), handleNagoxBanksApi);
+router.get('/api/pending-money/nagox-config', requireMenu('mutasi-qris'), handleGetNagoxConfigApi);
+router.post('/api/pending-money/nagox-config', requireMenu('mutasi-qris'), handleSetNagoxConfigApi);
+router.post('/api/pending-money/:mutationId/catat-nagox', requireMenu('mutasi-qris'), handleCatatNagoxApi);
 // ── Laporkan ke OrderKuota (CS lapor QR uang nyangkut; bot ambil-alih dari Uang Pending) ──
 router.get('/orderkuota-report', requireMenu('laporkan-orderkuota'), showOrderkuotaReport);
 router.get('/api/orderkuota-report/lookup', requireMenu('laporkan-orderkuota'), apiLookupQr);
